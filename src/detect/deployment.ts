@@ -6,7 +6,7 @@
  * deployment block never changes, so repeated runs make zero new calls.
  */
 import type { Hex } from "viem";
-import type { PinnedChain } from "../chain/client.js";
+import type { ChainReader } from "../chain/client.js";
 
 export interface DeploymentSearchResult {
   /** null if the target has no code at the pinned block, or genuinely could not be bounded. */
@@ -15,7 +15,7 @@ export interface DeploymentSearchResult {
 }
 
 export async function findDeploymentBlock(
-  chain: PinnedChain,
+  chain: ChainReader,
   address: Hex,
 ): Promise<DeploymentSearchResult> {
   let calls = 0;
