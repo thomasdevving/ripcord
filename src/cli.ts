@@ -82,6 +82,18 @@ program
     try {
       const report = await buildReport(chain, addressArg as Hex);
       process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+      // The disclosure gate goes to stderr, not stdout: stdout stays clean,
+      // pipeable JSON, while a human running this interactively cannot miss
+      // that the report must not be published as-is. Silence here would make
+      // the gate easy to walk past on calibration day, which is exactly when
+      // it matters.
+      if (!report.disclosure.publishable) {
+        console.error("\n⚠  DO NOT PUBLISH THIS REPORT");
+        console.error(`   ${report.disclosure.reason}`);
+        for (const b of report.disclosure.blockedBy) {
+          console.error(`   - ${b.signature} (${b.category}) in ${b.location}`);
+        }
+      }
     } catch (err) {
       console.error(`fatal: ${err instanceof Error ? err.message : String(err)}`);
       process.exitCode = 1;

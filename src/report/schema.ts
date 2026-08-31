@@ -7,7 +7,7 @@
  */
 import { z } from "zod";
 
-export const schemaVersion = "0.3.0";
+export const schemaVersion = "0.4.0";
 export const rulesetVersion = "0.3.0";
 
 const hexString = z.string().regex(/^0x[0-9a-fA-F]*$/);
@@ -255,6 +255,40 @@ export const dependencyGraphSchema = z.object({
 });
 export type DependencyGraph = z.infer<typeof dependencyGraphSchema>;
 
+// --- disclosure gate ---
+
+/**
+ * Machine-checkable publication gate, so the disclosure policy is process
+ * discipline rather than a judgement call made per protocol under time
+ * pressure on calibration day.
+ *
+ * The rule: a report whose `needsManualVerification` is non-empty — at the
+ * target or anywhere in its dependency graph — is NOT publishable. Those
+ * entries are exactly the cases where probing could not tell "guarded by a
+ * scheme Ripcord doesn't recognize" apart from "not guarded at all," and the
+ * second reading is a vulnerability claim about a live contract. Such a
+ * report stays local until either (a) a human clears the entry as a design
+ * property, or (b) disclosure to the project has happened.
+ *
+ * `publishable: true` therefore means "contains only admin-capability
+ * findings," which the README's disclosure policy publishes freely. It is
+ * deliberately conservative: it gates on the presence of the uncertainty,
+ * not on anyone's assessment of how serious it looks.
+ */
+export const disclosureSchema = z.object({
+  publishable: z.boolean(),
+  reason: z.string(),
+  /** Where the blocking entries are, so a human knows what to clear. */
+  blockedBy: z.array(
+    z.object({
+      location: z.string(),
+      signature: z.string(),
+      category: capabilityCategorySchema,
+    }),
+  ),
+});
+export type Disclosure = z.infer<typeof disclosureSchema>;
+
 // --- top-level report ---
 
 export const reportSchema = z.object({
@@ -277,6 +311,7 @@ export const reportSchema = z.object({
   powerHolders: z.array(powerHolderSchema),
   capabilities: capabilitiesResultSchema,
   dependencies: dependencyGraphSchema,
+  disclosure: disclosureSchema,
   unknowns: z.array(unknownEntrySchema),
   errors: z.array(errorEntrySchema),
 });

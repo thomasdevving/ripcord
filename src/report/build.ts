@@ -19,10 +19,51 @@ import {
   rulesetVersion,
   type CapabilitiesResult,
   type DependencyGraph,
+  type Disclosure,
   type ErrorEntry,
   type Report,
   type UnknownEntry,
 } from "./schema.js";
+
+/**
+ * Applies the publication gate described on `disclosureSchema`: any
+ * `needsManualVerification` entry, at the target or anywhere in the
+ * dependency graph, makes the report non-publishable. Deliberately
+ * conservative — it gates on the presence of the uncertainty itself, never
+ * on how serious the entry happens to look, so calibration day is a
+ * mechanical check rather than a per-protocol ethics call under time
+ * pressure.
+ */
+function assessDisclosure(capabilities: CapabilitiesResult, dependencies: DependencyGraph): Disclosure {
+  const blockedBy: Disclosure["blockedBy"] = [
+    ...capabilities.needsManualVerification.map((e) => ({
+      location: `capabilities (${e.probedAddress})`,
+      signature: e.signature,
+      category: e.category,
+    })),
+    ...dependencies.tokens.flatMap((t) =>
+      t.capabilities.needsManualVerification.map((e) => ({
+        location: `dependencies.tokens[${t.token}]`,
+        signature: e.signature,
+        category: e.category,
+      })),
+    ),
+  ];
+
+  if (blockedBy.length === 0) {
+    return {
+      publishable: true,
+      reason:
+        "no needsManualVerification entries at the target or in its dependency graph — this report contains only admin-capability findings, which the disclosure policy publishes freely",
+      blockedBy: [],
+    };
+  }
+  return {
+    publishable: false,
+    reason: `${blockedBy.length} capability/capabilities could not be attributed to a recognized guard by probing. Probing cannot distinguish "guarded by a scheme Ripcord doesn't recognize" from "not guarded at all," and the second reading would be a vulnerability claim about a live contract. Do not publish this report: keep it local until each entry below is either cleared by a human as a design property, or disclosed to the project. See the disclosure policy in README.`,
+    blockedBy,
+  };
+}
 
 export async function buildReport(chain: ChainReader, target: Hex): Promise<Report> {
   const unknowns: UnknownEntry[] = [];
@@ -179,6 +220,7 @@ export async function buildReport(chain: ChainReader, target: Hex): Promise<Repo
     powerHolders,
     capabilities: capabilityDetection.result,
     dependencies: dependencyDetection.result,
+    disclosure: assessDisclosure(capabilityDetection.result, dependencyDetection.result),
     unknowns,
     errors,
   };

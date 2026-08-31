@@ -200,6 +200,16 @@ only via delegatecall and is usually uninitialized.
   report rather than decoration. Both bumped to 0.2.0 on day 2, then 0.3.0
   when the guard-probe target was corrected (a detection-rule change) and
   `probedAddress` was added (a schema-shape change).
+- **Disclosure gate, enforced by the schema, not by discipline.** Every
+  report carries a `disclosure` block: `publishable` is false whenever
+  `needsManualVerification` is non-empty at the target OR anywhere in the
+  dependency graph, with `blockedBy` naming each entry. The CLI prints a loud
+  `DO NOT PUBLISH THIS REPORT` to stderr when it trips. The rule exists
+  because probing cannot distinguish "guarded by an unrecognized scheme" from
+  "not guarded at all," and the second reading is a vulnerability claim about
+  a live contract. Day 5's published calibration set is filtered on
+  `disclosure.publishable` — never on someone's per-protocol judgement under
+  time pressure. See README "Disclosure policy."
 - **Selector accounting.** `capabilities.selectorsExtracted` always equals
   `findings + needsManualVerification + unmatchedSelectors`. Every selector
   the dispatcher recovers is either classified or explicitly listed as
@@ -299,7 +309,21 @@ only via delegatecall and is usually uninitialized.
    `priceOracle()`, `priceFeed()`) against the target directly. A protocol
    exposing its oracle under a different name, or only reachable through an
    intermediate contract, produces no oracle dependency finding.
-7. **No fallback/receive reporting.** An early attempt at this was removed:
+7. **The configured public RPC caps `eth_getLogs` at 10 blocks inclusive —
+   the AccessControl event-reconstruction path cannot run on it at all.**
+   Verified day 2 against the blastapi public mainnet endpoint: a
+   10-block-inclusive range succeeds, 11 blocks returns
+   "You can make eth_getLogs requests with up to a 10 block range."
+   `accessControl.ts` chunks at 10,000 blocks, so every request it makes is
+   rejected and lands in `errors[]`. This has not bitten the fixtures only
+   because none of them implement OZ AccessControl, so the scan never runs —
+   a latent failure, not a working path. Note the fix is NOT smaller chunks:
+   at 10 blocks per request a 5M-block history is 500,000 requests, which is
+   infeasible. **Day 5 requires an RPC provider with generous getLogs limits**
+   (Alchemy/Infura-class), since AccessControl-based protocols are common in
+   any realistic calibration set. Worth a preflight probe that detects the
+   provider's real limit and fails loud before a scan silently degrades.
+8. **No fallback/receive reporting.** An early attempt at this was removed:
    the `fallbackDetected` heuristic returned `true` for every real contract
    tested (WETH9, USDC, WBTC, Aave) including ones with no fallback at all —
    a constant-true flag, i.e. a flag with no evidence behind it, which rule 1
@@ -312,6 +336,41 @@ only via delegatecall and is usually uninitialized.
    Both removed; dispatcher.ts still walks past these guards correctly (tested),
    it just doesn't report on them. Revisit for day 4 if the Exit Window metric
    needs ETH-acceptance as an input.
+
+## Decided approaches (do not re-litigate)
+
+**Fork tooling: anvil, driven from TypeScript via viem's test client.** No
+forge, no Solidity test contracts, no Hardhat. The deciding reason is the
+demo: the call trace IS the visual, and `cast run --trace` gives by far the
+most readable output; Hardhat's traces are worse and `@ethereumjs/vm` would
+mean building that presentation by hand. viem has first-class anvil support
+(`impersonateAccount`, `setBalance`, snapshot/revert), so the codebase stays
+entirely TypeScript and the only external dependency is one binary — which
+the security people on the jury almost certainly already have. Installed
+2026-08-31 (anvil 1.8.1 at ~/.foundry/bin). `src/fork/preflight.ts` fails
+loud with install instructions if it's missing. Fork tests are skipped in CI
+unless an RPC secret exists — marked explicitly as skipped, never silently
+passing.
+
+**Taxonomy strategy: the probe is a DISCOVERY mechanism, not just an
+attribution one.** The classification percentage is the wrong number to chase
+— most of USDC's 55 selectors are ERC20 reads and transfers that correctly
+are not capabilities. The number that matters is the FALSE-NEGATIVE rate: did
+we miss a function that actually grants privileged power? Two structural
+moves, each worth more than a hundred added signatures:
+  1. Any selector that produces an auth-shaped revert IS a privileged
+     function, whether or not it's in the taxonomy. Categorize those as
+     "uncategorized privileged function." Coverage then largely solves
+     itself and the taxonomy becomes a READABILITY layer rather than the
+     detection layer.
+  2. To probe unknown selectors we need their signatures — fetch the ABI once
+     per verified contract from a block explorer and cache it. Nearly
+     everything in the calibration set is verified. Bytecode extraction stays
+     the always-on base layer and the fallback for unverified contracts, and
+     comparing fetched ABI against extracted selectors validates the
+     dispatcher parser on every real run for free.
+Day-5 measurement: walk each fixture's `unmatchedSelectors` by hand, label
+which were genuinely privileged, report THAT percentage.
 
 ## Day-by-day plan
 
@@ -329,11 +388,27 @@ only via delegatecall and is usually uninitialized.
   "unguarded"). Dependency graph one level deep: curated major-ERC20
   holdings, token-level authority/capability re-run, oracle-getter probing.
   Disclosure policy in README. All 5 day-1 fixtures still scan clean.
-- **Day 3.** Proof Engine: fork-simulate the admin's own upgrade path, produce
-  the call trace where funds actually leave.
+- **Day 3 (revised).** MORNING — recursive power-holder resolution + timelock
+  detection, pulled forward from day 4. Rationale: without it the tool
+  literally cannot see the thing that justifies the project — a 3-of-11 Safe
+  shielding the business owner while the real upgrade authority is a single
+  EOA one hop further (exactly the PAID fixture). It also *unloads* day 4,
+  since timelock delay was day-4 work regardless, moving risk off the
+  tightest day. Constraints: max depth 3; cycle detection (A owns B owns A
+  happens in the wild); weakest-link applies to depth too — a holder found at
+  depth 3 carries less confidence than one at depth 1 and the report must
+  show that. Terminate on: EOA, Safe with threshold, timelock with delay, or
+  unknown-contract-at-max-depth.
+  AFTERNOON/EVENING — Proof Engine: fork-simulate the admin's own upgrade
+  path, produce the call trace where funds actually leave. ONE archetype,
+  fully working. Do NOT broaden the proof engine to compensate for the
+  morning's work.
 - **Day 4.** Exit Window metric: upgrade/admin-change delay (minus bypass/
   shortcut paths) vs. real time-to-exit (unstaking, withdrawal cooldowns,
-  queues, liquidity depth).
+  queues, liquidity depth). Lighter than originally planned because timelock
+  detection landed on day 3 — this is the buffer if the proof engine overruns.
 - **Day 5.** Calibration against 10-15 real protocols; README/report polish.
+  Published set filtered on `disclosure.publishable`. Report the FALSE-NEGATIVE
+  rate, not a classification percentage — see "Taxonomy strategy" below.
 - **Day 6 (optional).** Watchtower: live monitoring of timelock queues,
   alerting when a rule change is actually queued.
