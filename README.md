@@ -8,7 +8,7 @@ An audit answers "is there a bug in this code." It does not answer "who holds th
 
 Every DeFi hack of this shape is preventable *in advance* — the proxy pattern, the admin address, whether it's an EOA or a multisig, the threshold, whether a timelock sits in between: all of it is public, on-chain, and readable before you deposit. Nobody reads it, because nobody automates it.
 
-Ripcord reads it. Day 1 builds the **Power Map**: a static scan of who holds privileged power over a contract, and what that power actually is. (The full system also includes a fork-simulation Proof Engine, the Exit Window metric — upgrade delay versus real time-to-exit — and live Watchtower monitoring. Those come later in the week; see [What's next](#whats-next).)
+Ripcord reads it. Day 1 built the **Power Map**: a static scan of who holds privileged power over a contract. Day 2 adds **capability detection** — which specific privileged functions exist (upgrade, mint, freeze, sweep, ...) and, where the evidence supports it, who can call them — and a one-level **dependency graph**: a protocol can be impeccably governed and you still aren't sovereign if the tokens it holds, or the oracle it trusts, can be frozen or repriced by someone else. (The full system also includes a fork-simulation Proof Engine, the Exit Window metric — upgrade delay versus real time-to-exit — and live Watchtower monitoring. Those come later in the week; see [What's next](#whats-next).)
 
 ## Quickstart
 
@@ -105,12 +105,77 @@ And the honest-uncertainty case — Wasabi Protocol's PerpManager (`0xc0b01a4f4a
 
 Ripcord correctly identifies the proxy pattern but does **not** implement Wasabi's custom access-control scheme, and says so explicitly — `powerHolders: []` here is not a claim that nobody can upgrade this contract. It's a claim that Ripcord couldn't find who can with the detectors it has today.
 
+Day 2 adds capability detection and a dependency graph. Same PAID Network proxy as above — its implementation exposes `renounceOwnership()`/`transferOwnership(address)`, and Ripcord didn't just find them, it *asked the contract who guards them*: a real `eth_call`, zero-valued args, from an address with no relationship to the protocol, and the revert reason it got back — `"Ownable: caller is not the owner"` — is what attributes the guard to the token's owner, not a source-code assumption:
+
+```json
+{
+  "capabilities": {
+    "taxonomyVersion": "0.1.0",
+    "dispatcherRecognized": true,
+    "scannedAddress": "0xb828e66eb5b41b9ada9aa42420a6542cd095b9c7",
+    "findings": [
+      {
+        "signature": "transferOwnership(address)",
+        "category": "AUTHORITY_CHANGE",
+        "matchConfidence": "high",
+        "guard": {
+          "status": "attributed",
+          "holders": ["0x53bc21D38281D6AcdFE0b92e0B534a19C90344cC"],
+          "authSource": "owner",
+          "evidence": [
+            { "kind": "call", "params": { "data": "0xf2fde38b...", "from": "0x30bf246519796e6e83153ff35f6ff46ef9fb14bf" },
+              "rawValue": "0x08c379a0...4f776e61626c653a2063616c6c6572206973206e6f7420746865206f776e6572" }
+          ]
+        }
+      }
+    ],
+    "needsManualVerification": [
+      {
+        "signature": "unpause()",
+        "category": "ACCESS_RESTRICTION",
+        "reason": "no_auth_revert_observed",
+        "note": "probed from three unrelated addresses with zero-valued arguments and observed no AccessControl/Ownable-shaped auth revert from any of them — this does not prove the function is unguarded..."
+      }
+    ]
+  }
+}
+```
+
+`unpause()` reverted on every probe too — but with `"Pausable: not paused"`, an unrelated state check, not an auth check. Ripcord can't distinguish "no guard" from "guarded, but this particular probe didn't reach the guard check" by probing alone, so it never claims either — `unpause()` lands in `needsManualVerification`, not in `findings`, and not as a vulnerability claim. See [Disclosure policy](#disclosure-policy) for why that distinction matters.
+
+The dependency graph runs the same detection one level deeper. This same PAID proxy holds real USDC and USDT balances; here's WETH9 — the "nothing to see here" contract from the first example — showing what it actually holds:
+
+```json
+{
+  "dependencies": {
+    "tokens": [
+      {
+        "token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "balance": "6169188602",
+        "capabilities": {
+          "findings": [{ "signature": "transferOwnership(address)", "category": "AUTHORITY_CHANGE" }],
+          "needsManualVerification": [
+            { "signature": "blacklist(address)", "category": "ACCESS_RESTRICTION" },
+            { "signature": "pause()", "category": "ACCESS_RESTRICTION" },
+            { "signature": "mint(address,uint256)", "category": "SUPPLY" }
+          ]
+        }
+      }
+    ]
+  }
+}
+```
+
+WETH9 holds ~6,169 USDC directly on the contract address — and that USDC has real freeze (`blacklist`) and mint capability. Ripcord's own guard-probing couldn't attribute those particular guards on this run (see [Trust assumptions](#trust-assumptions) — revert-data availability is RPC-provider-dependent), but the capabilities themselves are real, evidence-backed findings: this is the "80% of this vault's holdings sit in a freezable token" headline the dependency graph exists to produce, even in a case as boring as WETH9.
+
 ## What a report contains
 
 - `target` — address, whether it has code, bytecode size and hash.
 - `proxy` — pattern (`eip1967_transparent` / `eip1967_uups` / `eip1967_beacon` / `eip1167_minimal_proxy` / `legacy_zos_unstructured` / `not_a_proxy` / `unknown`), the implementation/admin/beacon addresses if applicable, the raw slot values, and evidence for every read.
 - `authority` — `owner()`/`pendingOwner()` results, and AccessControl role membership (enumerated live via `AccessControlEnumerable` getters, or reconstructed by replaying `RoleGranted`/`RoleRevoked` events when that extension isn't present).
 - `powerHolders` — every address that turned up holding some capability, classified as `eoa` / `safe` / `contract`, with the Safe's threshold and owners read directly if it is one, and a list of which capabilities route through it.
+- `capabilities` — every privileged function Ripcord's dispatcher-based selector extraction found (scanning the *implementation*, for a proxy) that matches the versioned taxonomy (`CODE_CHANGE` / `FUND_MOVEMENT` / `SUPPLY` / `ACCESS_RESTRICTION` / `ECONOMIC` / `AUTHORITY_CHANGE`), grouped by the power it grants, not by name. `findings[]` carries a `guard` — `attributed` (a real probe found an OZ Ownable/AccessControl-shaped revert and mapped it to a known holder), `guarded_unknown_holder` (auth-shaped revert, holder unmapped), or `inconclusive` (nothing interpretable) — never omitted, never a false attribution. A capability where probing observed no auth-shaped revert from any of three unrelated probe addresses is never a normal finding: it moves to `needsManualVerification[]`, which can say "no guard was detected" but never "this is unguarded" — see [Disclosure policy](#disclosure-policy).
+- `dependencies` — one level deep. `tokens[]`: major ERC20s (a curated list, not full discovery — see Limitations) the target holds a nonzero balance of, each re-scanned for its own proxy/authority/capabilities. `oracles[]`: addresses returned by a short list of common oracle-getter probes, with authority detection run on each.
 - `unknowns` — always present. Anything Ripcord could not determine, and why. **Never empty just because everything looked fine** — an upgradeable proxy with no identified authority produces an explicit unknowns entry precisely because "nothing found" must never read as "nothing to find."
 - `errors` — always present. Any RPC read that actually failed (as opposed to a contract-level revert, which is a normal, evidence-carrying result, not an error).
 
@@ -120,20 +185,33 @@ Every finding, everywhere in the schema, carries an `evidence[]` array: the kind
 
 - **You trust the RPC to tell the truth.** Ripcord does not run its own node or cross-check against a second provider. If the RPC lies about a storage slot or a call result, Ripcord reports the lie, with evidence, faithfully. Pin `--block` to a specific number and use an RPC provider you trust for the chain in question.
 - **You trust Ripcord's pattern coverage.** Day 1 recognizes EIP-1967 (transparent/UUPS/beacon), EIP-1167 minimal proxies, and legacy zeppelinos unstructured storage. Anything else — a custom proxy, a diamond (EIP-2535), a non-standard access-control scheme — is either misclassified as `not_a_proxy` (if it has no delegatecall Ripcord's scanner can find) or explicitly flagged `unknown` (if it does). See Limitations below for exactly where this breaks down today, verified against real contracts, not hypothesized.
+- **Guard probing depends on the RPC returning revert data.** Ripcord attributes a capability's guard by making a real `eth_call` and parsing the raw revert bytes; whether a provider returns those bytes on a reverted call is provider-dependent. Observed live during day-2 development: probing USDT against a public mainnet RPC returned no revert data on any of three probes, so its `pause()`/`unpause()`/`transferOwnership(address)` guards all came back `inconclusive` on that run — not because USDT lacks guards, but because that specific provider didn't hand back the bytes needed to see them. A different provider can produce a different (more attributed) result for the identical, deterministic on-chain state.
 - **The cache is trusted once written.** Every RPC read is pinned to a historical block and cached to disk forever (a historical block's contents never change), which is what makes a warm-cache rerun byte-identical and network-free. If you believe an RPC provider fed Ripcord bad data, delete `.cache/` and rerun with a provider you trust — don't edit cache files by hand, since nothing checks them for tampering.
+
+## Disclosure policy
+
+Ripcord's findings split into two branches with different disclosure rules.
+
+**Admin capability findings are published freely** — everything in `powerHolders`, `capabilities.findings`, and the dependency graph. Executing any of these paths requires the admin key (or an attributed role) itself, so publishing the finding grants no capability to anyone who doesn't already hold it. It only ever demonstrates something on a fork with impersonation of a key nobody but the admin holds. The admin already knows their own key exists and what it can do. And there is no patch to withhold time for: an admin's ability to call a function it holds the key to is inherent design, not a vulnerability. Day 5's calibration run against 10-15 live protocols publishes this class of finding without restriction.
+
+**Actual vulnerabilities are not published, and are not what `needsManualVerification` claims to have found.** An unprotected initializer, a genuinely unguarded privileged function reachable by *any* caller, or anything else where a non-privileged party could seize control, is a different category entirely — and Ripcord's probing methodology is deliberately incapable of asserting it exists. `needsManualVerification` entries are an honest "no guard was detected by probing," not "no guard exists": a custom access-control scheme, a revert triggered by an unrelated state check before the auth check runs, or an RPC provider that silently drops revert data can all produce the exact same observation as a genuinely missing guard (see KNOWN EDGES in `CLAUDE.md`). If manual follow-up on a `needsManualVerification` entry ever confirms a real, exploitable vulnerability — not a design property, an actual bug — Ripcord's process is: do not publish it, do not commit it to this repository's fixtures or examples, and report it privately to the project through their published security contact (or a platform such as Immunefi if they run one) with reasonable time to respond before any public discussion, standard responsible disclosure. This is not hypothetical — day 5 scans real live protocols specifically because this case is expected to come up.
 
 ## Limitations
 
 - **Day 1 stops at the immediate power holder.** If a proxy's admin is itself a contract (e.g. an OpenZeppelin `ProxyAdmin`), Ripcord classifies it as `type: "contract"` and stops — it does not (yet) recursively resolve *that* contract's own `owner()`. This is real and demonstrated in the fixtures: one PAID Network proxy's admin is a `ProxyAdmin` contract whose own owner turns out (verified manually, not by Ripcord today) to be a plain EOA. Dependency-graph traversal is explicitly day-2 scope.
-- **The DELEGATECALL "unknown" heuristic is a linear byte scan, not control-flow analysis.** It correctly skips PUSH-immediate data and Solidity's trailing CBOR metadata blob, but it has no notion of reachability. A factory contract that deploys a proxy via `new SomeProxy(...)` embeds that proxy's full initcode — including its real `DELEGATECALL` — inside its own bytecode, and Ripcord's scanner cannot yet tell "code this contract would execute" from "code embedded as another contract's creation bytecode." This is demonstrated live in the fixtures: Aave's `PoolAddressesProvider`, which is not itself upgradeable, still comes back `pattern: "unknown"` for exactly this reason. It is reported as uncertain, not as a false "not a proxy" — which is the correct failure mode for this tool, but worth knowing about before you read too much into a lone `unknown`.
+- **The DELEGATECALL "unknown" proxy-pattern heuristic is a linear byte scan, not control-flow analysis** (day 1). It correctly skips PUSH-immediate data and Solidity's trailing CBOR metadata blob, but it has no notion of reachability. A factory contract that deploys a proxy via `new SomeProxy(...)` embeds that proxy's full initcode — including its real `DELEGATECALL` — inside its own bytecode, and this scanner cannot tell "code this contract would execute" from "code embedded as another contract's creation bytecode." Demonstrated live: Aave's `PoolAddressesProvider`, not itself upgradeable, comes back `pattern: "unknown"` for exactly this reason. Reported as uncertain, not as a false "not a proxy" — the correct failure mode, but worth knowing about before reading too much into a lone `unknown`. (Day 2's dispatcher-based selector extraction, below, does not have this problem — it uses reachability analysis specifically to avoid it — but this older proxy-pattern heuristic is unrelated code and still has it.)
+- **Capability selector extraction uses reachability analysis, not a linear scan** (day 2), specifically to avoid the problem above: a minimal static walk follows only real JUMP/JUMPI targets from offset 0, so a CODECOPY'd child contract's embedded creation bytecode is structurally unreachable rather than misread as the parent's own dispatch branches. Verified against the same Aave fixture: the child proxy's admin selectors do not appear. Still: if bytecode doesn't match a recognized Solidity dispatcher shape at all (Vyper, hand-written assembly, an unusual compiler), extraction returns `recognized: false` rather than guessing.
+- **Capability taxonomy matching only recognizes selectors on its own curated table.** A selector not in `src/detect/taxonomy.ts` is simply unclassified, not "no privileged capability" — Ripcord does not do reverse-lookup against an external 4byte-style selector database (that would be a live, non-deterministic dependency, inconsistent with pinned-block reproducibility).
+- **Guard attribution is by probing, not proof.** Ripcord calls each detected capability's selector with zero-valued arguments from three deterministic, protocol-unrelated addresses and parses the revert for a recognized OpenZeppelin Ownable/AccessControl shape. A recognized auth-shaped revert is real, strong evidence. The absence of one is not proof of absence: the call may revert for an unrelated reason before ever reaching an auth check (observed live: PAID Network's `unpause()` reverts with `"Pausable: not paused"`, telling us nothing about its guard), the contract may use a custom scheme Ripcord doesn't recognize (observed live: USDC's `"FiatToken: caller is not a minter"`), or the RPC provider may not return revert data at all (observed live: USDT against a public RPC). All three produce the same `needsManualVerification` outcome — genuinely different situations that probing alone cannot distinguish. See [Disclosure policy](#disclosure-policy).
 - **AccessControl role discovery depends on finding every role hash that was ever granted.** Non-enumerable contracts are reconstructed by replaying `RoleGranted`/`RoleRevoked` from the contract's deployment block (found by binary search over `getCode`, not an indexer). The event scan is chunked and capped at 500 chunks of 10,000 blocks (5,000,000 blocks); a contract with a longer, unscanned history produces an explicit `unknowns[]` entry rather than a silently incomplete role list.
-- **No dependency-graph traversal.** Ripcord does not yet follow into tokens, oracles, or other contracts a target depends on. Day 2.
-- **No capability/selector detection.** Ripcord does not yet check for `pause()`, `blacklist()`, `mint()`, or similar. Day 2.
-- **No Exit Window metric, no fork simulation, no monitoring.** All out of day-1 scope by design — see [What's next](#whats-next).
+- **Day 1 stops at the immediate power holder, and day 2's dependency graph doesn't change that.** If a proxy's admin is itself a contract (e.g. an OpenZeppelin `ProxyAdmin`), Ripcord classifies it as `type: "contract"` and stops — it does not recursively resolve *that* contract's own `owner()`. Demonstrated in the fixtures: one PAID Network proxy's admin is a `ProxyAdmin` contract whose own owner turns out (verified manually, not by Ripcord) to be a plain EOA.
+- **The dependency graph's token list is curated, not discovered.** `src/chain/majorTokens.ts` checks balances against 6 hand-verified mainnet tokens (USDC/USDT/DAI/WETH/WBTC/stETH). A target holding a large position in any other token produces no dependency finding for it — Ripcord does not run an indexer or a balance-discovery service, by design.
+- **Oracle dependency detection only tries three getter names** (`oracle()`, `priceOracle()`, `priceFeed()`) directly against the target. A protocol exposing its oracle under a different name, or only reachable through an intermediate contract, produces no oracle finding.
+- **Dependency-graph depth is exactly one level, on purpose.** A token a target holds is scanned for its own authority/capabilities; that token's *own* dependencies (if it wraps or is backed by something else) are not followed. Deliberate, not an oversight — see the day-2 brief.
+- **No Exit Window metric, no fork simulation, no monitoring.** All out of day-1/day-2 scope by design — see [What's next](#whats-next).
 
 ## What's next
 
-- **Day 2** — capability/selector detection (pause/blacklist/mint and similar), dependency-graph traversal into a target's tokens/oracles, and recursive resolution of `type: "contract"` power holders.
 - **Day 3** — the Proof Engine: fork-simulate the admin's own upgrade path on a mainnet fork and produce the call trace where user funds actually leave.
 - **Day 4** — the Exit Clock: the Exit Window metric itself — upgrade/admin-change delay (minus who can bypass or shorten it) versus real time-to-exit (unstaking periods, withdrawal cooldowns, queues, liquidity depth).
 - **Day 5** — calibration against 10-15 real protocols, README/report polish.
@@ -143,11 +221,11 @@ Every finding, everywhere in the schema, carries an `evidence[]` array: the kind
 
 ```sh
 pnpm typecheck   # tsc --noEmit
-pnpm test        # vitest — pure-logic unit tests (constants, bytecode pattern matching), no network required
+pnpm test        # vitest — pure-logic unit tests, no network required
 pnpm ripcord scan <address> --block <n> --chain <id> [--no-cache] [--cache-dir <dir>]
 ```
 
-`pnpm test` runs in CI without any RPC access — it covers derived constants (asserted against the EIP-1967 reference values) and bytecode pattern matching. End-to-end verification against the five pinned fixtures in [`test/fixtures/targets.json`](test/fixtures/targets.json) requires a real RPC URL and was run manually during day-1 development; every observed result is recorded in that file alongside each target.
+`pnpm test` runs in CI without any RPC access. It covers derived constants (asserted against the EIP-1967 reference values), bytecode pattern matching, the dispatcher's reachability-limited selector extraction (hand-built bytecode fixtures for every dispatch shape, plus real mainnet bytecode saved under `test/fixtures/bytecode/` for WETH9/USDC/WBTC/Aave's `PoolAddressesProvider`, each checked against an independently-sourced full ABI), guard-probe revert parsing (real captured mainnet revert bytes plus viem-encoded synthetic OZ v5 custom errors), and capability/proxy-resolution wiring — all against network-free fakes. End-to-end verification against the five pinned fixtures in [`test/fixtures/targets.json`](test/fixtures/targets.json) requires a real RPC URL and was run manually during development; every observed result is recorded in that file alongside each target.
 
 ## Security
 
