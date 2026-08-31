@@ -85,9 +85,13 @@ src/detect/
   ownership.ts    owner()/pendingOwner() (Ownable-style).
   accessControl.ts OpenZeppelin AccessControl detection: Enumerable getters
                    when available, else reconstructed by replaying
-                   RoleGranted/RoleRevoked from deployment block (chunked,
-                   capped at 500×10k-block chunks — beyond that, explicit
-                   unknowns[], never a silently truncated role list).
+                   RoleGranted/RoleRevoked from deployment block. Chunked to the
+                   provider's PROBED getLogs range (rpcPreflight.probeMaxLogRange),
+                   not a fixed constant (KNOWN EDGE #7 fix); if the full history
+                   exceeds the ~1500-request budget it degrades to a LABELLED
+                   partial (`reconstruction.complete=false` + lowered confidence
+                   + exact covered window), never a silent truncation. See edges
+                   2, 7, 13.
   deployment.ts   Binary search over getCode to find a contract's deployment
                    block (bounds the AccessControl event scan). No indexer.
   accounts.ts     Classifies an address that holds power: eoa (no code) /
@@ -439,10 +443,17 @@ only via delegatecall and is usually uninitialized.
    LABELLED partial reconstruction (edge 2) rather than erroring or silently
    truncating. Verified end-to-end on the new FXS fixture over blastapi: probed
    range 9, Enumerable membership authoritative, `reconstruction.complete=false`
-   / `confidence:medium` with the exact covered window. A generous
-   (Alchemy/Infura-class) provider returns `complete:true`/`high` and is
-   required for full deep-history reconstruction on the day-5 calibration set —
-   `.env.example` documents this and every scan prints the active provider.
+   / `confidence:medium` with the exact covered window. IMPORTANT (verified live,
+   corrects an earlier overclaim): completeness is `range × budget vs history`,
+   NOT merely "is the provider paid." `complete:true` requires the probed range
+   to cover the whole history within the 1500-request budget — roughly
+   `range ≳ history/750`. FXS (~14.3M-block history) needs a ~19k-block range,
+   larger than Infura's 10k or Alchemy PAYG's 2k, so it stays a labelled partial
+   on every provider tested (both blastapi public and the provided Alchemy FREE
+   key cap getLogs at ~9 blocks). Flipping to `complete:true` needs an
+   unbounded-range provider or a raised `MAX_LOG_REQUESTS`. Enumerable
+   membership is authoritative regardless. `.env.example` documents the provider
+   requirement and every scan prints the active provider.
 8. **No fallback/receive reporting.** An early attempt at this was removed:
    the `fallbackDetected` heuristic returned `true` for every real contract
    tested (WETH9, USDC, WBTC, Aave) including ones with no fallback at all —
@@ -490,7 +501,21 @@ only via delegatecall and is usually uninitialized.
     bytecode (the delay is mutable at all). WHO can reach that path and under
     what constraint (normally the current delay itself gates it) is day-4 Exit
     Window work, surfaced today as an open sub-finding, not resolved.
-13. **The cleared-dependency registry is small, manual, and mainnet-only
+13. **A capped provider makes the role scan slow and single-transient-fragile
+    (found live, consolidation pass).** On a small-range provider the partial
+    scan still fires up to ~1500 getLogs requests (750 chunks × 2 events); on
+    the Alchemy FREE key (10-block cap, per-request rate limit) a single
+    transient/rate-limit failure among them raises a ChainReadError that — now
+    correctly fail-loud (edge 3's catch fix) — aborts the whole accessControl
+    stage into `errors[]`. This is honest (better than a silent wrong role set)
+    but brittle: an AccessControl target on a capped+rate-limited provider may
+    need a re-run (cached successes persist, so a retry resumes and usually
+    completes). No transient-retry/backoff is built in yet — deferred, because
+    distinguishing a transient 429 from a permanent failure reliably is real
+    work and day-4 shouldn't wait on it. **Day 5's calibration set wants an
+    unbounded/large-range, un-rate-limited provider** so this path is fast and
+    single-pass; the FREE key is not sufficient. Accepted-limitation for now.
+14. **The cleared-dependency registry is small, manual, and mainnet-only
     (consolidation pass).** `clearedRegistry.ts` documents design-not-bug
     capabilities for the 6 curated majors (USDC/USDT/DAI/WBTC/stETH; WETH has
     none). It is deliberately curated, not derived — a capability on a token or
