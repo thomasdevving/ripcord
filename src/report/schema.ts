@@ -7,8 +7,8 @@
  */
 import { z } from "zod";
 
-export const schemaVersion = "0.1.0";
-export const rulesetVersion = "0.1.0";
+export const schemaVersion = "0.2.0";
+export const rulesetVersion = "0.2.0";
 
 const hexString = z.string().regex(/^0x[0-9a-fA-F]*$/);
 const address = z.string().regex(/^0x[0-9a-fA-F]{40}$/);
@@ -112,6 +112,124 @@ export const powerHolderSchema = z.object({
 });
 export type PowerHolder = z.infer<typeof powerHolderSchema>;
 
+// --- capabilities (day 2) ---
+
+export const capabilityCategorySchema = z.enum([
+  "CODE_CHANGE",
+  "FUND_MOVEMENT",
+  "SUPPLY",
+  "ACCESS_RESTRICTION",
+  "ECONOMIC",
+  "AUTHORITY_CHANGE",
+]);
+export type CapabilityCategory = z.infer<typeof capabilityCategorySchema>;
+
+export const matchConfidenceSchema = z.enum(["high", "low"]);
+export type MatchConfidence = z.infer<typeof matchConfidenceSchema>;
+
+/**
+ * Guard attribution as a discriminated union on `status` — this is the
+ * type-level enforcement of weakest-link provenance for capabilities: only
+ * the "attributed" variant has a `holders` field, and zod's
+ * discriminatedUnion rejects any object that doesn't match one shape
+ * exactly, so a capability finding is structurally incapable of claiming an
+ * attributed holder without also carrying the evidence a real attribution
+ * requires. `holders` (not `holder`) because an AccessControl role can have
+ * more than one member — attribution must not silently drop members to fit
+ * a single-address shape.
+ */
+export const guardAttributedSchema = z.object({
+  status: z.literal("attributed"),
+  holders: z.array(address).min(1),
+  authSource: z.enum(["owner", "accessControlRole"]),
+  role: hexString.nullable(),
+  evidence: z.array(evidenceSchema),
+});
+export const guardGuardedUnknownHolderSchema = z.object({
+  status: z.literal("guarded_unknown_holder"),
+  note: z.string(),
+  evidence: z.array(evidenceSchema),
+});
+export const guardInconclusiveSchema = z.object({
+  status: z.literal("inconclusive"),
+  note: z.string(),
+  evidence: z.array(evidenceSchema),
+});
+export const guardStatusSchema = z.discriminatedUnion("status", [
+  guardAttributedSchema,
+  guardGuardedUnknownHolderSchema,
+  guardInconclusiveSchema,
+]);
+export type GuardStatus = z.infer<typeof guardStatusSchema>;
+
+export const capabilityFindingSchema = z.object({
+  selector: hexString,
+  signature: z.string(),
+  category: capabilityCategorySchema,
+  matchConfidence: matchConfidenceSchema,
+  /** The address whose bytecode this selector was extracted from — the implementation, for a proxy. */
+  scannedAddress: address,
+  guard: guardStatusSchema,
+});
+export type CapabilityFinding = z.infer<typeof capabilityFindingSchema>;
+
+/**
+ * A privileged-taxonomy capability where probing found no auth-shaped
+ * revert from any of (at least) three unrelated probe addresses. This is
+ * NEVER a normal finding and NEVER a claim that the function is unguarded —
+ * that cannot be proven by probing, and it is a vulnerability claim rather
+ * than a capability finding. It is an observation routed to manual review.
+ */
+export const manualVerificationEntrySchema = z.object({
+  selector: hexString,
+  signature: z.string(),
+  category: capabilityCategorySchema,
+  scannedAddress: address,
+  reason: z.literal("no_auth_revert_observed"),
+  note: z.string(),
+  probes: z.array(evidenceSchema),
+});
+export type ManualVerificationEntry = z.infer<typeof manualVerificationEntrySchema>;
+
+export const capabilitiesResultSchema = z.object({
+  taxonomyVersion: z.string(),
+  dispatcherRecognized: z.boolean(),
+  /** Null when the dispatcher wasn't recognized, or the scanned address has no code. */
+  scannedAddress: address.nullable(),
+  findings: z.array(capabilityFindingSchema),
+  needsManualVerification: z.array(manualVerificationEntrySchema),
+  evidence: z.array(evidenceSchema),
+});
+export type CapabilitiesResult = z.infer<typeof capabilitiesResultSchema>;
+
+// --- dependency graph (day 2) ---
+
+export const tokenDependencySchema = z.object({
+  token: address,
+  balance: z.string(),
+  balanceEvidence: z.array(evidenceSchema),
+  proxy: proxySchema,
+  authority: authoritySchema,
+  capabilities: capabilitiesResultSchema,
+  powerHolders: z.array(powerHolderSchema),
+});
+export type TokenDependency = z.infer<typeof tokenDependencySchema>;
+
+export const oracleDependencySchema = z.object({
+  /** The getter that resolved this address, e.g. "oracle()" or "priceFeed()". */
+  source: z.string(),
+  address,
+  authority: authoritySchema,
+  powerHolders: z.array(powerHolderSchema),
+});
+export type OracleDependency = z.infer<typeof oracleDependencySchema>;
+
+export const dependencyGraphSchema = z.object({
+  tokens: z.array(tokenDependencySchema),
+  oracles: z.array(oracleDependencySchema),
+});
+export type DependencyGraph = z.infer<typeof dependencyGraphSchema>;
+
 // --- top-level report ---
 
 export const reportSchema = z.object({
@@ -132,6 +250,8 @@ export const reportSchema = z.object({
   proxy: proxySchema,
   authority: authoritySchema,
   powerHolders: z.array(powerHolderSchema),
+  capabilities: capabilitiesResultSchema,
+  dependencies: dependencyGraphSchema,
   unknowns: z.array(unknownEntrySchema),
   errors: z.array(errorEntrySchema),
 });
