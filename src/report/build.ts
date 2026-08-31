@@ -5,22 +5,26 @@
  * swallowed.
  */
 import { keccak256, type Hex } from "viem";
-import type { PinnedChain } from "../chain/client.js";
+import type { ChainReader } from "../chain/client.js";
 import { detectProxy } from "../detect/proxy.js";
 import { detectOwnership } from "../detect/ownership.js";
 import { detectAccessControl } from "../detect/accessControl.js";
-import { classifyAccount } from "../detect/accounts.js";
+import { collectPowerHolders } from "../detect/accounts.js";
+import { detectCapabilities } from "../detect/capabilities.js";
+import { detectDependencies } from "../detect/dependencies.js";
+import { taxonomyVersion } from "../detect/taxonomy.js";
 import {
   reportSchema,
   schemaVersion,
   rulesetVersion,
+  type CapabilitiesResult,
+  type DependencyGraph,
   type ErrorEntry,
-  type PowerHolder,
   type Report,
   type UnknownEntry,
 } from "./schema.js";
 
-export async function buildReport(chain: PinnedChain, target: Hex): Promise<Report> {
+export async function buildReport(chain: ChainReader, target: Hex): Promise<Report> {
   const unknowns: UnknownEntry[] = [];
   const errors: ErrorEntry[] = [];
 
@@ -67,33 +71,59 @@ export async function buildReport(chain: PinnedChain, target: Hex): Promise<Repo
   );
   unknowns.push(...accessControlDetection.unknowns);
 
-  const powerHolderAddresses = new Set<string>();
-  if (ownership.owner.address) powerHolderAddresses.add(ownership.owner.address);
-  if (ownership.pendingOwner.address) powerHolderAddresses.add(ownership.pendingOwner.address);
-  if (proxy.admin) powerHolderAddresses.add(proxy.admin);
-  for (const role of accessControlDetection.result.roles) {
-    for (const member of role.members) powerHolderAddresses.add(member);
-  }
+  // Capability detection scans the implementation's bytecode for a proxy
+  // (see detectCapabilities), but attributes guards using THIS target's
+  // owner()/AccessControl state — the implementation's own storage is not
+  // where authority lives, same reasoning as ownership/accessControl above.
+  const capabilityDetection = await runStage(
+    "capabilities",
+    () =>
+      detectCapabilities(
+        chain,
+        target,
+        proxy,
+        ownership.owner.address as Hex | null,
+        accessControlDetection.result.roles,
+      ),
+    errors,
+    () => ({
+      result: {
+        taxonomyVersion,
+        dispatcherRecognized: false,
+        scannedAddress: null,
+        findings: [],
+        needsManualVerification: [],
+        evidence: [],
+      } as CapabilitiesResult,
+      unknowns: [],
+    }),
+  );
+  unknowns.push(...capabilityDetection.unknowns);
 
-  const powerHolders: PowerHolder[] = [];
-  for (const address of powerHolderAddresses) {
-    const viaCapabilities: string[] = [];
-    if (ownership.owner.address === address) viaCapabilities.push("owner");
-    if (ownership.pendingOwner.address === address) viaCapabilities.push("pendingOwner");
-    if (proxy.admin === address) viaCapabilities.push("proxyAdmin");
-    for (const role of accessControlDetection.result.roles) {
-      if (role.members.includes(address)) {
-        viaCapabilities.push(`accessControl:${role.name ?? role.role}`);
-      }
-    }
-    const holder = await runStage(
-      `accounts:${address}`,
-      () => classifyAccount(chain, address as Hex, viaCapabilities),
-      errors,
-      () => ({ address, type: "unknown" as const, safe: null, viaCapabilities, evidence: [] }),
+  const capabilityHolders = capabilityDetection.result.findings
+    .filter((f) => f.guard.status === "attributed")
+    .flatMap((f) =>
+      (f.guard as Extract<typeof f.guard, { status: "attributed" }>).holders.map((address) => ({
+        address,
+        label: f.signature,
+      })),
     );
-    powerHolders.push(holder);
-  }
+
+  const powerHolders = await collectPowerHolders(chain, {
+    owner: ownership.owner.address as Hex | null,
+    pendingOwner: ownership.pendingOwner.address as Hex | null,
+    proxyAdmin: proxy.admin as Hex | null,
+    accessControlRoles: accessControlDetection.result.roles,
+    capabilityHolders,
+  });
+
+  const dependencyDetection = await runStage(
+    "dependencies",
+    () => detectDependencies(chain, target),
+    errors,
+    () => ({ result: { tokens: [], oracles: [] } as DependencyGraph, unknowns: [] }),
+  );
+  unknowns.push(...dependencyDetection.unknowns);
 
   if (!code) {
     unknowns.push({ field: "target", reason: "address has no code at the pinned block (EOA or not yet deployed)" });
@@ -144,6 +174,8 @@ export async function buildReport(chain: PinnedChain, target: Hex): Promise<Repo
       accessControl: accessControlDetection.result,
     },
     powerHolders,
+    capabilities: capabilityDetection.result,
+    dependencies: dependencyDetection.result,
     unknowns,
     errors,
   };
