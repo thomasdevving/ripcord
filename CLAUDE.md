@@ -147,6 +147,31 @@ src/detect/
                        doesn't support. Same reasoning as the day-1
                        ownership.ts/accessControl.ts invariant.
                    Both are recorded on every finding.
+  authority.ts    (day 3) Recursive authority resolution + timelock detection.
+                   For every depth-1 power holder that is a contract, recurses
+                   into ITS authority (ownership/AccessControl/proxyAdmin) until
+                   termination — EOA, Safe (record threshold+owners, do NOT
+                   recurse into signers), timelock (record delay), max depth 3,
+                   cycle, or no-authority-found. Every leaf states WHY it
+                   stopped; an empty `children` is never read as "clean" (same
+                   discipline as unknowns[]). Weakest-link provenance applied to
+                   DEPTH: confidence degrades high->medium->low as depth grows,
+                   and the report shows the full path + effective controller.
+                   Cycle detection is on the root-to-here path (a diamond that
+                   legitimately re-reaches one contract is fine; only a true
+                   cycle back onto the current path is cut and recorded as a
+                   finding — verified live on Aave governance's Executor<->
+                   Governance mutual ownership). Produces an authority PATH per
+                   root ("upgrade -> ProxyAdmin -> EOA 0x…"), the exact input
+                   the proof engine impersonates from. detectTimelock classifies
+                   by delay accessor: OZ TimelockController (getMinDelay()),
+                   Compound/Bravo (delay()+admin()), or role-only "delay
+                   undetermined" fallback — selectors derived in constants.ts
+                   (TIMELOCK_SELECTORS), asserted in tests. adminCanShortenDelay
+                   is a day-3 FLAG only: presence of updateDelay/setDelay in the
+                   timelock's own bytecode (the delay is not immutable); WHO can
+                   reach it under WHAT constraint is day-4 Exit Window work.
+
   dependencies.ts (day 2) One-level-deep dependency graph. Checks target
                    balances against the curated MAJOR_TOKENS list
                    (chain/majorTokens.ts); for each nonzero holding, reruns
@@ -157,6 +182,41 @@ src/detect/
                    (not full capability detection — deliberately shallower,
                    one hop past the one-hop mandate) on it. Depth is exactly
                    one level, on purpose.
+
+src/fork/
+  preflight.ts    Fails loud with install instructions if the `anvil` binary
+                   isn't usable — the proof engine's only external dependency.
+  anvil.ts        (day 3) Ephemeral anvil mainnet-fork lifecycle pinned to the
+                   report block, driven via viem (createTestClient +
+                   public/wallet actions). spawn -> wait-for-ready (hard
+                   timeout, fails loud with anvil's stderr) -> use -> stop
+                   (SIGTERM then a SIGKILL backstop, always torn down). Exposes
+                   an impersonated-sender eth_sendTransaction helper with a
+                   mandatory gas cap — we are executing adversarial-shaped
+                   logic. NEVER touches mainnet; the fork is the only surface.
+  drainer.ts      (day 3) Hand-assembled EVM bytecode for a minimal
+                   "sweep these ERC20s to one recipient" implementation, plus
+                   its constructor initcode. Assembled in TS (no solc, no
+                   Solidity source) so it stays auditable inline and the
+                   codebase stays one language. Deliberately the smallest thing
+                   that makes the CODE_CHANGE capability concrete — not a
+                   general exploit, only ever deployed to an ephemeral fork.
+  proofEngine.ts  (day 3, THE PILLAR) Turns a static CODE_CHANGE claim into an
+                   EXECUTED, reproducible demonstration. ONE archetype:
+                   CODE_CHANGE->drain on an EIP-1967 TRANSPARENT proxy via
+                   ProxyAdmin.upgrade(address,address). Impersonates the
+                   RESOLVED controller from authority.ts's path (the terminal
+                   EOA one hop past the ProxyAdmin — NOT the proxy's nominal
+                   owner), deploys the drainer, executes the admin's own
+                   upgrade, triggers it, measures the target's MAJOR_TOKENS
+                   holdings leaving, prices the delta from Chainlink feeds
+                   (priceFeeds.ts). Honesty rails are load-bearing and tested:
+                   sandbox only (no mainnet tx / no key / no approval, stated in
+                   output); capability-not-intent in every string; FAIL LOUD to
+                   produced=false with a stated reason for any non-transparent
+                   pattern, unresolved authority, or no holdings — never a
+                   fabricated trace. Emits a reproduce command + a `cast run`
+                   call-trace artifact. `ripcord prove <addr> --block` runs it.
 
 src/report/
   schema.ts       Zod schema for the report. Source of truth for the shape
@@ -199,7 +259,24 @@ only via delegatecall and is usually uninitialized.
   change — this is what makes "pinned ruleset version" a real claim in the
   report rather than decoration. Both bumped to 0.2.0 on day 2, then 0.3.0
   when the guard-probe target was corrected (a detection-rule change) and
-  `probedAddress` was added (a schema-shape change).
+  `probedAddress` was added (a schema-shape change). Bumped to 0.5.0 /
+  ruleset 0.4.0 on day 3 (recursive `authorityResolution` and the `proof`
+  block added to the schema; timelock detection added to the ruleset).
+- **Authority PATH, not just a terminal holder (day 3).** `authorityResolution`
+  carries a recursive `authorityNode` tree per depth-1 power holder plus a
+  flattened `paths[]` projection ("upgrade -> ProxyAdmin -> EOA"). Confidence
+  degrades with depth (high@1 / medium@2 / low@3) — an effective controller
+  reached through three hops is never asserted with a direct owner's certainty.
+  Every leaf carries an explicit `terminationReason`
+  (eoa/safe/timelock/max_depth/cycle/no_authority_found); "we stopped looking"
+  is never left to be inferred from an empty `children`. Cycles are recorded
+  in `cyclesDetected` and surfaced in `unknowns[]`, never looped on.
+- **Proof is produced-or-honestly-absent (day 3).** `report.proof` is null when
+  no proof was attempted; otherwise `attempted` is always true and `produced`
+  is true ONLY when funds actually moved on the fork. `produced: false`
+  ALWAYS carries a `failureReason` and never an intent claim. This is the same
+  "unknown is never safe" rule applied to simulation: a missing proof is
+  honest, a fabricated one is disqualifying.
 - **Disclosure gate, enforced by the schema, not by discipline.** Every
   report carries a `disclosure` block: `publishable` is false whenever
   `needsManualVerification` is non-empty at the target OR anywhere in the
@@ -337,6 +414,54 @@ only via delegatecall and is usually uninitialized.
    it just doesn't report on them. Revisit for day 4 if the Exit Window metric
    needs ETH-acceptance as an input.
 
+9. **The proof engine covers ONE archetype (day 3).** Only CODE_CHANGE->drain on
+   an EIP-1967 transparent proxy via `ProxyAdmin.upgrade` is simulated; UUPS/
+   beacon/legacy upgrade paths return `produced: false`. Deliberate depth-over-
+   breadth — see Decided approaches #9. Also: the drain measures only the
+   curated MAJOR_TOKENS holdings, so its dollar headline is a FLOOR (value in
+   unlisted tokens, LP positions, or staked principal is invisible), and a
+   Safe-terminated authority path is impersonated at the Safe ADDRESS (anvil
+   ignores signatures), demonstrating "this Safe can if signers collude," not
+   "one key can" — Decided approaches #10.
+10. **Recursion resolves owner-of-owner but not arbitrary custom authority
+    (day 3).** A contract power holder whose control is exposed only through a
+    non-standard scheme (no owner()/AccessControl/proxyAdmin) terminates as
+    `no_authority_found` at whatever depth it's reached — honest, but it means
+    the path can stop short of the true controller when the mechanism is
+    custom (the same class as Wasabi's unrecognised access control on day 1).
+    Max depth is 3; a genuinely longer legitimate chain terminates as
+    `max_depth` (explicit, never silently truncated) rather than resolving.
+
+9. **The proof engine implements exactly ONE archetype.** CODE_CHANGE->drain
+   on an EIP-1967 TRANSPARENT proxy via `ProxyAdmin.upgrade(address,address)`.
+   UUPS (`upgradeToAndCall` on the proxy itself), beacon, and legacy-zos
+   upgrade paths are NOT simulated — `prove` returns `produced: false` with a
+   stated reason for them. This is deliberate depth-over-breadth (day-3 rule),
+   not an oversight; the transparent path is the one validated live end-to-end.
+   Broadening to more archetypes is explicitly deferred.
+10. **The proof drains only MAJOR_TOKENS holdings, and impersonation bypasses
+    signatures.** The drain measures the same curated 6-token list the
+    dependency graph uses (majorTokens.ts) — a target holding value in an
+    unlisted token, or value that isn't a simple ERC20 balance (LP positions,
+    staked principal, internal accounting), shows no delta, so the dollar
+    headline is a FLOOR on what the authority can move, never a ceiling. And
+    anvil impersonation ignores signature checks: when the resolved controller
+    is a Safe, the proof impersonates the Safe ADDRESS directly, demonstrating
+    "this Safe can" (i.e. if its signers collude), NOT "a single key can." The
+    PAID demo impersonates a plain EOA, so this caveat doesn't apply there, but
+    it must be stated for any Safe-terminated path.
+11. **Proof pricing depends on Chainlink feed availability at the pinned block.**
+    `priceFeeds.ts` maps the 6 majors to Chainlink aggregators (WETH priced by
+    ETH/USD, WBTC by BTC/USD — 1:1 wrap assumption, noted in the feed's
+    `note`). A feed that can't be read yields `usd: null` for that delta with
+    the reason in `priceSource` and drops `totalUsd` to null — a loud "price
+    unavailable," never a silent $0 that would make a real drain look harmless.
+12. **`adminCanShortenDelay` is a presence flag, not an answer (day 3).** It
+    reports only whether `updateDelay`/`setDelay` exists in the timelock's own
+    bytecode (the delay is mutable at all). WHO can reach that path and under
+    what constraint (normally the current delay itself gates it) is day-4 Exit
+    Window work, surfaced today as an open sub-finding, not resolved.
+
 ## Decided approaches (do not re-litigate)
 
 **Fork tooling: anvil, driven from TypeScript via viem's test client.** No
@@ -388,7 +513,21 @@ which were genuinely privileged, report THAT percentage.
   "unguarded"). Dependency graph one level deep: curated major-ERC20
   holdings, token-level authority/capability re-run, oracle-getter probing.
   Disclosure policy in README. All 5 day-1 fixtures still scan clean.
-- **Day 3 (revised).** MORNING — recursive power-holder resolution + timelock
+- **Day 3 (DONE).** Recursive authority resolution (src/detect/authority.ts):
+  max depth 3, cycle detection (proven live on Aave governance), depth-degraded
+  confidence, explicit termination reasons, authority PATH projection. Timelock
+  detection (OZ getMinDelay / Compound delay+admin / role-only fallback),
+  selectors derived + asserted; adminCanShortenDelay flagged (not solved).
+  Proof engine (src/fork/*): ONE archetype, CODE_CHANGE->drain on a transparent
+  proxy, impersonating the RESOLVED controller, dollar-denominated via Chainlink,
+  reproduce command + cast-run trace artifact, fail-loud produced=false path.
+  Verified live: PAID v1 proof PRODUCED ($748.90 moved by the depth-2 EOA); all
+  5 fixtures still schema-valid; 76 tests green. FIRST DAY-5 TASK (noted below,
+  not built): a versioned "cleared registry" of common dependencies (USDC/USDT/
+  WETH/major LSTs) whose privileged capabilities are documented design, so the
+  publishable filter isn't tripped merely because a protocol holds USDC — right
+  now WETH9 comes back publishable=false only because it holds the majors.
+- **Day 3 (original brief, for reference).** MORNING — recursive power-holder resolution + timelock
   detection, pulled forward from day 4. Rationale: without it the tool
   literally cannot see the thing that justifies the project — a 3-of-11 Safe
   shielding the business owner while the real upgrade authority is a single
