@@ -4,3 +4,6 @@ node_modules/
 dist/
 *.log
 .DS_Store
+
+# Proof engine artifacts (regenerable, machine-specific paths)
+.ripcord/
