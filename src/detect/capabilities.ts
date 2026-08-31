@@ -167,7 +167,7 @@ export async function detectCapabilities(
       selector,
       signature: entry.signature,
       category: entry.category,
-      matchConfidence: entry.confidence,
+      nameMatchSpecificity: entry.specificity,
       scannedAddress,
       probedAddress: target,
       guard,

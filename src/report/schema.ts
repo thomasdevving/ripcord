@@ -169,8 +169,22 @@ export const capabilityCategorySchema = z.enum([
 ]);
 export type CapabilityCategory = z.infer<typeof capabilityCategorySchema>;
 
-export const matchConfidenceSchema = z.enum(["high", "low"]);
-export type MatchConfidence = z.infer<typeof matchConfidenceSchema>;
+/**
+ * How SPECIFIC a taxonomy signature's NAME is — NOT a certainty score, and
+ * deliberately named so it can never be misread as one (it is not on the
+ * shared high/medium/low `depthConfidenceSchema` certainty scale). The
+ * selector match itself is always exact (a keccak comparison). This field only
+ * says how safely the name's conventional MEANING can be assumed:
+ *   "standard" — a widely-adopted signature (OZ upgradeTo, transferOwnership,
+ *     ERC20 mint) whose name reliably implies the capability.
+ *   "generic"  — a commonly-reused name with no single dominant meaning
+ *     (sweep/skim/emergencyWithdraw/rescueTokens). The match is exact, but what
+ *     the name IMPLIES varies by project, so a reader should not assume intent
+ *     from the name alone. This is a semantic caveat, not lower confidence in
+ *     the detection.
+ */
+export const nameMatchSpecificitySchema = z.enum(["standard", "generic"]);
+export type NameMatchSpecificity = z.infer<typeof nameMatchSpecificitySchema>;
 
 /**
  * Guard attribution as a discriminated union on `status` — this is the
@@ -211,7 +225,7 @@ export const capabilityFindingSchema = z.object({
   selector: hexString,
   signature: z.string(),
   category: capabilityCategorySchema,
-  matchConfidence: matchConfidenceSchema,
+  nameMatchSpecificity: nameMatchSpecificitySchema,
   /** The address whose bytecode this selector was extracted from — the implementation, for a proxy. */
   scannedAddress: address,
   /**
