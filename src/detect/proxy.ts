@@ -15,7 +15,7 @@
  *   8. otherwise                -> not_a_proxy
  */
 import { decodeFunctionResult, encodeFunctionData, type Hex } from "viem";
-import type { PinnedChain, Evidence } from "../chain/client.js";
+import type { ChainReader, Evidence } from "../chain/client.js";
 import { SLOTS } from "../chain/constants.js";
 import { beaconAbi } from "../chain/abi.js";
 import {
@@ -28,7 +28,7 @@ import {
 } from "./bytecode.js";
 import type { ProxyResult } from "../report/schema.js";
 
-export async function detectProxy(chain: PinnedChain, target: Hex): Promise<ProxyResult> {
+export async function detectProxy(chain: ChainReader, target: Hex): Promise<ProxyResult> {
   const evidence: Evidence[] = [];
   const { code, evidence: codeEvidence } = await chain.getCode(target);
   evidence.push(codeEvidence);

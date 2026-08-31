@@ -41,7 +41,55 @@ export interface PinnedChainOptions {
   cacheEnabled: boolean;
 }
 
-export class PinnedChain {
+/**
+ * The subset of PinnedChain's public surface detectors depend on. Extracted
+ * so tests can pass a network-free fake in place of a real PinnedChain (a
+ * plain object literal can't satisfy a class type with private fields, so
+ * detectors are typed against this interface rather than the concrete
+ * class). PinnedChain is the only production implementation.
+ */
+export interface ChainReader {
+  readonly chainId: number;
+  readonly blockNumber: bigint;
+  getBlockHash(): Promise<Hex>;
+  getCodeAtBlock(address: Hex, blockNumber: bigint): Promise<{ code: Hex | undefined }>;
+  getCode(address: Hex): Promise<{ code: Hex | undefined; evidence: Evidence }>;
+  getStorageAt(address: Hex, slot: Hex): Promise<{ value: Hex; evidence: Evidence }>;
+  call(address: Hex, data: Hex): Promise<{ result: Hex | undefined; reverted: boolean; evidence: Evidence }>;
+  /**
+   * Same as `call`, but from an explicit sender and surfacing the raw
+   * revert payload instead of discarding it — needed to parse an
+   * AccessControl/Ownable auth-revert shape for guard probing. Kept
+   * separate from `call` rather than adding an optional `from` there: every
+   * existing caller of `call` wants ABI-decoded results and explicitly
+   * doesn't care about revert bytes, and conflating the two would make it
+   * easy to accidentally drop revert data that guard probing depends on.
+   */
+  probeCall(
+    address: Hex,
+    data: Hex,
+    from: Hex,
+  ): Promise<{ revertData: Hex | undefined; reverted: boolean; evidence: Evidence }>;
+  getLogs(params: {
+    address: Hex;
+    event: string;
+    fromBlock: bigint;
+    toBlock: bigint;
+  }): Promise<{ logs: unknown[]; evidence: Evidence }>;
+}
+
+/** Walks a thrown error's `.cause` chain looking for raw revert bytes (viem nests the RPC error several levels deep). */
+function extractRevertData(err: unknown): Hex | undefined {
+  let cur: unknown = err;
+  for (let depth = 0; cur && depth < 10; depth++) {
+    const data = (cur as { data?: unknown }).data;
+    if (typeof data === "string" && data.startsWith("0x")) return data as Hex;
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return undefined;
+}
+
+export class PinnedChain implements ChainReader {
   readonly chainId: number;
   readonly blockNumber: bigint;
   private readonly client: PublicClient;
@@ -163,7 +211,51 @@ export class PinnedChain {
       evidence: {
         kind: "call",
         params,
-        rawValue: value.reverted ? "reverted" : value.result,
+        // `?? "0x"` matters: a successful call that returns no data (common
+        // for non-view functions probed via eth_call) has `result ===
+        // undefined`, and JSON.stringify silently drops undefined-valued
+        // keys — evidence with a missing rawValue reads as "something went
+        // wrong" rather than "call succeeded, no return data."
+        rawValue: value.reverted ? "reverted" : (value.result ?? "0x"),
+        block: this.blockNumber.toString(),
+      },
+    };
+  }
+
+  /**
+   * eth_call from an explicit (attacker-unrelated) sender, keeping the raw
+   * revert payload instead of discarding it. This is a plain historical
+   * read pinned to the report's block — not a fork simulation — so it goes
+   * through the same disk cache as every other read here. Whether a node
+   * returns revert data on eth_call failure is provider-dependent; when it
+   * doesn't, `revertData` comes back undefined and callers must treat that
+   * as inconclusive, not as "no revert occurred."
+   */
+  async probeCall(
+    address: Hex,
+    data: Hex,
+    from: Hex,
+  ): Promise<{ revertData: Hex | undefined; reverted: boolean; evidence: Evidence }> {
+    const params = { address, data, from };
+    const { value } = await this.cache.wrap(
+      { chainId: this.chainId, blockNumber: this.blockNumber, method: "probeCall", params },
+      async () => {
+        this.networkCallsMade++;
+        try {
+          const result = await this.client.call({ to: address, data, account: from, blockNumber: this.blockNumber });
+          return { reverted: false, revertData: undefined as Hex | undefined, result: result.data };
+        } catch (err) {
+          return { reverted: true, revertData: extractRevertData(err), result: undefined as Hex | undefined };
+        }
+      },
+    );
+    return {
+      revertData: value.revertData,
+      reverted: value.reverted,
+      evidence: {
+        kind: "call",
+        params,
+        rawValue: value.reverted ? (value.revertData ?? "reverted") : (value.result ?? "0x"),
         block: this.blockNumber.toString(),
       },
     };

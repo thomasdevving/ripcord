@@ -6,12 +6,12 @@
  * chain client already distinguishes from a contract-level revert.
  */
 import { decodeFunctionResult, encodeFunctionData, zeroAddress, type Hex } from "viem";
-import type { PinnedChain } from "../chain/client.js";
+import type { ChainReader } from "../chain/client.js";
 import { ownableAbi } from "../chain/abi.js";
 import type { OwnerField } from "../report/schema.js";
 
 async function readAddressGetter(
-  chain: PinnedChain,
+  chain: ChainReader,
   target: Hex,
   functionName: "owner" | "pendingOwner",
 ): Promise<OwnerField> {
@@ -42,7 +42,7 @@ async function readAddressGetter(
 }
 
 export async function detectOwnership(
-  chain: PinnedChain,
+  chain: ChainReader,
   target: Hex,
 ): Promise<{ owner: OwnerField; pendingOwner: OwnerField }> {
   const [owner, pendingOwner] = await Promise.all([

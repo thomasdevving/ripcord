@@ -25,7 +25,7 @@
  * truncated, which would look like "no roles found."
  */
 import { decodeFunctionResult, encodeFunctionData, type Hex } from "viem";
-import type { Evidence, PinnedChain } from "../chain/client.js";
+import type { Evidence, ChainReader } from "../chain/client.js";
 import { accessControlAbi } from "../chain/abi.js";
 import { KNOWN_ROLE_HASHES, RELEVANT_EVENTS } from "../chain/constants.js";
 import { findDeploymentBlock } from "./deployment.js";
@@ -52,7 +52,7 @@ export interface AccessControlDetection {
 }
 
 export async function detectAccessControl(
-  chain: PinnedChain,
+  chain: ChainReader,
   target: Hex,
 ): Promise<AccessControlDetection> {
   const unknowns: UnknownEntry[] = [];
@@ -114,7 +114,7 @@ export async function detectAccessControl(
 }
 
 async function scanRoleEvents(
-  chain: PinnedChain,
+  chain: ChainReader,
   target: Hex,
   fromBlock: bigint,
   unknowns: UnknownEntry[],
@@ -162,7 +162,7 @@ async function scanRoleEvents(
 }
 
 async function readRoleViaEnumerable(
-  chain: PinnedChain,
+  chain: ChainReader,
   target: Hex,
   role: Hex,
   unknowns: UnknownEntry[],
@@ -203,7 +203,7 @@ async function readRoleViaEnumerable(
 }
 
 async function readRoleViaReplay(
-  chain: PinnedChain,
+  chain: ChainReader,
   target: Hex,
   role: Hex,
   logs: RoleEventLog[],
@@ -228,7 +228,7 @@ async function readRoleViaReplay(
   };
 }
 
-async function readRoleAdmin(chain: PinnedChain, target: Hex, role: Hex, evidence: Evidence[]): Promise<Hex | null> {
+async function readRoleAdmin(chain: ChainReader, target: Hex, role: Hex, evidence: Evidence[]): Promise<Hex | null> {
   const data = encodeFunctionData({ abi: accessControlAbi, functionName: "getRoleAdmin", args: [role] });
   const { result, reverted, evidence: callEvidence } = await chain.call(target, data);
   evidence.push(callEvidence);
