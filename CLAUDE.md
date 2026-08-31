@@ -56,6 +56,25 @@ src/chain/
                    memory. test/constants.test.ts asserts derived == known-
                    good reference values.
   abi.ts          Minimal ABI fragments for encodeFunctionData/decodeFunctionResult.
+  rpcPreflight.ts (consolidation) Provider preflight. describeProvider() names
+                   the active provider from its URL HOST ONLY (never the full
+                   URL, which carries the key) — printed by the CLI at the start
+                   of every scan. probeMaxLogRange() binary-searches the
+                   provider's real eth_getLogs block-range once (memoized per
+                   ChainReader, log-free probe address), the input to
+                   accessControl.ts's adaptive chunking. The KNOWN EDGE #7 fix.
+  priceFeeds.ts   (day 3) Chainlink feed map for the 6 majors, used by the proof
+                   engine to price a drained-balance delta; unreadable feed ->
+                   usd:null with the reason, never a silent $0.
+  clearedRegistry.ts (consolidation) Versioned (`clearedRegistryVersion`)
+                   registry of DEPENDENCY capabilities that are documented design
+                   not vulnerabilities (USDC blacklist/pause/mint, etc.), each
+                   with a justification + source. assessDisclosure clears such
+                   dependency entries out of the publication gate (recording them
+                   in `disclosure.cleared` with the version) so a report isn't
+                   blocked merely for HOLDING USDC; the target's own findings and
+                   any uncleared/other-token capability still block. Never a
+                   silent allowlist — every clear is recorded and versioned.
 
 src/detect/
   bytecode.ts     Dependency-free bytecode helpers: EIP-1167 clone matcher,
@@ -261,7 +280,24 @@ only via delegatecall and is usually uninitialized.
   when the guard-probe target was corrected (a detection-rule change) and
   `probedAddress` was added (a schema-shape change). Bumped to 0.5.0 /
   ruleset 0.4.0 on day 3 (recursive `authorityResolution` and the `proof`
-  block added to the schema; timelock detection added to the ruleset).
+  block added to the schema; timelock detection added to the ruleset). Bumped
+  to schema 0.6.0 / ruleset 0.5.0 in the consolidation pass:
+  `authority.accessControl.reconstruction` (partial-scan label) and
+  `disclosure.cleared`/`clearedRegistryVersion` added to the schema; adaptive
+  getLogs chunking and the cleared-dependency registry added to the ruleset;
+  taxonomy `matchConfidence` renamed to `nameMatchSpecificity` with values
+  `standard`/`generic` (a rename so it is never misread as a certainty score —
+  the ONE certainty scale `high|medium|low` is used only where it means
+  certainty: authority depth and role reconstruction).
+- **`disclosure.cleared` + `clearedRegistryVersion` (consolidation).** The gate
+  now records which DEPENDENCY capabilities were cleared as documented design
+  (and under which registry version) rather than silently letting them pass —
+  a clearing is as auditable as a block. The target's own findings are never
+  cleared. See clearedRegistry.ts and README "Cleared dependency registry."
+- **`reconstruction` on AccessControl (consolidation).** Role membership from a
+  partial event scan carries `reconstruction.complete=false` and a lowered
+  `confidence`, on the shared certainty scale, with the exact covered window —
+  weakest-link provenance for the getLogs path, never a silent truncation.
 - **Authority PATH, not just a terminal holder (day 3).** `authorityResolution`
   carries a recursive `authorityNode` tree per depth-1 power holder plus a
   flattened `paths[]` projection ("upgrade -> ProxyAdmin -> EOA"). Confidence
@@ -337,13 +373,21 @@ only via delegatecall and is usually uninitialized.
    `InitializableImmutableAdminUpgradeabilityProxy`'s initcode. Day-2
    dispatcher-based selector extraction is exposed to the same root cause —
    see the day-2 regression test for a `new`-deploying contract.
-2. **AccessControl's reconstruction has gaps.** Non-enumerable role
-   membership is reconstructed by replaying `RoleGranted`/`RoleRevoked` from
-   a binary-searched deployment block; the scan is capped at 500×10k-block
-   chunks (5,000,000 blocks) and abandons (explicit `unknowns[]`, never
-   silent truncation) beyond that. Also: this only recovers roles that were
-   *granted* — a role wired only via constructor-set default with no event
-   emission (nonstandard) would be invisible to it.
+2. **AccessControl's reconstruction has gaps (event scan; partly resolved,
+   consolidation pass).** Non-enumerable role membership is reconstructed by
+   replaying `RoleGranted`/`RoleRevoked` from a binary-searched deployment
+   block. The scan is no longer a fixed 10k-block chunk: it probes the
+   provider's real `eth_getLogs` range and chunks to it, and when the full
+   history exceeds a request budget it degrades to a LABELLED partial (the new
+   `authority.accessControl.reconstruction` block: `complete:false`, lowered
+   `confidence`, and the exact covered window) — never a silent truncation
+   (see edge 7, now resolved, and accessControl.ts). Remaining accepted
+   limitation: on a small-range provider a long history is only partially
+   scanned (recent window), so a role never touched in that window can be
+   missed; Enumerable membership stays authoritative regardless. Also
+   unchanged: this only recovers roles that were *granted* — a role wired only
+   via a constructor-set default with no event emission (nonstandard) is
+   invisible to it.
 3a. **`proxy.pattern === "unknown"` is ambiguous for capability scanning too.**
    Discovered day 2: naively treating `isProxy:true, implementation:null`
    uniformly (as day 1's own logic does for the "confirmed proxy, unresolved
@@ -357,13 +401,13 @@ only via delegatecall and is usually uninitialized.
    unrecognized real proxy scheme (not an embedded child), the capabilities
    found may still belong to the wrong address — this is a best-effort
    fallback, not a resolution of edge 1 above.
-3. **Day 1 stops at the immediate power holder.** A `type: "contract"` power
-   holder (e.g. an OpenZeppelin `ProxyAdmin`) is not recursively resolved to
-   *its* own owner. Verified manually on PAID Network fixtures where the
-   ProxyAdmin's owner is a plain EOA one hop further than Ripcord looks.
-   Day-2 dependency graph goes one level into token/oracle dependencies, not
-   into recursive owner-of-owner resolution of contract power holders — that
-   remains unresolved after day 2 too.
+3. **[RESOLVED day 3] Day 1 stopped at the immediate power holder.** A
+   `type: "contract"` power holder (e.g. an OpenZeppelin `ProxyAdmin`) was not
+   recursively resolved to *its* own owner. Day-3 recursion (authority.ts) now
+   follows it — PAID's `ProxyAdmin → EOA` chain is exactly what surfaces. The
+   residual limitation is edge 10: recursion follows only STANDARD authority
+   (owner/AccessControl/proxyAdmin) and stops at max depth 3 or
+   `no_authority_found` for custom schemes.
 
 4. **Guard-probe revert data is provider-dependent.** `probeCall` (client.ts)
    extracts raw revert bytes from whatever the RPC node returns on a
@@ -386,20 +430,19 @@ only via delegatecall and is usually uninitialized.
    `priceOracle()`, `priceFeed()`) against the target directly. A protocol
    exposing its oracle under a different name, or only reachable through an
    intermediate contract, produces no oracle dependency finding.
-7. **The configured public RPC caps `eth_getLogs` at 10 blocks inclusive —
-   the AccessControl event-reconstruction path cannot run on it at all.**
-   Verified day 2 against the blastapi public mainnet endpoint: a
-   10-block-inclusive range succeeds, 11 blocks returns
-   "You can make eth_getLogs requests with up to a 10 block range."
-   `accessControl.ts` chunks at 10,000 blocks, so every request it makes is
-   rejected and lands in `errors[]`. This has not bitten the fixtures only
-   because none of them implement OZ AccessControl, so the scan never runs —
-   a latent failure, not a working path. Note the fix is NOT smaller chunks:
-   at 10 blocks per request a 5M-block history is 500,000 requests, which is
-   infeasible. **Day 5 requires an RPC provider with generous getLogs limits**
-   (Alchemy/Infura-class), since AccessControl-based protocols are common in
-   any realistic calibration set. Worth a preflight probe that detects the
-   provider's real limit and fails loud before a scan silently degrades.
+7. **[RESOLVED, consolidation pass] The public RPC caps `eth_getLogs` at ~10
+   blocks; the AccessControl event scan used a fixed 10k-block chunk that could
+   never succeed on it.** Verified day 2 against blastapi (probed live this pass:
+   max range = 9 blocks). The fix is now in: `rpcPreflight.probeMaxLogRange`
+   binary-searches the provider's real range once, `accessControl.ts` chunks to
+   it, and if the full history exceeds the request budget the scan degrades to a
+   LABELLED partial reconstruction (edge 2) rather than erroring or silently
+   truncating. Verified end-to-end on the new FXS fixture over blastapi: probed
+   range 9, Enumerable membership authoritative, `reconstruction.complete=false`
+   / `confidence:medium` with the exact covered window. A generous
+   (Alchemy/Infura-class) provider returns `complete:true`/`high` and is
+   required for full deep-history reconstruction on the day-5 calibration set —
+   `.env.example` documents this and every scan prints the active provider.
 8. **No fallback/receive reporting.** An early attempt at this was removed:
    the `fallbackDetected` heuristic returned `true` for every real contract
    tested (WETH9, USDC, WBTC, Aave) including ones with no fallback at all —
@@ -414,15 +457,20 @@ only via delegatecall and is usually uninitialized.
    it just doesn't report on them. Revisit for day 4 if the Exit Window metric
    needs ETH-acceptance as an input.
 
-9. **The proof engine covers ONE archetype (day 3).** Only CODE_CHANGE->drain on
-   an EIP-1967 transparent proxy via `ProxyAdmin.upgrade` is simulated; UUPS/
-   beacon/legacy upgrade paths return `produced: false`. Deliberate depth-over-
-   breadth — see Decided approaches #9. Also: the drain measures only the
-   curated MAJOR_TOKENS holdings, so its dollar headline is a FLOOR (value in
-   unlisted tokens, LP positions, or staked principal is invisible), and a
-   Safe-terminated authority path is impersonated at the Safe ADDRESS (anvil
-   ignores signatures), demonstrating "this Safe can if signers collude," not
-   "one key can" — Decided approaches #10.
+9. **The proof engine covers exactly ONE archetype, and its dollar figure is a
+   floor (day 3).** Only CODE_CHANGE->drain on an EIP-1967 TRANSPARENT proxy via
+   `ProxyAdmin.upgrade(address,address)` is simulated; UUPS
+   (`upgradeToAndCall`), beacon, and legacy-zos upgrade paths return
+   `produced:false` with a stated reason — deliberate depth-over-breadth (see
+   Decided approaches #9), the transparent path being the one validated live
+   end-to-end. Two caveats on what it does run: the drain measures only the
+   curated MAJOR_TOKENS holdings (majorTokens.ts), so value in unlisted tokens,
+   LP positions, or staked principal is invisible and the headline is a FLOOR,
+   never a ceiling (Decided approaches #10); and because anvil impersonation
+   ignores signatures, a Safe-terminated authority path is impersonated at the
+   Safe ADDRESS directly, demonstrating "this Safe can if signers collude," not
+   "one key can" (the PAID demo impersonates a plain EOA, so it doesn't apply
+   there, but must be stated for any Safe-terminated path).
 10. **Recursion resolves owner-of-owner but not arbitrary custom authority
     (day 3).** A contract power holder whose control is exposed only through a
     non-standard scheme (no owner()/AccessControl/proxyAdmin) terminates as
@@ -431,25 +479,6 @@ only via delegatecall and is usually uninitialized.
     custom (the same class as Wasabi's unrecognised access control on day 1).
     Max depth is 3; a genuinely longer legitimate chain terminates as
     `max_depth` (explicit, never silently truncated) rather than resolving.
-
-9. **The proof engine implements exactly ONE archetype.** CODE_CHANGE->drain
-   on an EIP-1967 TRANSPARENT proxy via `ProxyAdmin.upgrade(address,address)`.
-   UUPS (`upgradeToAndCall` on the proxy itself), beacon, and legacy-zos
-   upgrade paths are NOT simulated — `prove` returns `produced: false` with a
-   stated reason for them. This is deliberate depth-over-breadth (day-3 rule),
-   not an oversight; the transparent path is the one validated live end-to-end.
-   Broadening to more archetypes is explicitly deferred.
-10. **The proof drains only MAJOR_TOKENS holdings, and impersonation bypasses
-    signatures.** The drain measures the same curated 6-token list the
-    dependency graph uses (majorTokens.ts) — a target holding value in an
-    unlisted token, or value that isn't a simple ERC20 balance (LP positions,
-    staked principal, internal accounting), shows no delta, so the dollar
-    headline is a FLOOR on what the authority can move, never a ceiling. And
-    anvil impersonation ignores signature checks: when the resolved controller
-    is a Safe, the proof impersonates the Safe ADDRESS directly, demonstrating
-    "this Safe can" (i.e. if its signers collude), NOT "a single key can." The
-    PAID demo impersonates a plain EOA, so this caveat doesn't apply there, but
-    it must be stated for any Safe-terminated path.
 11. **Proof pricing depends on Chainlink feed availability at the pinned block.**
     `priceFeeds.ts` maps the 6 majors to Chainlink aggregators (WETH priced by
     ETH/USD, WBTC by BTC/USD — 1:1 wrap assumption, noted in the feed's
@@ -461,6 +490,16 @@ only via delegatecall and is usually uninitialized.
     bytecode (the delay is mutable at all). WHO can reach that path and under
     what constraint (normally the current delay itself gates it) is day-4 Exit
     Window work, surfaced today as an open sub-finding, not resolved.
+13. **The cleared-dependency registry is small, manual, and mainnet-only
+    (consolidation pass).** `clearedRegistry.ts` documents design-not-bug
+    capabilities for the 6 curated majors (USDC/USDT/DAI/WBTC/stETH; WETH has
+    none). It is deliberately curated, not derived — a capability on a token or
+    signature not in it still blocks publication (correct: fail toward
+    not-publishable). It is VERSIONED (`clearedRegistryVersion`) and every
+    report records the version it used, so a clearing is auditable and
+    reversible, never a silent allowlist. It only ever clears DEPENDENCIES,
+    never the target's own findings. Extending it to more tokens/chains is
+    ordinary future work, not a hidden gap.
 
 ## Decided approaches (do not re-litigate)
 
@@ -542,6 +581,15 @@ which were genuinely privileged, report THAT percentage.
   path, produce the call trace where funds actually leave. ONE archetype,
   fully working. Do NOT broaden the proof engine to compensate for the
   morning's work.
+- **Consolidation pass (DONE, before day 4).** No new detection. Production-RPC
+  preflight (provider named, getLogs range probed) + proven provider-independent
+  caching; adaptive getLogs chunking with labelled partial reconstruction
+  (KNOWN EDGE #7 resolved) + the first OZ AccessControl fixture (FXS); versioned
+  cleared-dependency registry so holding USDC no longer trips the publish gate;
+  cross-layer sweep (the authority.ts `.catch(()=>null)` infra-swallow fixed —
+  the highest-value find; confidence vocabulary unified and `nameMatchSpecificity`
+  renamed; every catch justified; publishable surface confirmed); docs/targets
+  reconciled. schema 0.6.0 / ruleset 0.5.0.
 - **Day 4.** Exit Window metric: upgrade/admin-change delay (minus bypass/
   shortcut paths) vs. real time-to-exit (unstaking, withdrawal cooldowns,
   queues, liquidity depth). Lighter than originally planned because timelock
