@@ -104,6 +104,19 @@ export async function buildReport(chain: PinnedChain, target: Hex): Promise<Repo
       reason: "bytecode contains a DELEGATECALL but matches no known proxy storage pattern",
     });
   }
+  // The dangerous misreading this guards against: an upgradeable proxy with
+  // owner=null, accessControl.detected=false, and an empty powerHolders[]
+  // looks identical, at a glance, to "no privileged power exists here." For
+  // a confirmed proxy that is never true — something can upgrade it — we
+  // just didn't recognise the mechanism. Say so explicitly rather than let
+  // the absence of findings read as a clean bill of health.
+  if (proxy.isProxy && !proxy.admin && !ownership.owner.address && !accessControlDetection.result.detected) {
+    unknowns.push({
+      field: "authority",
+      reason:
+        "target is a confirmed upgradeable proxy, but no upgrade authority could be identified via owner()/AccessControl — it likely uses a non-standard or custom access-control scheme; the proxy IS upgradeable by someone, manual review required",
+    });
+  }
 
   const blockHash = await runStage(
     "block",
