@@ -1,0 +1,160 @@
+/**
+ * Orchestrates the detectors into a single report and validates it against
+ * the zod schema before returning it. A report that fails its own schema
+ * is a bug in Ripcord, not a bad target — that failure is surfaced, not
+ * swallowed.
+ */
+import { keccak256, type Hex } from "viem";
+import type { PinnedChain } from "../chain/client.js";
+import { detectProxy } from "../detect/proxy.js";
+import { detectOwnership } from "../detect/ownership.js";
+import { detectAccessControl } from "../detect/accessControl.js";
+import { classifyAccount } from "../detect/accounts.js";
+import {
+  reportSchema,
+  schemaVersion,
+  rulesetVersion,
+  type ErrorEntry,
+  type PowerHolder,
+  type Report,
+  type UnknownEntry,
+} from "./schema.js";
+
+export async function buildReport(chain: PinnedChain, target: Hex): Promise<Report> {
+  const unknowns: UnknownEntry[] = [];
+  const errors: ErrorEntry[] = [];
+
+  const { code, evidence: codeEvidence } = await chain.getCode(target);
+  const bytecodeSize = code ? (code.length - 2) / 2 : 0;
+  const bytecodeHash = code ? keccak256(code) : null;
+
+  const proxy = await runStage(
+    "proxy",
+    () => detectProxy(chain, target),
+    errors,
+    () => ({
+      pattern: "unknown" as const,
+      isProxy: false,
+      implementation: null,
+      beacon: null,
+      admin: null,
+      slots: {},
+      evidence: [codeEvidence],
+    }),
+  );
+
+  // Authority-related state (owner, AccessControl roles) is always read from
+  // `target`, never from `proxy.implementation`. A proxy's storage — where
+  // owner/role state actually lives — belongs to the proxy address; the
+  // implementation is only code reached via delegatecall, and querying it
+  // directly would read the implementation contract's own (usually
+  // uninitialized) storage instead.
+  const ownership = await runStage(
+    "ownership",
+    () => detectOwnership(chain, target),
+    errors,
+    () => ({
+      owner: { address: null, source: "detection failed, see errors[]", evidence: [] },
+      pendingOwner: { address: null, source: "detection failed, see errors[]", evidence: [] },
+    }),
+  );
+
+  const accessControlDetection = await runStage(
+    "accessControl",
+    () => detectAccessControl(chain, target),
+    errors,
+    () => ({ result: { detected: false, method: "not_applicable" as const, roles: [] }, unknowns: [] }),
+  );
+  unknowns.push(...accessControlDetection.unknowns);
+
+  const powerHolderAddresses = new Set<string>();
+  if (ownership.owner.address) powerHolderAddresses.add(ownership.owner.address);
+  if (ownership.pendingOwner.address) powerHolderAddresses.add(ownership.pendingOwner.address);
+  if (proxy.admin) powerHolderAddresses.add(proxy.admin);
+  for (const role of accessControlDetection.result.roles) {
+    for (const member of role.members) powerHolderAddresses.add(member);
+  }
+
+  const powerHolders: PowerHolder[] = [];
+  for (const address of powerHolderAddresses) {
+    const viaCapabilities: string[] = [];
+    if (ownership.owner.address === address) viaCapabilities.push("owner");
+    if (ownership.pendingOwner.address === address) viaCapabilities.push("pendingOwner");
+    if (proxy.admin === address) viaCapabilities.push("proxyAdmin");
+    for (const role of accessControlDetection.result.roles) {
+      if (role.members.includes(address)) {
+        viaCapabilities.push(`accessControl:${role.name ?? role.role}`);
+      }
+    }
+    const holder = await runStage(
+      `accounts:${address}`,
+      () => classifyAccount(chain, address as Hex, viaCapabilities),
+      errors,
+      () => ({ address, type: "unknown" as const, safe: null, viaCapabilities, evidence: [] }),
+    );
+    powerHolders.push(holder);
+  }
+
+  if (!code) {
+    unknowns.push({ field: "target", reason: "address has no code at the pinned block (EOA or not yet deployed)" });
+  }
+  if (proxy.pattern === "unknown") {
+    unknowns.push({
+      field: "proxy.pattern",
+      reason: "bytecode contains a DELEGATECALL but matches no known proxy storage pattern",
+    });
+  }
+
+  const blockHash = await runStage(
+    "block",
+    () => chain.getBlockHash(),
+    errors,
+    () => "0x" as Hex,
+  );
+
+  const report: Report = {
+    schemaVersion,
+    rulesetVersion,
+    generatedAt: new Date().toISOString(),
+    chainId: chain.chainId,
+    block: { number: chain.blockNumber.toString(), hash: blockHash },
+    target: {
+      address: target,
+      hasCode: Boolean(code),
+      bytecodeSize,
+      bytecodeHash,
+    },
+    proxy,
+    authority: {
+      owner: ownership.owner,
+      pendingOwner: ownership.pendingOwner,
+      accessControl: accessControlDetection.result,
+    },
+    powerHolders,
+    unknowns,
+    errors,
+  };
+
+  const validated = reportSchema.safeParse(report);
+  if (!validated.success) {
+    throw new Error(
+      `Ripcord produced a report that fails its own schema — this is a Ripcord bug, not a target problem:\n${validated.error.toString()}`,
+    );
+  }
+
+  return validated.data;
+}
+
+async function runStage<T>(
+  stage: string,
+  fn: () => Promise<T>,
+  errors: ErrorEntry[],
+  fallback: () => T,
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    errors.push({ stage, message: err instanceof Error ? err.message : String(err) });
+    return fallback();
+  }
+}
