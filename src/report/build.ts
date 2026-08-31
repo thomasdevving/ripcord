@@ -38,6 +38,18 @@ import {
  * pressure.
  */
 export function assessDisclosure(chainId: number, capabilities: CapabilitiesResult, dependencies: DependencyGraph): Disclosure {
+  // SURFACE COVERAGE. This gate must see every needsManualVerification entry
+  // anywhere it can arise. Today those arise in exactly two places: the
+  // target's own `capabilities`, and each dependency token's `capabilities`
+  // (below). The day-3 authority path (authorityResolution) does NOT appear
+  // here, and that omission is CORRECT ONLY BECAUSE the recursion runs
+  // ownership/AccessControl/timelock detection but NOT capability probing — so
+  // it structurally cannot produce a needsManualVerification entry. If capability
+  // probing is ever added to the recursion (e.g. probing a resolved controller's
+  // own functions), it will start producing that surface, and THIS function must
+  // be extended to fold authorityResolution's entries into `blockedBy` — or a
+  // new unguarded-looking capability would silently escape the publication gate.
+  // Do not add capability probing to authority.ts without updating this gate.
   const cleared: Disclosure["cleared"] = [];
 
   // The TARGET's own needsManualVerification ALWAYS blocks — the cleared
