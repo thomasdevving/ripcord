@@ -85,7 +85,7 @@ describe("recursive authority resolution", () => {
     const B = addr(0xb);
     const chain = fakeChain({ [A.toLowerCase()]: { owner: B } });
 
-    const res = await resolveAuthorityGraph(chain, [{ address: A, relation: "proxyAdmin" }]);
+    const { resolution: res } = await resolveAuthorityGraph(chain, [{ address: A, relation: "proxyAdmin" }]);
     expect(res.roots).toHaveLength(1);
     const path = res.paths[0]!;
     expect(path.hops.map((h) => h.address)).toEqual([A, B]);
@@ -104,7 +104,7 @@ describe("recursive authority resolution", () => {
       [B.toLowerCase()]: { owner: A },
     });
 
-    const res = await resolveAuthorityGraph(chain, [{ address: A, relation: "owner" }]);
+    const { resolution: res } = await resolveAuthorityGraph(chain, [{ address: A, relation: "owner" }]);
     expect(res.cyclesDetected.length).toBeGreaterThanOrEqual(1);
     // Walk to the leaf: A(d1) -> B(d2) -> A(d3, cycle)
     const leaf = res.paths[0]!.hops[res.paths[0]!.hops.length - 1]!;
@@ -128,7 +128,7 @@ describe("recursive authority resolution", () => {
       [D.toLowerCase()]: { owner: A },
     });
 
-    const res = await resolveAuthorityGraph(chain, [{ address: A, relation: "owner" }]);
+    const { resolution: res } = await resolveAuthorityGraph(chain, [{ address: A, relation: "owner" }]);
     // Depth-first to C at depth 3, terminating on max_depth.
     let node = res.roots[0]!;
     while (!node.terminal) node = node.children[0]!;
@@ -143,7 +143,7 @@ describe("recursive authority resolution", () => {
   it("a contract with no identifiable authority terminates as no_authority_found, not clean", async () => {
     const A = addr(0x2a);
     const chain = fakeChain({ [A.toLowerCase()]: {} }); // has code, answers nothing
-    const res = await resolveAuthorityGraph(chain, [{ address: A, relation: "proxyAdmin" }]);
+    const { resolution: res } = await resolveAuthorityGraph(chain, [{ address: A, relation: "proxyAdmin" }]);
     expect(res.roots[0]!.terminationReason).toBe("no_authority_found");
     expect(res.paths[0]!.effectiveController).toBeNull();
   });
