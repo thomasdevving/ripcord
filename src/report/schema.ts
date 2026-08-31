@@ -7,8 +7,8 @@
  */
 import { z } from "zod";
 
-export const schemaVersion = "0.4.0";
-export const rulesetVersion = "0.3.0";
+export const schemaVersion = "0.5.0";
+export const rulesetVersion = "0.4.0";
 
 const hexString = z.string().regex(/^0x[0-9a-fA-F]*$/);
 const address = z.string().regex(/^0x[0-9a-fA-F]{40}$/);
@@ -227,6 +227,141 @@ export const capabilitiesResultSchema = z.object({
 });
 export type CapabilitiesResult = z.infer<typeof capabilitiesResultSchema>;
 
+// --- timelock (day 3) ---
+
+/**
+ * A timelock is a terminal authority worth its own shape: what matters is
+ * not just "a contract" but "a contract that imposes a delay," and how long.
+ * `kind` records which family the delay accessor came from; `delaySeconds`
+ * is null (with a note) when the contract smells like a timelock — has the
+ * roles or the neighbouring accessors — but its delay itself could not be
+ * read, which is reported as "timelock: delay undetermined," never dropped.
+ *
+ * `adminCanShortenDelay` is a day-3 FLAG, not a day-3 answer: it records
+ * whether the delay-mutation selector (updateDelay/setDelay) is present in
+ * the timelock's own bytecode. Presence means the delay is not immutable —
+ * the fuller question of who can reach that path and under what constraint
+ * (it is normally itself gated by the current delay) is explicitly day-4
+ * Exit Window work. `null` = not determined.
+ */
+export const timelockInfoSchema = z.object({
+  kind: z.enum(["openzeppelin", "compound_bravo", "unknown"]),
+  delaySeconds: z.string().nullable(),
+  cancellers: z.array(address).nullable(),
+  executors: z.array(address).nullable(),
+  adminCanShortenDelay: z.boolean().nullable(),
+  note: z.string(),
+  evidence: z.array(evidenceSchema),
+});
+export type TimelockInfo = z.infer<typeof timelockInfoSchema>;
+
+// --- recursive authority resolution (day 3) ---
+
+export const authorityNodeTypeSchema = z.enum([
+  "eoa",
+  "safe",
+  "timelock",
+  "contract",
+  "unknown",
+]);
+export type AuthorityNodeType = z.infer<typeof authorityNodeTypeSchema>;
+
+/**
+ * Why a branch of the authority tree stopped where it did. Every leaf states
+ * one of these explicitly — "we stopped looking" is never left to be inferred
+ * from an empty `children`, exactly as `unknowns[]` is never left empty by
+ * omission elsewhere.
+ */
+export const terminationReasonSchema = z.enum([
+  "eoa", // no code — a plain key, the end of the line
+  "safe", // Gnosis Safe: recorded threshold+owners, do not recurse into signers
+  "timelock", // a delay-imposing contract: recorded, not recursed past
+  "max_depth", // hit the depth cap with an unresolved contract — NOT silently truncated
+  "cycle", // this address already appears higher in the path (A owns B owns A)
+  "no_authority_found", // a contract, but no owner()/AccessControl/proxyAdmin authority could be identified
+  "not_a_contract_holder", // resolved as a leaf without recursing (used for direct EOA/Safe roots)
+]);
+export type TerminationReason = z.infer<typeof terminationReasonSchema>;
+
+/**
+ * Confidence in an authority attribution DEGRADES WITH DEPTH — an "effective
+ * controller" reached through three hops is not asserted with the certainty
+ * of a direct owner. This is weakest-link provenance applied to the depth
+ * dimension: high at depth 1 (a direct authority), medium at depth 2, low at
+ * depth ≥ 3. The report shows the depth and the full path so a reader can see
+ * exactly how far the claim reaches.
+ */
+export const depthConfidenceSchema = z.enum(["high", "medium", "low"]);
+export type DepthConfidence = z.infer<typeof depthConfidenceSchema>;
+
+export interface AuthorityNode {
+  address: string;
+  /** How this node was reached from its parent: "owner", "pendingOwner", "proxyAdmin", "accessControl:<role>", or "root". */
+  relation: string;
+  depth: number;
+  confidence: DepthConfidence;
+  type: AuthorityNodeType;
+  safe: SafeInfo | null;
+  timelock: TimelockInfo | null;
+  terminal: boolean;
+  terminationReason: TerminationReason;
+  /** The resolved authorities of this node, if it is a non-terminal contract. Empty for a terminal leaf. */
+  children: AuthorityNode[];
+  evidence: Evidence[];
+}
+
+export const authorityNodeSchema: z.ZodType<AuthorityNode> = z.lazy(() =>
+  z.object({
+    address,
+    relation: z.string(),
+    depth: z.number().int().nonnegative(),
+    confidence: depthConfidenceSchema,
+    type: authorityNodeTypeSchema,
+    safe: safeInfoSchema.nullable(),
+    timelock: timelockInfoSchema.nullable(),
+    terminal: z.boolean(),
+    terminationReason: terminationReasonSchema,
+    children: z.array(authorityNodeSchema),
+    evidence: z.array(evidenceSchema),
+  }),
+);
+
+/**
+ * A single flattened authority PATH — "upgrade → ProxyAdmin → EOA 0x…" —
+ * derived from the tree for readability and as the input the proof engine
+ * simulates from. `hops` is ordered root-first; `effectiveController` is the
+ * terminal address a path resolves to (the address the proof engine would
+ * impersonate), with the reason it terminated and the confidence at that
+ * depth.
+ */
+export const authorityPathSchema = z.object({
+  label: z.string(),
+  hops: z.array(
+    z.object({
+      address,
+      relation: z.string(),
+      type: authorityNodeTypeSchema,
+      depth: z.number().int().nonnegative(),
+    }),
+  ),
+  effectiveController: address.nullable(),
+  effectiveControllerType: authorityNodeTypeSchema.nullable(),
+  terminationReason: terminationReasonSchema,
+  confidence: depthConfidenceSchema,
+});
+export type AuthorityPath = z.infer<typeof authorityPathSchema>;
+
+export const authorityResolutionSchema = z.object({
+  maxDepth: z.number().int().positive(),
+  roots: z.array(authorityNodeSchema),
+  paths: z.array(authorityPathSchema),
+  /** Addresses where a cycle was detected, recorded as findings rather than looped on. */
+  cyclesDetected: z.array(
+    z.object({ address, path: z.array(address) }),
+  ),
+});
+export type AuthorityResolution = z.infer<typeof authorityResolutionSchema>;
+
 // --- dependency graph (day 2) ---
 
 export const tokenDependencySchema = z.object({
@@ -289,6 +424,64 @@ export const disclosureSchema = z.object({
 });
 export type Disclosure = z.infer<typeof disclosureSchema>;
 
+// --- proof engine (day 3) ---
+
+/**
+ * The result of trying to turn a static CODE_CHANGE capability claim into an
+ * executed demonstration on a sandbox fork. This is the pillar of the tool,
+ * and its honesty rules are load-bearing:
+ *
+ *  - `attempted: false` — no proof was tried (e.g. the target archetype
+ *    wasn't present). Neutral.
+ *  - `attempted: true, produced: false` — a proof was attempted and could
+ *    NOT be produced. `failureReason` says why. A missing proof is honest;
+ *    the alternative (a hand-waved or fabricated trace) is disqualifying.
+ *  - `attempted: true, produced: true` — the admin's own legitimate path was
+ *    executed on a fork and funds were observed to move. Every string here is
+ *    CAPABILITY, not intent: "this authority CAN move $X," never "will,"
+ *    never "malicious."
+ *
+ * Everything happens on an anvil mainnet fork pinned to the report's block.
+ * No mainnet transaction is ever sent, no key is held. `reproduceCommand`
+ * lets a judge replay the exact simulation; `traceArtifact` points at the
+ * stored human-readable call trace.
+ */
+export const proofDeltaSchema = z.object({
+  token: address,
+  symbol: z.string(),
+  decimals: z.number().int().nonnegative(),
+  balanceBefore: z.string(),
+  balanceAfter: z.string(),
+  delta: z.string(),
+  /** USD value of the delta, and where the price came from. `null` usd means the price could not be read (see priceSource). */
+  usd: z.number().nullable(),
+  priceSource: z.string(),
+});
+export type ProofDelta = z.infer<typeof proofDeltaSchema>;
+
+export const proofSchema = z.object({
+  attempted: z.boolean(),
+  produced: z.boolean(),
+  archetype: z.string(),
+  /** The capability this proof demonstrates, e.g. "CODE_CHANGE via upgrade". */
+  capability: z.string().nullable(),
+  /** The address impersonated — the RESOLVED effective controller from authorityResolution, not the proxy's nominal owner. */
+  impersonated: address.nullable(),
+  impersonatedVia: z.string().nullable(),
+  /** The upgrade authority path the proof was driven from, echoed for the reader. */
+  authorityPath: authorityPathSchema.nullable(),
+  deltas: z.array(proofDeltaSchema),
+  totalUsd: z.number().nullable(),
+  headline: z.string(),
+  failureReason: z.string().nullable(),
+  sandboxNote: z.string(),
+  reproduceCommand: z.string().nullable(),
+  traceArtifact: z.string().nullable(),
+  forkBlock: z.string(),
+  evidence: z.array(evidenceSchema),
+});
+export type Proof = z.infer<typeof proofSchema>;
+
 // --- top-level report ---
 
 export const reportSchema = z.object({
@@ -309,8 +502,17 @@ export const reportSchema = z.object({
   proxy: proxySchema,
   authority: authoritySchema,
   powerHolders: z.array(powerHolderSchema),
+  /**
+   * Day-3 recursive resolution of each power holder's own authority, up to
+   * max depth, with cycle detection and depth-degraded confidence. Optional
+   * so a `scan` that doesn't run recursion (or a proof-only invocation) still
+   * validates; when present it carries the paths the proof engine drives from.
+   */
+  authorityResolution: authorityResolutionSchema.nullable(),
   capabilities: capabilitiesResultSchema,
   dependencies: dependencyGraphSchema,
+  /** Day-3 proof engine. Null when no proof was attempted for this scan. */
+  proof: proofSchema.nullable(),
   disclosure: disclosureSchema,
   unknowns: z.array(unknownEntrySchema),
   errors: z.array(errorEntrySchema),

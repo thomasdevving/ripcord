@@ -10,6 +10,7 @@ import { detectProxy } from "../detect/proxy.js";
 import { detectOwnership } from "../detect/ownership.js";
 import { detectAccessControl } from "../detect/accessControl.js";
 import { collectPowerHolders } from "../detect/accounts.js";
+import { resolveAuthorityGraph, type AuthoritySeed } from "../detect/authority.js";
 import { detectCapabilities } from "../detect/capabilities.js";
 import { detectDependencies } from "../detect/dependencies.js";
 import { taxonomyVersion } from "../detect/taxonomy.js";
@@ -17,6 +18,7 @@ import {
   reportSchema,
   schemaVersion,
   rulesetVersion,
+  type AuthorityResolution,
   type CapabilitiesResult,
   type DependencyGraph,
   type Disclosure,
@@ -161,6 +163,39 @@ export async function buildReport(chain: ChainReader, target: Hex): Promise<Repo
     capabilityHolders,
   });
 
+  // Day-3 recursive authority resolution. Seeds are the target's DIRECT
+  // (depth-1) authorities — the same set powerHolders is built from — and the
+  // resolver follows each until it terminates at an EOA/Safe/timelock, hits
+  // the depth cap, or cycles. This is what lets the report show
+  // "upgrade → ProxyAdmin → EOA 0x…" as a chain rather than stopping at
+  // "type: contract," and it produces the authority paths the proof engine
+  // impersonates from.
+  const seeds: AuthoritySeed[] = [];
+  const pushSeed = (addr: Hex | null | undefined, relation: string) => {
+    if (addr) seeds.push({ address: addr, relation });
+  };
+  pushSeed(proxy.admin as Hex | null, "proxyAdmin");
+  pushSeed(ownership.owner.address as Hex | null, "owner");
+  pushSeed(ownership.pendingOwner.address as Hex | null, "pendingOwner");
+  for (const role of accessControlDetection.result.roles) {
+    for (const m of role.members) pushSeed(m as Hex, `accessControl:${role.name ?? role.role}`);
+  }
+
+  const authorityResolution = await runStage<AuthorityResolution | null>(
+    "authorityResolution",
+    () => resolveAuthorityGraph(chain, seeds),
+    errors,
+    () => null,
+  );
+  if (authorityResolution) {
+    for (const cyc of authorityResolution.cyclesDetected) {
+      unknowns.push({
+        field: "authorityResolution",
+        reason: `authority cycle detected at ${cyc.address} (path: ${cyc.path.join(" -> ")}) — recorded as a finding rather than looped on`,
+      });
+    }
+  }
+
   const dependencyDetection = await runStage(
     "dependencies",
     () => detectDependencies(chain, target),
@@ -218,8 +253,10 @@ export async function buildReport(chain: ChainReader, target: Hex): Promise<Repo
       accessControl: accessControlDetection.result,
     },
     powerHolders,
+    authorityResolution,
     capabilities: capabilityDetection.result,
     dependencies: dependencyDetection.result,
+    proof: null,
     disclosure: assessDisclosure(capabilityDetection.result, dependencyDetection.result),
     unknowns,
     errors,
