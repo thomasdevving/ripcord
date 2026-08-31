@@ -14,6 +14,15 @@ regexes = [
   # 40-hex-char strings, which would mask real secrets of the same shape.
   # (A `"token": "0x…"` key/value pair trips the generic-api-key heuristic.)
   '''0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48''', # USDC
+  # The remaining major tokens, added day 3 for src/chain/priceFeeds.ts, where
+  # a `token: "0x…"` field/value pair trips the same generic-api-key heuristic.
+  # All are public, immutable mainnet ERC20 addresses — the things the tool
+  # reads, not credentials.
+  '''0xdAC17F958D2ee523a2206206994597C13D831ec7''', # USDT
+  '''0x6B175474E89094C44Da98b954EedeAC495271d0F''', # DAI
+  '''0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2''', # WETH
+  '''0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599''', # WBTC
+  '''0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84''', # stETH
 ]
 paths = [
   '''\.env\.example$''',
