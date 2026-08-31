@@ -12,6 +12,8 @@ import { isAddress, type Hex } from "viem";
 import { resolve } from "node:path";
 import { PinnedChain } from "./chain/client.js";
 import { buildReport } from "./report/build.js";
+import { reportSchema } from "./report/schema.js";
+import { runProofEngine } from "./fork/proofEngine.js";
 
 // .env is optional (RPC URLs may already be set in the shell environment);
 // its absence is not an error, but a malformed file should not be swallowed.
@@ -25,6 +27,50 @@ const program = new Command();
 
 program.name("ripcord").description("Who holds privileged power over a contract, and how fast can they use it.");
 
+interface CommonArgs {
+  chainId: number;
+  blockNumber: bigint;
+  rpcUrl: string;
+}
+
+/** Validates the shared address/block/chain/RPC args. Returns null (and sets a non-zero exit code) on any usage error. */
+function resolveCommon(addressArg: string, opts: { chain: string; block: string }): CommonArgs | null {
+  if (!isAddress(addressArg)) {
+    console.error(`error: "${addressArg}" is not a valid address`);
+    process.exitCode = 1;
+    return null;
+  }
+  const chainId = Number(opts.chain);
+  if (!Number.isInteger(chainId) || chainId <= 0) {
+    console.error(`error: --chain must be a positive integer, got "${opts.chain}"`);
+    process.exitCode = 1;
+    return null;
+  }
+  let blockNumber: bigint;
+  try {
+    blockNumber = BigInt(opts.block);
+  } catch {
+    console.error(`error: --block must be an integer, got "${opts.block}"`);
+    process.exitCode = 1;
+    return null;
+  }
+  if (blockNumber < 0n) {
+    console.error(`error: --block must be non-negative, got "${opts.block}"`);
+    process.exitCode = 1;
+    return null;
+  }
+  const rpcEnvVar = `RPC_URL_${chainId}`;
+  const rpcUrl = process.env[rpcEnvVar];
+  if (!rpcUrl) {
+    console.error(
+      `error: ${rpcEnvVar} is not set. Copy .env.example to .env and set a real RPC URL for chain ${chainId}.`,
+    );
+    process.exitCode = 1;
+    return null;
+  }
+  return { chainId, blockNumber, rpcUrl };
+}
+
 program
   .command("scan")
   .description("Scan a contract address at a pinned block and print a power-map report as JSON")
@@ -34,42 +80,9 @@ program
   .option("--no-cache", "disable the on-disk RPC cache")
   .option("--cache-dir <dir>", "cache directory", ".cache")
   .action(async (addressArg: string, opts) => {
-    if (!isAddress(addressArg)) {
-      console.error(`error: "${addressArg}" is not a valid address`);
-      process.exitCode = 1;
-      return;
-    }
-
-    const chainId = Number(opts.chain);
-    if (!Number.isInteger(chainId) || chainId <= 0) {
-      console.error(`error: --chain must be a positive integer, got "${opts.chain}"`);
-      process.exitCode = 1;
-      return;
-    }
-
-    let blockNumber: bigint;
-    try {
-      blockNumber = BigInt(opts.block);
-    } catch {
-      console.error(`error: --block must be an integer, got "${opts.block}"`);
-      process.exitCode = 1;
-      return;
-    }
-    if (blockNumber < 0n) {
-      console.error(`error: --block must be non-negative, got "${opts.block}"`);
-      process.exitCode = 1;
-      return;
-    }
-
-    const rpcEnvVar = `RPC_URL_${chainId}`;
-    const rpcUrl = process.env[rpcEnvVar];
-    if (!rpcUrl) {
-      console.error(
-        `error: ${rpcEnvVar} is not set. Copy .env.example to .env and set a real RPC URL for chain ${chainId}.`,
-      );
-      process.exitCode = 1;
-      return;
-    }
+    const common = resolveCommon(addressArg, opts);
+    if (!common) return;
+    const { chainId, blockNumber, rpcUrl } = common;
 
     const chain = new PinnedChain({
       chainId,
@@ -87,6 +100,75 @@ program
       // that the report must not be published as-is. Silence here would make
       // the gate easy to walk past on calibration day, which is exactly when
       // it matters.
+      if (!report.disclosure.publishable) {
+        console.error("\n⚠  DO NOT PUBLISH THIS REPORT");
+        console.error(`   ${report.disclosure.reason}`);
+        for (const b of report.disclosure.blockedBy) {
+          console.error(`   - ${b.signature} (${b.category}) in ${b.location}`);
+        }
+      }
+    } catch (err) {
+      console.error(`fatal: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command("prove")
+  .description(
+    "Build the power map, then FORK-SIMULATE the resolved upgrade authority draining the target's holdings (CODE_CHANGE→drain archetype). Sandbox only — no mainnet tx is ever sent.",
+  )
+  .argument("<address>", "proxy contract address to prove against")
+  .requiredOption("--block <number>", "block number to pin the scan and fork to")
+  .option("--chain <id>", "chain ID", "1")
+  .option("--no-cache", "disable the on-disk RPC cache")
+  .option("--cache-dir <dir>", "cache directory", ".cache")
+  .option("--artifact-dir <dir>", "where to write proof trace/reproduce artifacts", ".ripcord/proofs")
+  .action(async (addressArg: string, opts) => {
+    const common = resolveCommon(addressArg, opts);
+    if (!common) return;
+    const { chainId, blockNumber, rpcUrl } = common;
+
+    const chain = new PinnedChain({
+      chainId,
+      rpcUrl,
+      blockNumber,
+      cacheDir: resolve(opts.cacheDir),
+      cacheEnabled: opts.cache !== false,
+    });
+
+    try {
+      const baseReport = await buildReport(chain, addressArg as Hex);
+      const proof = await runProofEngine({
+        chainId,
+        rpcUrl,
+        blockNumber,
+        target: addressArg as Hex,
+        proxy: baseReport.proxy,
+        authorityResolution: baseReport.authorityResolution,
+        artifactDir: resolve(opts.artifactDir),
+      });
+
+      // Re-validate: attaching the proof must still produce a schema-valid report.
+      const report = reportSchema.parse({ ...baseReport, proof });
+      process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+
+      // Human-facing summary on stderr (stdout stays clean JSON).
+      if (proof.produced) {
+        console.error("\n✓ PROOF PRODUCED (sandbox fork — no mainnet tx sent)");
+        console.error(`   ${proof.headline}`);
+        console.error(`   impersonated: ${proof.impersonatedVia}`);
+        for (const d of proof.deltas) {
+          const usd = d.usd === null ? "USD undetermined" : `$${d.usd.toFixed(2)}`;
+          console.error(`   - ${d.symbol}: moved ${d.delta} (${usd}) via ${d.priceSource}`);
+        }
+        if (proof.traceArtifact) console.error(`   trace: ${proof.traceArtifact}`);
+        if (proof.reproduceCommand) console.error(`   reproduce: ${proof.reproduceCommand}`);
+      } else {
+        console.error("\n○ PROOF NOT PRODUCED (this is honest, not a failure of the target)");
+        console.error(`   ${proof.failureReason}`);
+      }
+
       if (!report.disclosure.publishable) {
         console.error("\n⚠  DO NOT PUBLISH THIS REPORT");
         console.error(`   ${report.disclosure.reason}`);
