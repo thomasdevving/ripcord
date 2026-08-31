@@ -158,3 +158,4 @@ pnpm ripcord scan <address> --block <n> --chain <id> [--no-cache] [--cache-dir <
 ## What was built during this hackathon
 
 Everything in this repository — first commit dated 2026-08-31, day 1 of a 7-day solo build. See `git log` for the incremental history: repo hygiene and CI first, then derived constants, the cached chain access layer, the report schema, each detector, orchestration, the CLI, and finally verified fixtures and two bugs (a Solidity-metadata false positive and a silent "clean-looking" unknown-authority case) found and fixed by actually running the tool against live mainnet data rather than only unit tests.
+# ripcord
