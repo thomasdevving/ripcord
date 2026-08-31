@@ -30,7 +30,11 @@ function addressToSlot(address: Hex): Hex {
  * part inert and lets these tests focus on proxy resolution + taxonomy
  * wiring, which is what capabilities.ts is actually responsible for.
  */
-function fakeChain(codeByAddress: Record<string, Hex | undefined>, storage: Record<string, Hex> = {}): ChainReader {
+function fakeChain(
+  codeByAddress: Record<string, Hex | undefined>,
+  storage: Record<string, Hex> = {},
+  probedAddresses: Hex[] = [],
+): ChainReader {
   return {
     chainId: 1,
     blockNumber: 1n,
@@ -52,6 +56,7 @@ function fakeChain(codeByAddress: Record<string, Hex | undefined>, storage: Reco
       return { result: undefined, reverted: true, evidence: {} as Evidence };
     },
     async probeCall(address: Hex, data: Hex, from: Hex) {
+      probedAddresses.push(address);
       return {
         revertData: undefined,
         reverted: false,
@@ -95,6 +100,52 @@ describe("detectCapabilities — proxy resolution", () => {
     }
   });
 
+  it("REGRESSION: guard probes are sent to the PROXY, never to the implementation", async () => {
+    // A delegatecall through the proxy runs the implementation's code against
+    // the PROXY's storage, which is where owner/role state lives. Probing the
+    // implementation directly runs the same code against the implementation's
+    // own, usually uninitialized, storage — so any revert it produces says
+    // nothing about who controls the proxy. Verified live on PAID Network:
+    // the proxy's owner() is 0x53bc21D3…, the implementation's own owner() is
+    // address(0), yet BOTH revert "Ownable: caller is not the owner" for an
+    // unrelated caller. Attributing the implementation's revert to the
+    // proxy's owner would be an attribution the evidence doesn't support.
+    const proxyAddress = ("0x" + "aa".repeat(20)) as Hex;
+    const implAddress = ("0x" + "bb".repeat(20)) as Hex;
+    const adminAddress = ("0x" + "cc".repeat(20)) as Hex;
+    const probed: Hex[] = [];
+
+    const chain = fakeChain(
+      {
+        [proxyAddress.toLowerCase()]: "0x6080604052" as Hex,
+        // Aave's fixture has real taxonomy-matching selectors, so probes fire.
+        [implAddress.toLowerCase()]: loadFixture("aave-pool-addresses-provider"),
+      },
+      {
+        [`${proxyAddress.toLowerCase()}:${IMPL_SLOT.toLowerCase()}`]: addressToSlot(implAddress),
+        [`${proxyAddress.toLowerCase()}:${ADMIN_SLOT.toLowerCase()}`]: addressToSlot(adminAddress),
+      },
+      probed,
+    );
+
+    const proxy = await detectProxy(chain, proxyAddress);
+    const detection = await detectCapabilities(chain, proxyAddress, proxy, null, []);
+
+    expect(probed.length).toBeGreaterThan(0); // probes actually ran
+    for (const addr of probed) {
+      expect(addr.toLowerCase()).toBe(proxyAddress.toLowerCase());
+      expect(addr.toLowerCase()).not.toBe(implAddress.toLowerCase());
+    }
+    // The report must state both addresses, since they differ and the
+    // distinction is what makes the guard evidence meaningful.
+    expect(detection.result.scannedAddress?.toLowerCase()).toBe(implAddress.toLowerCase());
+    expect(detection.result.probedAddress.toLowerCase()).toBe(proxyAddress.toLowerCase());
+    for (const entry of detection.result.needsManualVerification) {
+      expect(entry.scannedAddress.toLowerCase()).toBe(implAddress.toLowerCase());
+      expect(entry.probedAddress.toLowerCase()).toBe(proxyAddress.toLowerCase());
+    }
+  });
+
   it("for a non-proxy target, scans the target's own bytecode", async () => {
     const target = ("0x" + "44".repeat(20)) as Hex;
     const chain = fakeChain({ [target.toLowerCase()]: loadFixture("weth9") });
@@ -135,6 +186,27 @@ describe("detectCapabilities — proxy resolution", () => {
     expect(byCategory.get("transferOwnership(address)")).toBe("AUTHORITY_CHANGE");
     expect(byCategory.get("renounceOwnership()")).toBe("AUTHORITY_CHANGE");
     expect(byCategory.get("setPriceOracle(address)")).toBe("ECONOMIC");
+  });
+
+  it("reports how many selectors were extracted and which ones matched no taxonomy entry", async () => {
+    // Without this, a contract exposing many functions of which Ripcord
+    // classifies two would look identical to a contract that only has two.
+    const target = ("0x" + "88".repeat(20)) as Hex;
+    const chain = fakeChain({ [target.toLowerCase()]: loadFixture("weth9") });
+    const proxy = await detectProxy(chain, target);
+
+    const detection = await detectCapabilities(chain, target, proxy, null, []);
+    const c = detection.result;
+
+    // WETH9's full ABI is 11 functions, none of them privileged.
+    expect(c.selectorsExtracted).toBe(11);
+    expect(c.unmatchedSelectors).toHaveLength(11);
+    expect(c.findings).toEqual([]);
+    expect(c.needsManualVerification).toEqual([]);
+    // Every selector is accounted for: classified, or explicitly unmatched.
+    expect(c.findings.length + c.needsManualVerification.length + c.unmatchedSelectors.length).toBe(
+      c.selectorsExtracted,
+    );
   });
 
   it("returns dispatcherRecognized:false and an unknowns entry when there is no code at the scan address", async () => {

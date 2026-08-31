@@ -1,6 +1,0 @@
-# False positives, reviewed and confirmed not secrets.
-# README.md:153 — a day-2 dependency-graph example JSON snippet where a
-# "token" key holds a public, immutable ERC20 contract address (USDC). The
-# "token" key name trips the generic-api-key heuristic; the value under it
-# is not a credential.
-README.md:generic-api-key:153
