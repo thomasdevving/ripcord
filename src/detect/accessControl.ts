@@ -18,21 +18,34 @@
  * RoleGranted/RoleRevoked in order from the contract's deployment block to
  * the pinned block.
  *
- * The log range [deploymentBlock, pinnedBlock] is chunked so a large range
- * cannot blow up the RPC in one request. If the range is large enough that
- * chunking it would take an impractical number of requests, the scan is
- * abandoned and recorded as an explicit `unknowns[]` entry — never silently
- * truncated, which would look like "no roles found."
+ * The log range [deploymentBlock, pinnedBlock] is chunked to the provider's
+ * PROBED eth_getLogs limit (see rpcPreflight.ts), not a fixed guess — the fix
+ * for KNOWN EDGE #7, where a hard-coded 10k-block chunk silently failed on any
+ * provider with a smaller cap. If covering the full range would exceed the
+ * request budget, the scan degrades to the most recent affordable window and
+ * labels the result `reconstruction.complete = false` with a lowered
+ * confidence and the exact block window it covered — never a silent truncation
+ * that would read as "no roles found," and never a full-confidence claim over
+ * a partial scan.
  */
 import { decodeFunctionResult, encodeFunctionData, type Hex } from "viem";
 import type { Evidence, ChainReader } from "../chain/client.js";
 import { accessControlAbi } from "../chain/abi.js";
 import { KNOWN_ROLE_HASHES, RELEVANT_EVENTS } from "../chain/constants.js";
+import { probeMaxLogRange } from "../chain/rpcPreflight.js";
 import { findDeploymentBlock } from "./deployment.js";
-import type { AccessControlResult, RoleEntry, UnknownEntry } from "../report/schema.js";
+import type { AccessControlResult, RoleEntry, RoleReconstruction, UnknownEntry } from "../report/schema.js";
 
-const LOG_CHUNK_SIZE = 10_000n;
-const MAX_CHUNKS = 500;
+/**
+ * The maximum number of eth_getLogs REQUESTS the role scan will make before it
+ * degrades to a labelled partial reconstruction. This bounds cost on providers
+ * with a small getLogs range (each chunk covers fewer blocks, so a full history
+ * needs more requests): rather than fire hundreds of thousands of requests — or
+ * silently truncate — the scan covers the most recent `budget` chunks and says
+ * so, with lowered confidence. On a generous provider a normal contract's whole
+ * history fits well inside this budget and the scan is `complete`.
+ */
+const MAX_LOG_REQUESTS = 1500;
 
 interface RoleEventArgs {
   role?: Hex;
@@ -63,7 +76,7 @@ export async function detectAccessControl(
     defaultAdminRoleCall,
   );
   if (notAccessControl || !defaultAdminRoleRaw) {
-    return { result: { detected: false, method: "not_applicable", roles: [] }, unknowns };
+    return { result: { detected: false, method: "not_applicable", roles: [], reconstruction: null }, unknowns };
   }
 
   const defaultAdminRole = decodeFunctionResult({
@@ -86,10 +99,11 @@ export async function detectAccessControl(
       field: "authority.accessControl.roles",
       reason: "could not determine contract deployment block to bound the RoleGranted/RoleRevoked event scan",
     });
-    return { result: { detected: true, method: "not_applicable", roles: [] }, unknowns };
+    return { result: { detected: true, method: "not_applicable", roles: [], reconstruction: null }, unknowns };
   }
 
-  const scan = await scanRoleEvents(chain, target, deploymentBlock, unknowns);
+  const scan = await scanRoleEvents(chain, target, deploymentBlock);
+
   const roleHashes = new Set<Hex>([defaultAdminRole, ...scan.roleHashes]);
 
   const roles: RoleEntry[] = [];
@@ -103,40 +117,90 @@ export async function detectAccessControl(
     }
   }
 
+  // Reconstruction confidence: Enumerable membership is authoritative even when
+  // the event scan (which only discovers WHICH role hashes exist) was partial,
+  // so a partial scan lowers an Enumerable contract to `medium` (a role never
+  // touched in the covered window could be missed) but a non-Enumerable one to
+  // `low` (both the role set and its membership come from the partial window).
+  const reconstruction: RoleReconstruction = scan.complete
+    ? {
+        complete: true,
+        confidence: "high",
+        note: isEnumerable
+          ? "role membership read from AccessControlEnumerable getters (authoritative); full role-hash discovery scan completed"
+          : "role membership reconstructed from a complete RoleGranted/RoleRevoked replay over the full deployment-to-pinned range",
+        maxLogRange: scan.maxLogRange?.toString() ?? null,
+        scannedFromBlock: scan.scannedFrom.toString(),
+        scannedToBlock: scan.scannedTo.toString(),
+      }
+    : {
+        complete: false,
+        confidence: isEnumerable ? "medium" : "low",
+        note: isEnumerable
+          ? `Enumerable membership below is authoritative, but role-hash DISCOVERY was partial: the provider's eth_getLogs range (${scan.maxLogRange} blocks) and the ${MAX_LOG_REQUESTS}-request budget covered only blocks ${scan.scannedFrom}–${scan.scannedTo} of ${deploymentBlock}–${chain.blockNumber}; a role never granted/revoked within that window would be missed`
+          : `partial event-reconstruction: the provider's eth_getLogs range (${scan.maxLogRange} blocks) and the ${MAX_LOG_REQUESTS}-request budget covered only blocks ${scan.scannedFrom}–${scan.scannedTo} of ${deploymentBlock}–${chain.blockNumber}; both the role set and its membership below may be incomplete`,
+        maxLogRange: scan.maxLogRange?.toString() ?? null,
+        scannedFromBlock: scan.scannedFrom.toString(),
+        scannedToBlock: scan.scannedTo.toString(),
+      };
+  if (!scan.complete) {
+    unknowns.push({ field: "authority.accessControl.roles", reason: reconstruction.note });
+  }
+
   return {
     result: {
       detected: true,
       method: isEnumerable ? "enumerable" : "event_reconstruction",
       roles,
+      reconstruction,
     },
     unknowns,
   };
 }
 
-async function scanRoleEvents(
-  chain: ChainReader,
-  target: Hex,
-  fromBlock: bigint,
-  unknowns: UnknownEntry[],
-): Promise<{ logs: RoleEventLog[]; roleHashes: Set<Hex>; evidence: Evidence[] }> {
-  const toBlock = chain.blockNumber;
-  const totalRange = toBlock - fromBlock;
-  const chunkCount = totalRange / LOG_CHUNK_SIZE + 1n;
+interface RoleScan {
+  logs: RoleEventLog[];
+  roleHashes: Set<Hex>;
+  evidence: Evidence[];
+  complete: boolean;
+  maxLogRange: bigint | null;
+  scannedFrom: bigint;
+  scannedTo: bigint;
+}
 
-  if (chunkCount > BigInt(MAX_CHUNKS)) {
-    unknowns.push({
-      field: "authority.accessControl.roles",
-      reason: `RoleGranted/RoleRevoked scan range (${totalRange} blocks, ~${chunkCount} chunks at ${LOG_CHUNK_SIZE}-block chunks) exceeds the ${MAX_CHUNKS}-chunk day-1 budget; role membership below may be incomplete or based on the Enumerable getters only`,
-    });
-    return { logs: [], roleHashes: new Set(), evidence: [] };
+/**
+ * Scans RoleGranted/RoleRevoked over [deployment, pinned], chunked to the
+ * provider's PROBED eth_getLogs range (not a fixed guess — the day-2 KNOWN
+ * EDGE #7 fix). If covering the full range would exceed MAX_LOG_REQUESTS, it
+ * scans the most recent `budget` chunks instead and reports `complete: false`
+ * with the exact window covered — a labelled partial, never a silent
+ * truncation and never a failure that reads as "no roles."
+ */
+async function scanRoleEvents(chain: ChainReader, target: Hex, deploymentBlock: bigint): Promise<RoleScan> {
+  const toBlock = chain.blockNumber;
+  const maxLogRange = await probeMaxLogRange(chain); // may throw ChainReadError → build.ts errors[] (fail loud)
+  const chunkSpan = maxLogRange < 1n ? 1n : maxLogRange;
+
+  const fullRange = toBlock - deploymentBlock;
+  const chunksForFull = fullRange / chunkSpan + 1n;
+  // Two events per chunk (RoleGranted + RoleRevoked).
+  const requestsForFull = chunksForFull * 2n;
+
+  let scanFrom = deploymentBlock;
+  let complete = true;
+  if (requestsForFull > BigInt(MAX_LOG_REQUESTS)) {
+    complete = false;
+    const affordableChunks = BigInt(Math.floor(MAX_LOG_REQUESTS / 2));
+    const coveredSpan = affordableChunks * chunkSpan;
+    scanFrom = toBlock > coveredSpan ? toBlock - coveredSpan : 0n;
   }
 
   const evidence: Evidence[] = [];
   const logs: RoleEventLog[] = [];
   const roleHashes = new Set<Hex>();
 
-  for (let start = fromBlock; start <= toBlock; start += LOG_CHUNK_SIZE) {
-    const end = start + LOG_CHUNK_SIZE - 1n > toBlock ? toBlock : start + LOG_CHUNK_SIZE - 1n;
+  for (let start = scanFrom; start <= toBlock; start += chunkSpan) {
+    const end = start + chunkSpan - 1n > toBlock ? toBlock : start + chunkSpan - 1n;
     for (const eventSig of [RELEVANT_EVENTS.roleGranted, RELEVANT_EVENTS.roleRevoked]) {
       const { logs: chunkLogs, evidence: chunkEvidence } = await chain.getLogs({
         address: target,
@@ -158,7 +222,7 @@ async function scanRoleEvents(
     return (a.logIndex ?? 0) - (b.logIndex ?? 0);
   });
 
-  return { logs, roleHashes, evidence };
+  return { logs, roleHashes, evidence, complete, maxLogRange, scannedFrom: scanFrom, scannedTo: toBlock };
 }
 
 async function readRoleViaEnumerable(

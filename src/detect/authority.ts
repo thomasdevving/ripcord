@@ -37,6 +37,7 @@ import type {
   DepthConfidence,
   RoleEntry,
   TimelockInfo,
+  UnknownEntry,
 } from "../report/schema.js";
 
 export const MAX_AUTHORITY_DEPTH = 3;
@@ -194,6 +195,7 @@ async function resolveNode(
   depth: number,
   pathVisited: string[],
   cyclesOut: { address: string; path: string[] }[],
+  unknownsOut: UnknownEntry[],
 ): Promise<AuthorityNode> {
   const lower = address.toLowerCase();
   const confidence = confidenceForDepth(depth);
@@ -236,10 +238,32 @@ async function resolveNode(
     return base("safe", "safe", { safe: classified.safe, evidence });
   }
 
-  // A contract. Before recursing, check whether it is a timelock — a terminal
-  // authority we record but do not recurse past into its signers/proposers.
-  const roleForTimelock = await detectAccessControl(chain, address).catch(() => null);
-  const timelock = await detectTimelock(chain, address, roleForTimelock?.result.roles ?? []);
+  // A contract. Resolve its AccessControl ONCE, up front — its roles feed both
+  // the timelock check and the authority seeds below.
+  //
+  // Critically, this is NOT wrapped in `.catch(() => null)`. The earlier code
+  // was, and that conflated two facts that must never be indistinguishable:
+  //   - a contract that simply ISN'T AccessControl (DEFAULT_ADMIN_ROLE()
+  //     reverts) — a normal, expected outcome that detectAccessControl already
+  //     returns as `detected: false` WITHOUT throwing; and
+  //   - a real RPC/provider failure (a getLogs/getCode call that actually
+  //     failed at the node) — a ChainReadError, which is infrastructure, not
+  //     a fact about the contract.
+  // Swallowing both into `null` turned a network outage into a silent "no
+  // roles / no authority found," exactly the false-clean result the whole
+  // project forbids. Now the ChainReadError propagates to build.ts's
+  // runStage("authorityResolution"), landing in errors[] where an infra
+  // failure belongs, while detectAccessControl's own unknowns[] (e.g. a
+  // partial role reconstruction on a capped provider — see accessControl.ts)
+  // are threaded UP namespaced by address instead of being discarded here.
+  const accessControl = await detectAccessControl(chain, address);
+  for (const u of accessControl.unknowns) {
+    unknownsOut.push({ field: `authorityResolution[${address}].${u.field}`, reason: u.reason });
+  }
+
+  // Before recursing, check whether it is a timelock — a terminal authority we
+  // record but do not recurse past into its signers/proposers.
+  const timelock = await detectTimelock(chain, address, accessControl.result.roles);
   if (timelock) {
     evidence.push(...timelock.evidence);
     return base("timelock", "timelock", { type: "timelock", timelock, evidence });
@@ -250,18 +274,17 @@ async function resolveNode(
     return base("contract", "max_depth", { type: "contract", evidence });
   }
 
-  // Resolve this contract's OWN authorities and recurse one level deeper.
+  // Resolve this contract's OWN ownership/proxy authorities and recurse.
   const [ownership, proxy] = await Promise.all([
     detectOwnership(chain, address),
     detectProxy(chain, address),
   ]);
-  const accessControl = roleForTimelock ?? (await detectAccessControl(chain, address).catch(() => null));
 
   const seeds = collectSeeds({
     owner: ownership.owner.address as Hex | null,
     pendingOwner: ownership.pendingOwner.address as Hex | null,
     proxyAdmin: proxy.admin as Hex | null,
-    roles: accessControl?.result.roles ?? [],
+    roles: accessControl.result.roles,
   });
 
   if (seeds.length === 0) {
@@ -273,7 +296,7 @@ async function resolveNode(
   const nextVisited = [...pathVisited, lower];
   const children: AuthorityNode[] = [];
   for (const seed of seeds) {
-    children.push(await resolveNode(chain, seed.address, seed.relation, depth + 1, nextVisited, cyclesOut));
+    children.push(await resolveNode(chain, seed.address, seed.relation, depth + 1, nextVisited, cyclesOut, unknownsOut));
   }
 
   return {
@@ -360,9 +383,10 @@ function derivePath(root: AuthorityNode): AuthorityPath {
 export async function resolveAuthorityGraph(
   chain: ChainReader,
   seeds: AuthoritySeed[],
-): Promise<AuthorityResolution> {
+): Promise<{ resolution: AuthorityResolution; unknowns: UnknownEntry[] }> {
   const cyclesDetected: { address: string; path: string[] }[] = [];
   const roots: AuthorityNode[] = [];
+  const unknowns: UnknownEntry[] = [];
 
   // Dedup seeds by address so two capabilities routing through the same
   // ProxyAdmin don't resolve it twice.
@@ -371,9 +395,9 @@ export async function resolveAuthorityGraph(
     const k = seed.address.toLowerCase();
     if (seen.has(k)) continue;
     seen.add(k);
-    roots.push(await resolveNode(chain, seed.address, seed.relation, 1, [], cyclesDetected));
+    roots.push(await resolveNode(chain, seed.address, seed.relation, 1, [], cyclesDetected, unknowns));
   }
 
   const paths = roots.map(derivePath);
-  return { maxDepth: MAX_AUTHORITY_DEPTH, roots, paths, cyclesDetected };
+  return { resolution: { maxDepth: MAX_AUTHORITY_DEPTH, roots, paths, cyclesDetected }, unknowns };
 }

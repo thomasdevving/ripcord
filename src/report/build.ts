@@ -14,6 +14,7 @@ import { resolveAuthorityGraph, type AuthoritySeed } from "../detect/authority.j
 import { detectCapabilities } from "../detect/capabilities.js";
 import { detectDependencies } from "../detect/dependencies.js";
 import { taxonomyVersion } from "../detect/taxonomy.js";
+import { clearedCapability, clearedRegistryVersion } from "../chain/clearedRegistry.js";
 import {
   reportSchema,
   schemaVersion,
@@ -36,34 +37,64 @@ import {
  * mechanical check rather than a per-protocol ethics call under time
  * pressure.
  */
-function assessDisclosure(capabilities: CapabilitiesResult, dependencies: DependencyGraph): Disclosure {
-  const blockedBy: Disclosure["blockedBy"] = [
-    ...capabilities.needsManualVerification.map((e) => ({
-      location: `capabilities (${e.probedAddress})`,
-      signature: e.signature,
-      category: e.category,
-    })),
-    ...dependencies.tokens.flatMap((t) =>
-      t.capabilities.needsManualVerification.map((e) => ({
-        location: `dependencies.tokens[${t.token}]`,
-        signature: e.signature,
-        category: e.category,
-      })),
-    ),
-  ];
+export function assessDisclosure(chainId: number, capabilities: CapabilitiesResult, dependencies: DependencyGraph): Disclosure {
+  const cleared: Disclosure["cleared"] = [];
+
+  // The TARGET's own needsManualVerification ALWAYS blocks — the cleared
+  // registry only ever clears DEPENDENCIES (a blessed token a protocol holds),
+  // never a protocol's own privileged functions, which are the point of the scan.
+  const blockedBy: Disclosure["blockedBy"] = capabilities.needsManualVerification.map((e) => ({
+    location: `capabilities (${e.probedAddress})`,
+    signature: e.signature,
+    category: e.category,
+  }));
+
+  // Dependency-token entries are split: a capability documented as design on
+  // THIS specific token (clearedRegistry.ts) is recorded in `cleared` and does
+  // not block; anything else still blocks.
+  for (const t of dependencies.tokens) {
+    for (const e of t.capabilities.needsManualVerification) {
+      const clearedEntry = clearedCapability(chainId, t.token, e.signature);
+      if (clearedEntry) {
+        cleared.push({
+          location: `dependencies.tokens[${t.token}]`,
+          token: t.token,
+          signature: e.signature,
+          category: e.category,
+          justification: clearedEntry.justification,
+          source: clearedEntry.source,
+        });
+      } else {
+        blockedBy.push({
+          location: `dependencies.tokens[${t.token}]`,
+          signature: e.signature,
+          category: e.category,
+        });
+      }
+    }
+  }
 
   if (blockedBy.length === 0) {
+    const clearedNote =
+      cleared.length > 0
+        ? ` ${cleared.length} dependency capability/capabilities were cleared as documented design by the registry (see disclosure.cleared) and did not block.`
+        : "";
     return {
       publishable: true,
       reason:
-        "no needsManualVerification entries at the target or in its dependency graph — this report contains only admin-capability findings, which the disclosure policy publishes freely",
+        "no blocking needsManualVerification entries at the target or in its dependency graph — this report contains only admin-capability findings (and any cleared, documented-design dependency capabilities), which the disclosure policy publishes freely." +
+        clearedNote,
       blockedBy: [],
+      clearedRegistryVersion,
+      cleared,
     };
   }
   return {
     publishable: false,
-    reason: `${blockedBy.length} capability/capabilities could not be attributed to a recognized guard by probing. Probing cannot distinguish "guarded by a scheme Ripcord doesn't recognize" from "not guarded at all," and the second reading would be a vulnerability claim about a live contract. Do not publish this report: keep it local until each entry below is either cleared by a human as a design property, or disclosed to the project. See the disclosure policy in README.`,
+    reason: `${blockedBy.length} capability/capabilities could not be attributed to a recognized guard by probing and are NOT cleared as documented design. Probing cannot distinguish "guarded by a scheme Ripcord doesn't recognize" from "not guarded at all," and the second reading would be a vulnerability claim about a live contract. Do not publish this report: keep it local until each entry below is either cleared by a human as a design property, or disclosed to the project. See the disclosure policy in README.`,
     blockedBy,
+    clearedRegistryVersion,
+    cleared,
   };
 }
 
@@ -110,7 +141,7 @@ export async function buildReport(chain: ChainReader, target: Hex): Promise<Repo
     "accessControl",
     () => detectAccessControl(chain, target),
     errors,
-    () => ({ result: { detected: false, method: "not_applicable" as const, roles: [] }, unknowns: [] }),
+    () => ({ result: { detected: false, method: "not_applicable" as const, roles: [], reconstruction: null }, unknowns: [] }),
   );
   unknowns.push(...accessControlDetection.unknowns);
 
@@ -181,12 +212,17 @@ export async function buildReport(chain: ChainReader, target: Hex): Promise<Repo
     for (const m of role.members) pushSeed(m as Hex, `accessControl:${role.name ?? role.role}`);
   }
 
-  const authorityResolution = await runStage<AuthorityResolution | null>(
+  const authorityDetection = await runStage<{ resolution: AuthorityResolution | null; unknowns: UnknownEntry[] }>(
     "authorityResolution",
-    () => resolveAuthorityGraph(chain, seeds),
+    async () => await resolveAuthorityGraph(chain, seeds),
     errors,
-    () => null,
+    () => ({ resolution: null, unknowns: [] }),
   );
+  const authorityResolution = authorityDetection.resolution;
+  // Unknowns threaded up from deep in the authority tree (e.g. a partial role
+  // reconstruction on a capped provider) — previously discarded by a swallowing
+  // catch, now surfaced.
+  unknowns.push(...authorityDetection.unknowns);
   if (authorityResolution) {
     for (const cyc of authorityResolution.cyclesDetected) {
       unknowns.push({
@@ -257,7 +293,7 @@ export async function buildReport(chain: ChainReader, target: Hex): Promise<Repo
     capabilities: capabilityDetection.result,
     dependencies: dependencyDetection.result,
     proof: null,
-    disclosure: assessDisclosure(capabilityDetection.result, dependencyDetection.result),
+    disclosure: assessDisclosure(chain.chainId, capabilityDetection.result, dependencyDetection.result),
     unknowns,
     errors,
   };

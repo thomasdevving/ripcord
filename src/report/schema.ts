@@ -7,8 +7,8 @@
  */
 import { z } from "zod";
 
-export const schemaVersion = "0.5.0";
-export const rulesetVersion = "0.4.0";
+export const schemaVersion = "0.6.0";
+export const rulesetVersion = "0.5.0";
 
 const hexString = z.string().regex(/^0x[0-9a-fA-F]*$/);
 const address = z.string().regex(/^0x[0-9a-fA-F]{40}$/);
@@ -20,6 +20,19 @@ export const evidenceSchema = z.object({
   block: z.string(),
 });
 export type Evidence = z.infer<typeof evidenceSchema>;
+
+/**
+ * The ONE certainty vocabulary, shared across every layer that expresses "how
+ * much to trust this" as a degree: authority-depth confidence (high at a direct
+ * hop, degrading with each hop), role-reconstruction completeness (high for a
+ * full scan / authoritative getters, lower for a partial window), and any
+ * future certainty axis. Deliberately NOT reused for things that are not
+ * certainty — e.g. taxonomy `nameMatchSpecificity` ("is this a standard name")
+ * is a different question and has its own enum, so a generic name is never
+ * silently read as low confidence. One scale for certainty, and only certainty.
+ */
+export const depthConfidenceSchema = z.enum(["high", "medium", "low"]);
+export type DepthConfidence = z.infer<typeof depthConfidenceSchema>;
 
 export const unknownEntrySchema = z.object({
   field: z.string(),
@@ -77,10 +90,42 @@ export const roleEntrySchema = z.object({
 });
 export type RoleEntry = z.infer<typeof roleEntrySchema>;
 
+/**
+ * How complete the role reconstruction is, and how much to trust it — the
+ * weakest-link principle applied to the AccessControl event scan. The role
+ * history is reconstructed by replaying RoleGranted/RoleRevoked over a block
+ * range chunked to the provider's real eth_getLogs limit (probed, see
+ * rpcPreflight.ts). When the full range can't be covered within the request
+ * budget, the scan degrades to a bounded recent window and says so HERE —
+ * `complete: false`, a lowered `confidence`, and the exact `scannedFromBlock`
+ * so a reader knows precisely what was and wasn't observed. This is never a
+ * silent truncation: a partial reconstruction that reads as a full one would
+ * be exactly the false-confidence the project forbids.
+ *
+ * `confidence` uses the same high/medium/low certainty scale as authority-depth
+ * confidence (one vocabulary): high = full scan or authoritative Enumerable
+ * getters; medium = Enumerable membership is authoritative but the role-hash
+ * discovery scan was partial (a role never touched in the covered window could
+ * be missed); low = non-Enumerable membership reconstructed from a partial
+ * event window (both the role set and its membership may be incomplete).
+ */
+export const roleReconstructionSchema = z.object({
+  complete: z.boolean(),
+  confidence: depthConfidenceSchema,
+  note: z.string(),
+  /** The provider's probed eth_getLogs max block range used for chunking. */
+  maxLogRange: z.string().nullable(),
+  scannedFromBlock: z.string().nullable(),
+  scannedToBlock: z.string().nullable(),
+});
+export type RoleReconstruction = z.infer<typeof roleReconstructionSchema>;
+
 export const accessControlSchema = z.object({
   detected: z.boolean(),
   method: z.enum(["enumerable", "event_reconstruction", "not_applicable"]),
   roles: z.array(roleEntrySchema),
+  /** Null when not applicable (contract is not AccessControl, or deployment block couldn't be found). */
+  reconstruction: roleReconstructionSchema.nullable(),
 });
 export type AccessControlResult = z.infer<typeof accessControlSchema>;
 
@@ -283,16 +328,6 @@ export const terminationReasonSchema = z.enum([
 ]);
 export type TerminationReason = z.infer<typeof terminationReasonSchema>;
 
-/**
- * Confidence in an authority attribution DEGRADES WITH DEPTH — an "effective
- * controller" reached through three hops is not asserted with the certainty
- * of a direct owner. This is weakest-link provenance applied to the depth
- * dimension: high at depth 1 (a direct authority), medium at depth 2, low at
- * depth ≥ 3. The report shows the depth and the full path so a reader can see
- * exactly how far the claim reaches.
- */
-export const depthConfidenceSchema = z.enum(["high", "medium", "low"]);
-export type DepthConfidence = z.infer<typeof depthConfidenceSchema>;
 
 export interface AuthorityNode {
   address: string;
@@ -419,6 +454,24 @@ export const disclosureSchema = z.object({
       location: z.string(),
       signature: z.string(),
       category: capabilityCategorySchema,
+    }),
+  ),
+  /** The version of the cleared-dependency registry this assessment used, so a clearing decision is auditable and reproducible. */
+  clearedRegistryVersion: z.string(),
+  /**
+   * Dependency capabilities that WOULD have blocked publication but were
+   * cleared as documented design by the registry (see clearedRegistry.ts).
+   * Recorded explicitly — never silently dropped — so a reader sees exactly
+   * what was waved through, on which token, and why.
+   */
+  cleared: z.array(
+    z.object({
+      location: z.string(),
+      token: address,
+      signature: z.string(),
+      category: capabilityCategorySchema,
+      justification: z.string(),
+      source: z.string(),
     }),
   ),
 });
