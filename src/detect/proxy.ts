@@ -18,7 +18,14 @@ import { decodeFunctionResult, encodeFunctionData, type Hex } from "viem";
 import type { PinnedChain, Evidence } from "../chain/client.js";
 import { SLOTS } from "../chain/constants.js";
 import { beaconAbi } from "../chain/abi.js";
-import { containsOpcode, DELEGATECALL_OPCODE, isZeroValue, matchEip1167Clone, slotToAddress } from "./bytecode.js";
+import {
+  containsOpcode,
+  DELEGATECALL_OPCODE,
+  isZeroValue,
+  matchEip1167Clone,
+  slotToAddress,
+  stripSolidityMetadata,
+} from "./bytecode.js";
 import type { ProxyResult } from "../report/schema.js";
 
 export async function detectProxy(chain: PinnedChain, target: Hex): Promise<ProxyResult> {
@@ -154,7 +161,7 @@ export async function detectProxy(chain: PinnedChain, target: Hex): Promise<Prox
 
   // 7. None of the known slot patterns matched, but the bytecode contains a real
   // DELEGATECALL instruction — this looks proxy-shaped but we can't identify the pattern.
-  if (containsOpcode(code, DELEGATECALL_OPCODE)) {
+  if (containsOpcode(stripSolidityMetadata(code), DELEGATECALL_OPCODE)) {
     return {
       pattern: "unknown",
       isProxy: true,

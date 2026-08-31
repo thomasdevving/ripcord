@@ -40,11 +40,33 @@ export function matchEip1167Clone(code: Hex): Hex | null {
 }
 
 /**
+ * Solidity (by default) appends a CBOR-encoded metadata blob after the real
+ * runtime code, terminated by a 2-byte big-endian length prefix for that
+ * blob. Those trailing bytes are not executable — they are data — but a
+ * naive linear opcode scan doesn't know that and can walk into them,
+ * mistaking an arbitrary metadata byte for a real opcode. This strips that
+ * trailer so containsOpcode only walks actual code. Bytecode without a
+ * plausible metadata trailer (Vyper, metadata disabled, non-Solidity) is
+ * returned unchanged — this is a best-effort trim, not a proof.
+ */
+export function stripSolidityMetadata(code: Hex): Hex {
+  const bytes = hexToBytes(code);
+  if (bytes.length < 2) return code;
+  const metadataLength = (bytes[bytes.length - 2]! << 8) | bytes[bytes.length - 1]!;
+  const totalTrailer = metadataLength + 2;
+  if (totalTrailer <= 0 || totalTrailer >= bytes.length) return code;
+  const trimmedBytes = bytes.length - totalTrailer;
+  return (code.slice(0, 2 + trimmedBytes * 2)) as Hex;
+}
+
+/**
  * Walks EVM bytecode from offset 0, respecting PUSH1..PUSH32 (0x60-0x7f)
  * immediate-data lengths, and reports whether a given opcode byte appears
  * as a real instruction (not inside push data). Not a full CFG analysis —
  * bytecode reached only via a jump table it can't statically resolve is
  * still walked linearly, which is the standard limitation of this technique.
+ * Callers should pass code through stripSolidityMetadata first so a trailing
+ * metadata blob (not real code) can't produce a false positive.
  */
 export function containsOpcode(code: Hex, opcode: number): boolean {
   const bytes = hexToBytes(code);
