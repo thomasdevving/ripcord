@@ -1,0 +1,15 @@
+title = "ripcord gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Placeholders and non-secret fixtures"
+regexes = [
+  '''your-mainnet-rpc-provider\.example''',
+  '''YOUR_KEY''',
+]
+paths = [
+  '''\.env\.example$''',
+  '''test/fixtures/.*''',
+]

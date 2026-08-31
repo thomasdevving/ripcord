@@ -1,0 +1,32 @@
+{
+  "name": "ripcord",
+  "version": "0.1.0",
+  "description": "Who holds privileged power over a DeFi contract, and how fast can they use it versus how fast you can leave.",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "ripcord": "./dist/cli.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "ripcord": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "viem": "^2.21.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "packageManager": "pnpm@11.24.0"
+}
