@@ -11,6 +11,7 @@ import { Command } from "commander";
 import { isAddress, type Hex } from "viem";
 import { resolve } from "node:path";
 import { PinnedChain } from "./chain/client.js";
+import { describeProvider } from "./chain/rpcPreflight.js";
 import { buildReport } from "./report/build.js";
 import { reportSchema } from "./report/schema.js";
 import { runProofEngine } from "./fork/proofEngine.js";
@@ -92,6 +93,9 @@ program
       cacheEnabled: opts.cache !== false,
     });
 
+    const provider = describeProvider(rpcUrl);
+    console.error(`provider: ${provider.name} (${provider.host}), chain ${chainId}, block ${blockNumber}`);
+
     try {
       const report = await buildReport(chain, addressArg as Hex);
       process.stdout.write(JSON.stringify(report, null, 2) + "\n");
@@ -136,6 +140,9 @@ program
       cacheDir: resolve(opts.cacheDir),
       cacheEnabled: opts.cache !== false,
     });
+
+    const provider = describeProvider(rpcUrl);
+    console.error(`provider: ${provider.name} (${provider.host}), chain ${chainId}, block ${blockNumber}`);
 
     try {
       const baseReport = await buildReport(chain, addressArg as Hex);

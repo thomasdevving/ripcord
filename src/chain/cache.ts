@@ -30,14 +30,27 @@ function stableStringify(value: unknown): string {
   return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`).join(",")}}`;
 }
 
-function keyToPath(cacheDir: string, key: CacheKey): string {
+/**
+ * The stable identity of a cache entry. DELIBERATELY a pure function of
+ * (chainId, blockNumber, method, params) and NOTHING about the RPC provider —
+ * this is what makes cached output provider-independent: the same pinned read
+ * against Alchemy, Infura, or a public node resolves to the identical key, so a
+ * warm cache built with one provider is a valid, byte-identical hit for
+ * another. If a provider ever needs to be part of a key, it must be added here
+ * consciously (and would break that guarantee); test/cache.test.ts pins this.
+ */
+export function cacheKeyFingerprint(key: CacheKey): string {
   const raw = stableStringify({
     chainId: key.chainId,
     blockNumber: key.blockNumber.toString(),
     method: key.method,
     params: key.params,
   });
-  const hash = createHash("sha256").update(raw).digest("hex");
+  return createHash("sha256").update(raw).digest("hex");
+}
+
+function keyToPath(cacheDir: string, key: CacheKey): string {
+  const hash = cacheKeyFingerprint(key);
   return join(
     cacheDir,
     String(key.chainId),
