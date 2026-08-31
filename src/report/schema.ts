@@ -7,8 +7,8 @@
  */
 import { z } from "zod";
 
-export const schemaVersion = "0.2.0";
-export const rulesetVersion = "0.2.0";
+export const schemaVersion = "0.3.0";
+export const rulesetVersion = "0.3.0";
 
 const hexString = z.string().regex(/^0x[0-9a-fA-F]*$/);
 const address = z.string().regex(/^0x[0-9a-fA-F]{40}$/);
@@ -169,6 +169,16 @@ export const capabilityFindingSchema = z.object({
   matchConfidence: matchConfidenceSchema,
   /** The address whose bytecode this selector was extracted from — the implementation, for a proxy. */
   scannedAddress: address,
+  /**
+   * The address the guard probe actually called — always the target/proxy,
+   * never the implementation. These are different addresses for a proxy and
+   * the distinction is load-bearing: a delegatecall through the proxy runs
+   * the implementation's code against the PROXY's storage, which is where
+   * owner/role state lives. Probing the implementation directly reads its
+   * own (usually uninitialized) storage, so any revert it produces says
+   * nothing about who controls the proxy.
+   */
+  probedAddress: address,
   guard: guardStatusSchema,
 });
 export type CapabilityFinding = z.infer<typeof capabilityFindingSchema>;
@@ -185,6 +195,8 @@ export const manualVerificationEntrySchema = z.object({
   signature: z.string(),
   category: capabilityCategorySchema,
   scannedAddress: address,
+  /** The address the probes actually called — the target/proxy. See CapabilityFinding.probedAddress. */
+  probedAddress: address,
   reason: z.literal("no_auth_revert_observed"),
   note: z.string(),
   probes: z.array(evidenceSchema),
@@ -194,8 +206,21 @@ export type ManualVerificationEntry = z.infer<typeof manualVerificationEntrySche
 export const capabilitiesResultSchema = z.object({
   taxonomyVersion: z.string(),
   dispatcherRecognized: z.boolean(),
-  /** Null when the dispatcher wasn't recognized, or the scanned address has no code. */
+  /** Bytecode source: the implementation for a proxy. Null when the dispatcher wasn't recognized, or the scanned address has no code. */
   scannedAddress: address.nullable(),
+  /** Guard-probe call target: always the target/proxy itself. */
+  probedAddress: address,
+  /**
+   * Total selectors the dispatcher recovered, and the ones that matched no
+   * taxonomy entry. Without these, a contract exposing 60 functions of which
+   * Ripcord classifies 2 looks identical in the report to a contract that
+   * only has 2 functions — "we found 2 capabilities" would quietly read as
+   * "there are only 2." An unmatched selector is not "not privileged," it is
+   * "not in Ripcord's taxonomy table"; listing them lets a reader audit that
+   * coverage gap instead of taking it on trust.
+   */
+  selectorsExtracted: z.number().int().nonnegative(),
+  unmatchedSelectors: z.array(hexString),
   findings: z.array(capabilityFindingSchema),
   needsManualVerification: z.array(manualVerificationEntrySchema),
   evidence: z.array(evidenceSchema),

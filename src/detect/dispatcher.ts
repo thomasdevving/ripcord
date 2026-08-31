@@ -41,9 +41,7 @@ import type { Hex } from "viem";
 import { stripSolidityMetadata } from "./bytecode.js";
 
 const STOP = 0x00;
-const CALLDATASIZE = 0x36;
 const CALLDATALOAD = 0x35;
-const ISZERO = 0x15;
 const DIV = 0x04;
 const LT = 0x10;
 const GT = 0x11;
@@ -124,10 +122,6 @@ export interface DispatcherRecognized {
   selectors: Hex[];
   /** GT/LT binary-search pivot comparisons observed — counted, not treated as selectors. See file header. */
   pivotComparisonCount: number;
-  /** Best-effort: an early CALLDATASIZE==0 guard reachable from offset 0, the standard receive() idiom. May false-negative on unusual codegen. */
-  receiveDetected: boolean;
-  /** Best-effort: whether the reachable region past the last dispatch comparison is more than a bare revert stub. May be imprecise — see file header note in guardProbe usage. */
-  fallbackDetected: boolean;
   blocksVisited: number;
 }
 
@@ -155,9 +149,7 @@ export function extractDispatcherSelectors(code: Hex): DispatcherResult {
   const selectors = new Set<Hex>();
   let pivotComparisonCount = 0;
   let selectorLoadFound = false;
-  let receiveDetected = false;
   const visited = new Set<number>();
-  let lastDispatchBlockStart: number | null = null;
 
   const queue: number[] = [0];
   while (queue.length > 0) {
@@ -168,7 +160,6 @@ export function extractDispatcherSelectors(code: Hex): DispatcherResult {
 
     let pc = start;
     const window: DecodedInstr[] = [];
-    let blockHasComparison = false;
 
     while (true) {
       const instr = instrs.get(pc);
@@ -205,16 +196,6 @@ export function extractDispatcherSelectors(code: Hex): DispatcherResult {
         }
       }
 
-      // receive() guard shape: CALLDATASIZE ISZERO PUSHn JUMPI
-      if (window.length >= 3) {
-        const [a, b, c] = window.slice(-3);
-        if (a!.opcode === CALLDATASIZE && b!.opcode === ISZERO && isPush(c!.opcode)) {
-          // c is the push whose value is the dest; the JUMPI is the next instruction, checked below via normal flow.
-          const after = instrs.get(pc + instr.len);
-          if (after && after.opcode === JUMPI) receiveDetected = true;
-        }
-      }
-
       // Dispatch comparison shape: PUSH4 <value> (EQ|GT|LT) PUSHn <dest> JUMPI.
       // The usual codegen dups the running selector value BEFORE pushing the
       // comparison constant (DUP1 PUSH4 <sel> EQ ...), which this 4-window
@@ -242,7 +223,6 @@ export function extractDispatcherSelectors(code: Hex): DispatcherResult {
         }
       }
       if (comparisonMatch) {
-        blockHasComparison = true;
         if (comparisonMatch.cmp.opcode === EQ) {
           const sel = ("0x" + (comparisonMatch.pushVal.pushHex ?? "0").padStart(8, "0")) as Hex;
           selectors.add(sel);
@@ -261,7 +241,6 @@ export function extractDispatcherSelectors(code: Hex): DispatcherResult {
           queue.push(Number(prev.pushValue));
         }
         if (instr.opcode === JUMPI) {
-          if (blockHasComparison) lastDispatchBlockStart = start;
           pc = pc + instr.len; // fallthrough branch of JUMPI continues in this block
           continue;
         }
@@ -280,50 +259,10 @@ export function extractDispatcherSelectors(code: Hex): DispatcherResult {
     };
   }
 
-  // Fallback heuristic: look at the block immediately following the last
-  // top-level dispatch comparison's fallthrough (i.e. what runs when no
-  // selector matched). If that block is short and terminates in a bare
-  // revert with no further comparisons or logic, no fallback is inferred;
-  // anything else (more instructions before terminating) is treated as a
-  // possible fallback body. Best-effort only — see file header.
-  let fallbackDetected = false;
-  if (lastDispatchBlockStart !== null) {
-    fallbackDetected = detectFallbackTrailer(instrs, visited, lastDispatchBlockStart);
-  }
-
   return {
     recognized: true,
     selectors: [...selectors].sort(),
     pivotComparisonCount,
-    receiveDetected,
-    fallbackDetected,
     blocksVisited: visited.size,
   };
-}
-
-/**
- * After the main comparison chain, Solidity emits either a bare
- * `PUSH1 0x00 DUP1 REVERT` / `PUSH1 0x00 PUSH1 0x00 REVERT` stub (no
- * fallback defined) or a longer reachable block (an actual fallback body).
- * This inspects the reachable instructions from the last dispatch block
- * onward and applies that shape test. Best-effort, not a CFG proof.
- */
-function detectFallbackTrailer(
-  instrs: Map<number, DecodedInstr>,
-  visited: Set<number>,
-  fromOffset: number,
-): boolean {
-  const trailerOffsets = [...visited].filter((o) => o >= fromOffset).sort((a, b) => a - b);
-  // Walk forward from the first terminator after fromOffset that isn't part of a comparison window.
-  for (const offset of trailerOffsets) {
-    const instr = instrs.get(offset)!;
-    if (TERMINATORS.has(instr.opcode)) {
-      // Bare stub is a handful of short push/dup instructions ending in REVERT/STOP
-      // with no further PUSH4 comparisons nearby.
-      const nearby = trailerOffsets.filter((o) => o <= offset && o >= offset - 8);
-      const hasComparison = nearby.some((o) => instrs.get(o)!.opcode === PUSH4);
-      return hasComparison || nearby.length > 5;
-    }
-  }
-  return false;
 }

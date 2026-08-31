@@ -27,10 +27,27 @@ export interface CapabilityDetection {
 }
 
 /**
- * `target` is passed only to decide the scan address; capability detection
- * always reads bytecode from the resolved address (the implementation for a
- * proxy) and records that address in every finding — never the proxy
- * address — per the day-2 brief's proxy-resolution requirement.
+ * Two different addresses are in play here and conflating them is a real
+ * correctness bug, so they are named and recorded separately:
+ *
+ *   scannedAddress — where the BYTECODE comes from. For a proxy this is the
+ *     implementation, because that's where the selectors actually live (the
+ *     proxy's own bytecode is just a delegatecall stub).
+ *   probedAddress — where the guard-probe eth_call is SENT. Always the
+ *     target/proxy itself, never the implementation. A delegatecall through
+ *     the proxy executes the implementation's code against the PROXY's
+ *     storage, which is where owner/role state lives; calling the
+ *     implementation directly executes the same code against the
+ *     implementation's own, usually uninitialized, storage. Verified live on
+ *     PAID Network: the proxy's owner() is 0x53bc21D3…, the implementation's
+ *     own owner() is address(0), yet both revert "Ownable: caller is not the
+ *     owner" for an unrelated caller. Probing the implementation and then
+ *     attributing that revert to the proxy's owner would be an attribution
+ *     the evidence doesn't support — exactly what weakest-link provenance
+ *     forbids — and would silently break wherever the two storages differ.
+ *
+ * This mirrors the day-1 invariant that authority state (owner, roles) is
+ * always read from the proxy, never the implementation.
  */
 export async function detectCapabilities(
   chain: ChainReader,
@@ -46,6 +63,9 @@ export async function detectCapabilities(
     taxonomyVersion,
     dispatcherRecognized,
     scannedAddress,
+    probedAddress: target,
+    selectorsExtracted: 0,
+    unmatchedSelectors: [],
     findings: [],
     needsManualVerification: [],
     evidence,
@@ -110,11 +130,19 @@ export async function detectCapabilities(
   const needsManualVerification: ManualVerificationEntry[] = [];
   const guardContext: GuardProbeContext = { authorityOwner, accessControlRoles };
 
+  const unmatchedSelectors: Hex[] = [];
+
   for (const selector of dispatcherResult.selectors) {
     const entry = lookupTaxonomy(selector);
-    if (!entry) continue; // unclassified selector — not a capability finding, see KNOWN EDGES
+    if (!entry) {
+      // Not in the taxonomy table — recorded, not silently dropped. "Unmatched"
+      // means "Ripcord has no entry for this selector," never "not privileged."
+      unmatchedSelectors.push(selector);
+      continue;
+    }
 
-    const probe = await probeGuard(chain, scannedAddress, entry.signature, guardContext);
+    // Probe the TARGET, not scannedAddress — see the header comment.
+    const probe = await probeGuard(chain, target, entry.signature, guardContext);
 
     if (probe.status === "no_auth_revert_observed") {
       needsManualVerification.push({
@@ -122,6 +150,7 @@ export async function detectCapabilities(
         signature: entry.signature,
         category: entry.category,
         scannedAddress,
+        probedAddress: target,
         reason: "no_auth_revert_observed",
         note: probe.note,
         probes: probe.evidence,
@@ -140,12 +169,23 @@ export async function detectCapabilities(
       category: entry.category,
       matchConfidence: entry.confidence,
       scannedAddress,
+      probedAddress: target,
       guard,
     });
   }
 
   return {
-    result: { taxonomyVersion, dispatcherRecognized: true, scannedAddress, findings, needsManualVerification, evidence },
+    result: {
+      taxonomyVersion,
+      dispatcherRecognized: true,
+      scannedAddress,
+      probedAddress: target,
+      selectorsExtracted: dispatcherResult.selectors.length,
+      unmatchedSelectors,
+      findings,
+      needsManualVerification,
+      evidence,
+    },
     unknowns,
   };
 }

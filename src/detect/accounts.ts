@@ -94,28 +94,44 @@ export interface PowerHolderSources {
  * classification logic.
  */
 export async function collectPowerHolders(chain: ChainReader, sources: PowerHolderSources): Promise<PowerHolder[]> {
-  const addresses = new Set<string>();
-  if (sources.owner) addresses.add(sources.owner);
-  if (sources.pendingOwner) addresses.add(sources.pendingOwner);
-  if (sources.proxyAdmin) addresses.add(sources.proxyAdmin);
-  for (const role of sources.accessControlRoles ?? []) {
-    for (const member of role.members) addresses.add(member);
-  }
-  for (const { address } of sources.capabilityHolders ?? []) addresses.add(address);
+  // Addresses reach this function in two different casings and comparing
+  // them raw would be a real bug: viem's decodeFunctionResult returns
+  // EIP-55 checksummed addresses (owner, pendingOwner, role members), while
+  // slotToAddress slices raw storage words and returns lowercase (proxy
+  // admin, implementation). A proxy whose admin IS its owner would
+  // otherwise produce two separate power-holder entries for one address,
+  // each carrying only half its viaCapabilities. Everything is therefore
+  // keyed on the lowercase form, while the first-seen casing is kept for
+  // display so the report still shows checksummed addresses where we have
+  // them.
+  const key = (a: string) => a.toLowerCase();
+  const eq = (a: string | null | undefined, b: string) => Boolean(a) && key(a!) === b;
+
+  const display = new Map<string, string>();
+  const remember = (a: string | null | undefined) => {
+    if (a && !display.has(key(a))) display.set(key(a), a);
+  };
+  remember(sources.owner);
+  remember(sources.pendingOwner);
+  remember(sources.proxyAdmin);
+  for (const role of sources.accessControlRoles ?? []) role.members.forEach(remember);
+  for (const { address } of sources.capabilityHolders ?? []) remember(address);
 
   const holders: PowerHolder[] = [];
-  for (const address of addresses) {
+  for (const [lower, shown] of display) {
     const viaCapabilities: string[] = [];
-    if (sources.owner === address) viaCapabilities.push("owner");
-    if (sources.pendingOwner === address) viaCapabilities.push("pendingOwner");
-    if (sources.proxyAdmin === address) viaCapabilities.push("proxyAdmin");
+    if (eq(sources.owner, lower)) viaCapabilities.push("owner");
+    if (eq(sources.pendingOwner, lower)) viaCapabilities.push("pendingOwner");
+    if (eq(sources.proxyAdmin, lower)) viaCapabilities.push("proxyAdmin");
     for (const role of sources.accessControlRoles ?? []) {
-      if (role.members.includes(address)) viaCapabilities.push(`accessControl:${role.name ?? role.role}`);
+      if (role.members.some((m) => key(m) === lower)) {
+        viaCapabilities.push(`accessControl:${role.name ?? role.role}`);
+      }
     }
     for (const cap of sources.capabilityHolders ?? []) {
-      if (cap.address === address) viaCapabilities.push(`capability:${cap.label}`);
+      if (key(cap.address) === lower) viaCapabilities.push(`capability:${cap.label}`);
     }
-    holders.push(await classifyAccount(chain, address as Hex, viaCapabilities));
+    holders.push(await classifyAccount(chain, shown as Hex, viaCapabilities));
   }
   return holders;
 }

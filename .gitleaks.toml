@@ -8,6 +8,12 @@ description = "Placeholders and non-secret fixtures"
 regexes = [
   '''your-mainnet-rpc-provider\.example''',
   '''YOUR_KEY''',
+  # Public, immutable mainnet contract addresses that appear in README examples
+  # and curated data. These are not credentials — they are the addresses the
+  # tool exists to read. Listed individually rather than allowlisting all
+  # 40-hex-char strings, which would mask real secrets of the same shape.
+  # (A `"token": "0x…"` key/value pair trips the generic-api-key heuristic.)
+  '''0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48''', # USDC
 ]
 paths = [
   '''\.env\.example$''',

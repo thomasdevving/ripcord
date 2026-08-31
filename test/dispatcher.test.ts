@@ -117,7 +117,11 @@ describe("extractDispatcherSelectors — hand-crafted shapes", () => {
     expect(result.pivotComparisonCount).toBe(1);
   });
 
-  it("detects a receive()-shaped empty-calldata guard", () => {
+  it("extracts selectors correctly past a receive()-shaped empty-calldata guard", () => {
+    // Ripcord does not report on fallback/receive presence (see KNOWN EDGES:
+    // proving a fallback body exists needs the CFG analysis we deliberately
+    // don't do). What matters here is that the empty-calldata guard sitting
+    // in front of the dispatcher doesn't derail selector extraction.
     const asm = new Asm();
     asm.calldatasize().iszero().push2Label("receive").jumpi();
     loadSelectorModern(asm);
@@ -129,20 +133,7 @@ describe("extractDispatcherSelectors — hand-crafted shapes", () => {
     const result = extractDispatcherSelectors(asm.assemble());
     expect(result.recognized).toBe(true);
     if (!result.recognized) return;
-    expect(result.receiveDetected).toBe(true);
-  });
-
-  it("does not claim receive() when no empty-calldata guard is present", () => {
-    const asm = new Asm();
-    loadSelectorModern(asm);
-    eqBranch(asm, 0x12345678, "fn_a");
-    revertStub(asm);
-    asm.label("fn_a").stop();
-
-    const result = extractDispatcherSelectors(asm.assemble());
-    expect(result.recognized).toBe(true);
-    if (!result.recognized) return;
-    expect(result.receiveDetected).toBe(false);
+    expect(result.selectors).toEqual(["0x12345678"]);
   });
 
   it("returns recognized:false for bytecode with no CALLDATALOAD-based selector-load shape", () => {

@@ -126,15 +126,27 @@ src/detect/
                    capabilities.ts routes OUT of normal findings into
                    needsManualVerification — never asserted as "unguarded."
   capabilities.ts (day 2) Orchestrates dispatcher + taxonomy + guardProbe for
-                   one address. Resolves the correct scan address first: the
-                   implementation for a confirmed proxy, but the TARGET's own
-                   bytecode when `proxy.pattern === "unknown"` (day-1's
-                   DELEGATECALL-found-but-unclassified case) — see KNOWN
-                   EDGES #3a for why those two isProxy-true cases must be
-                   handled differently. Guard attribution reads owner/
-                   AccessControl state from the ORIGINAL target, never the
-                   implementation (same storage-location reasoning as
-                   ownership.ts/accessControl.ts).
+                   one address. TWO addresses are in play and conflating them
+                   is a real bug (fixed after day 2, regression-tested):
+                     scannedAddress — BYTECODE source. The implementation for
+                       a confirmed proxy, but the TARGET's own bytecode when
+                       `proxy.pattern === "unknown"` (day-1's DELEGATECALL-
+                       found-but-unclassified case) — see KNOWN EDGES #3a for
+                       why those two isProxy-true cases differ.
+                     probedAddress  — guard-probe eth_call TARGET. Always the
+                       target/proxy, never the implementation: a delegatecall
+                       through the proxy runs the implementation's code
+                       against the PROXY's storage (where owner/role state
+                       lives), whereas calling the implementation directly
+                       runs it against the implementation's own, usually
+                       uninitialized, storage. Verified live on PAID Network:
+                       proxy owner() = 0x53bc21D3…, implementation owner() =
+                       address(0), yet BOTH revert "Ownable: caller is not
+                       the owner" — so probing the implementation and naming
+                       the proxy's owner would be an attribution the evidence
+                       doesn't support. Same reasoning as the day-1
+                       ownership.ts/accessControl.ts invariant.
+                   Both are recorded on every finding.
   dependencies.ts (day 2) One-level-deep dependency graph. Checks target
                    balances against the curated MAJOR_TOKENS list
                    (chain/majorTokens.ts); for each nonzero holding, reruns
@@ -185,7 +197,17 @@ only via delegatecall and is usually uninitialized.
 - `rulesetVersion` / `schemaVersion` are pinned constants in schema.ts and
   must be bumped whenever the taxonomy/detection rules or schema shape
   change — this is what makes "pinned ruleset version" a real claim in the
-  report rather than decoration. Both bumped to 0.2.0 on day 2.
+  report rather than decoration. Both bumped to 0.2.0 on day 2, then 0.3.0
+  when the guard-probe target was corrected (a detection-rule change) and
+  `probedAddress` was added (a schema-shape change).
+- **Selector accounting.** `capabilities.selectorsExtracted` always equals
+  `findings + needsManualVerification + unmatchedSelectors`. Every selector
+  the dispatcher recovers is either classified or explicitly listed as
+  unmatched — never silently dropped. This matters more than it looks: USDC
+  exposes 55 selectors of which the day-2 taxonomy classifies 7, and without
+  the count the report's "7 capabilities" would quietly read as "there are
+  only 7." Unmatched means "not in Ripcord's taxonomy table," never "not
+  privileged."
 - **Weakest-link provenance, encoded in types (day 2).** `GuardStatus`
   (schema.ts) is a zod discriminated union on `status`: only the
   `"attributed"` variant carries a `holders` field; `"guarded_unknown_holder"`
@@ -277,6 +299,19 @@ only via delegatecall and is usually uninitialized.
    `priceOracle()`, `priceFeed()`) against the target directly. A protocol
    exposing its oracle under a different name, or only reachable through an
    intermediate contract, produces no oracle dependency finding.
+7. **No fallback/receive reporting.** An early attempt at this was removed:
+   the `fallbackDetected` heuristic returned `true` for every real contract
+   tested (WETH9, USDC, WBTC, Aave) including ones with no fallback at all —
+   a constant-true flag, i.e. a flag with no evidence behind it, which rule 1
+   forbids. Proving a fallback body exists (vs. the compiler's default revert
+   stub) needs real CFG analysis, deliberately out of scope. `receive()`
+   detection via the `CALLDATASIZE ISZERO` idiom did work, but was dead code
+   (never surfaced in the report) and is misleading on its own — WETH9 accepts
+   plain ETH through an old-style unnamed fallback, not a `receive()`, so
+   "no receive" reads as "won't take your ETH" when the opposite is true.
+   Both removed; dispatcher.ts still walks past these guards correctly (tested),
+   it just doesn't report on them. Revisit for day 4 if the Exit Window metric
+   needs ETH-acceptance as an input.
 
 ## Day-by-day plan
 
