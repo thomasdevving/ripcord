@@ -65,6 +65,33 @@ export const SELECTORS = {
 } as const;
 
 /**
+ * Timelock accessors (day 3), derived from signatures like every other
+ * selector here — never hand-copied. Two dominant families exist and are
+ * detected by their delay accessor:
+ *   - OpenZeppelin TimelockController exposes `getMinDelay()` and is
+ *     AccessControl-based (PROPOSER_ROLE/EXECUTOR_ROLE/CANCELLER_ROLE/
+ *     TIMELOCK_ADMIN_ROLE, all already in KNOWN_ROLE_HASHES). Its delay can
+ *     only be changed by a scheduled `updateDelay(uint256)` operation the
+ *     timelock issues to itself — subject to the current delay.
+ *   - Compound / Governor-Bravo Timelock exposes `delay()` plus `admin()`,
+ *     `GRACE_PERIOD()`, `MINIMUM_DELAY()`, `MAXIMUM_DELAY()`, and changes its
+ *     delay via `setDelay(uint256)` (guarded by `msg.sender == address(this)`).
+ * `updateDelay`/`setDelay` are what the day-3 "can the admin shorten its own
+ * delay?" sub-finding probes for in bytecode — flagged, not fully solved
+ * (that's day 4).
+ */
+export const TIMELOCK_SELECTORS = {
+  getMinDelay: toFunctionSelector("getMinDelay()"),
+  delay: toFunctionSelector("delay()"),
+  admin: toFunctionSelector("admin()"),
+  GRACE_PERIOD: toFunctionSelector("GRACE_PERIOD()"),
+  MINIMUM_DELAY: toFunctionSelector("MINIMUM_DELAY()"),
+  MAXIMUM_DELAY: toFunctionSelector("MAXIMUM_DELAY()"),
+  updateDelay: toFunctionSelector("updateDelay(uint256)"),
+  setDelay: toFunctionSelector("setDelay(uint256)"),
+} as const;
+
+/**
  * EIP-1167 minimal proxy (clone) runtime bytecode, split around the 20-byte
  * target address so callers can match a prefix/suffix pair against arbitrary
  * runtime code. Two variants exist in the wild: the original push20 form and
