@@ -3,7 +3,9 @@
  * Every read Ripcord performs is pinned to a historical block, so a cached
  * result is permanently valid — there is no invalidation logic here on
  * purpose. This is what makes `pnpm ripcord scan` reproducible: a warm cache
- * makes zero network calls and returns byte-identical results.
+ * makes zero network calls, and — because a miss is normalized to the shape a
+ * hit returns (see `wrap`) — a COLD run and a warm run are byte-identical.
+ * Verified day 4 by wiping the cache and re-running all eight fixtures.
  */
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -60,6 +62,24 @@ function keyToPath(cacheDir: string, key: CacheKey): string {
   );
 }
 
+/**
+ * Round-trips a freshly-fetched value through the same serialization `set`
+ * uses, so a cache miss and a cache hit are indistinguishable to every caller.
+ * Bigints become strings and `undefined` object properties are dropped —
+ * exactly what reading the entry back off disk would produce.
+ *
+ * A top-level `undefined` is passed through untouched: `JSON.stringify`
+ * returns `undefined` for it (not the string "undefined"), which `JSON.parse`
+ * cannot consume. No current fetch function returns one, but crashing here
+ * over it would be a poor trade for a normalization step.
+ */
+export function normalizeToCachedShape<T>(value: T): T {
+  if (value === undefined) return value;
+  return JSON.parse(
+    JSON.stringify(value, (_k, v) => (typeof v === "bigint" ? v.toString() : v)),
+  ) as T;
+}
+
 export class DiskCache {
   constructor(
     private readonly cacheDir: string,
@@ -101,12 +121,43 @@ export class DiskCache {
     await writeFile(path, serialized, "utf8");
   }
 
-  /** Wraps a fetch function with get/set. The wrapped function is the single place cache semantics live. */
+  /**
+   * Wraps a fetch function with get/set. The wrapped function is the single
+   * place cache semantics live.
+   *
+   * THE INVARIANT THIS ENFORCES: a cache MISS must return exactly what a later
+   * cache HIT would return. Without normalization it did not, and the
+   * difference was not cosmetic — it was a type change. `set` serializes
+   * bigints to strings (JSON cannot represent a bigint), so a HIT yields
+   * `blockNumber: "12345"` while a MISS yielded the raw viem value
+   * `blockNumber: 12345n`. Same code, same block, different types, decided
+   * purely by whether someone had run the scan before.
+   *
+   * That surfaced on day 4 as a hard failure — a cold-cache scan of Ethena's
+   * sUSDe died with "Do not know how to serialize a BigInt" when the report
+   * reached `JSON.stringify`, because `getLogs` evidence embeds viem log
+   * objects whose `blockNumber` is a bigint. It only reproduced cold, and only
+   * when a log scan actually returned a log, which is why every warm rerun and
+   * every fixture with an empty log window had looked fine.
+   *
+   * The crash was the lucky part. The same defect silently made a COLD report
+   * differ from a WARM one in those evidence fields, which quietly weakens the
+   * determinism guarantee the whole cache exists to provide. Normalizing here —
+   * round-tripping a freshly-fetched value through the identical serialization
+   * `set` uses — makes cold and warm byte-identical by construction rather than
+   * by luck, and it applies even when caching is DISABLED so `--no-cache` can
+   * never take a different code path either.
+   *
+   * This is the fourth defect to enter through the cache boundary (see KNOWN
+   * EDGES #14 and the day-6 audit pass): the boundary is where "a value from
+   * the network" and "a value from disk" have to be indistinguishable, and
+   * every place they are not is a bug waiting for a cold run.
+   */
   async wrap<T>(key: CacheKey, fetchFn: () => Promise<T>): Promise<{ value: T; fromCache: boolean }> {
     const cached = await this.get<T>(key);
     if (cached.hit) return { value: cached.value, fromCache: true };
     const value = await fetchFn();
     await this.set(key, value);
-    return { value, fromCache: false };
+    return { value: normalizeToCachedShape(value), fromCache: false };
   }
 }
