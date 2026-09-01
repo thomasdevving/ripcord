@@ -834,5 +834,77 @@ which were genuinely privileged, report THAT percentage.
 - **Day 5.** Calibration against 10-15 real protocols; README/report polish.
   Published set filtered on `disclosure.publishable`. Report the FALSE-NEGATIVE
   rate, not a classification percentage — see "Taxonomy strategy" below.
-- **Day 6 (optional).** Watchtower: live monitoring of timelock queues,
-  alerting when a rule change is actually queued.
+
+  **STEP ZERO, BEFORE ANY CALIBRATION FIGURE IS RECORDED — NOT OPTIONAL:**
+  ```sh
+  rm -rf .cache/    # then re-run every target cold
+  ```
+  Day 4 found that an infrastructure failure on `eth_call` was being CACHED as
+  a contract revert (KNOWN EDGE #14). Ripcord reads a revert on `owner()` as
+  "this contract has no owner" — so any cache written before that fix can hold
+  a network timeout that now reads as FALSE-CLEAN, permanently, on every future
+  run against it. Generating fifteen calibration reports on top of such a cache
+  would risk publishing precisely the failure class this tool exists to catch,
+  and it is exactly what a judge would go looking for. The cache is gitignored,
+  so this is independent of any commit: wipe first, re-run cold, and only then
+  write a number down. Warm reruns after that point are fine — a cache built
+  entirely post-fix is trustworthy again.
+
+  **VERIFY THE `rolePrivilege` GATE IN BOTH DIRECTIONS.** The sUSDe finding
+  (KNOWN EDGE #18) is not a closed case, it is one instance of a class: an
+  AccessControl role can be privileged, decorative, or NEGATIVE (marking bad
+  actors, as `FULL_RESTRICTED_STAKER_ROLE` does). The two failure directions
+  are not symmetric and must not be treated as such:
+    - Marking a NON-privileged role as privileged = a false alarm. Annoying,
+      and visible — it appears in the report where someone can dispute it.
+    - Marking a genuinely PRIVILEGED role as unverified = real power silently
+      disappearing from the report. That is FALSE-CLEAN, the failure this
+      project cannot afford, and it is invisible by construction.
+  So for every role the gate labels `rolePrivilege: "unverified"` across the
+  calibration set, MANUALLY verify that it truly confers no privilege (read the
+  verified source, check what the role actually gates). This is a calibration
+  TASK with a recorded result per role, never an assumption. Report the count
+  of unverified roles checked and how many turned out to be genuinely
+  privileged — that number is the gate's false-negative rate and belongs
+  alongside the taxonomy's.
+
+  **DEMO BEATS (decided day 4, from the fixture results).** Run PAID and Comet
+  back to back — they are the pair that proves the tool DISCRIMINATES rather
+  than alarms, which is the test this jury will fire:
+    - PAID: the power is there ($748.90 moved, proven on a fork) and you cannot
+      leave — zero notice, and the live token's `paused()` reads TRUE at the
+      pinned block, so the exit is not slow, it is shut.
+    - Comet: the power is there and far larger ($540,604,938.71 moved, proven
+      on the same fork) BUT it is bound — a proven-binding 2-day notice against
+      an instant exit. Same engine, opposite verdict.
+  The two halves of the story come from two different engines (proof engine =
+  the SIZE of the power; exit window = whether you can escape it), and the
+  notice figure in the proof headline is read from the same exit-window ROUTE
+  the verdict uses, so they can never quote different delays. Say that out
+  loud — the internal consistency is the point, not a detail.
+  **Framing note for Aave:** present `undetermined` on a large protocol as the
+  tool REFUSING TO GUESS at a governance structure it has no verified model for
+  (the delay lives in Aave's PayloadsController, keyed by access level — see
+  KNOWN EDGE #17), never as "the tool does not work on large protocols." The
+  distinction is the whole honest-tool argument and it is lost if the framing
+  slips.
+- **Day 6.** **FIRST: the cache-boundary audit pass.** Three separate
+  false-clean results have now entered through the same seam — the
+  `authority.ts` `.catch(() => null)` that turned a network outage into "no
+  roles found" (consolidation pass), the docs overclaiming `getLogs`
+  completeness (consolidation pass), and an infrastructure failure cached as a
+  contract revert (day 4, KNOWN EDGE #14). Three instances of one class is a
+  systemic weakness, not coincidence: **the cache boundary is where a failure
+  gets laundered into a fact.** The mechanism is always the same — something
+  that is really "we could not read this" gets stored, and later read back, as
+  "we read this and it was empty/absent."
+  So: walk EVERY path where a cached value can be interpreted as clean, and
+  justify each one in writing. Concretely — every `catch` in the read path;
+  every place a revert, an empty result, a zero word, or an absent key is
+  treated as a fact about the contract rather than about the read; and every
+  cache write that can record a non-answer. Each site either gets a comment
+  explaining why the conflation is impossible there, or gets fixed. This is
+  most likely the last category of latent bugs in the project, and it is far
+  better closed by us than opened by a judge.
+  THEN (optional, if time remains): Watchtower — live monitoring of timelock
+  queues, alerting when a rule change is actually queued.
