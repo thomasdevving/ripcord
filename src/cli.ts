@@ -13,7 +13,7 @@ import { resolve } from "node:path";
 import { PinnedChain } from "./chain/client.js";
 import { describeProvider } from "./chain/rpcPreflight.js";
 import { buildReport } from "./report/build.js";
-import { reportSchema } from "./report/schema.js";
+import { reportSchema, type Report } from "./report/schema.js";
 import { runProofEngine } from "./fork/proofEngine.js";
 
 // .env is optional (RPC URLs may already be set in the shell environment);
@@ -99,6 +99,7 @@ program
     try {
       const report = await buildReport(chain, addressArg as Hex);
       process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+      printVerdict(report);
       // The disclosure gate goes to stderr, not stdout: stdout stays clean,
       // pipeable JSON, while a human running this interactively cannot miss
       // that the report must not be published as-is. Silence here would make
@@ -153,18 +154,21 @@ program
         target: addressArg as Hex,
         proxy: baseReport.proxy,
         authorityResolution: baseReport.authorityResolution,
+        exitWindow: baseReport.exitWindow,
         artifactDir: resolve(opts.artifactDir),
       });
 
       // Re-validate: attaching the proof must still produce a schema-valid report.
       const report = reportSchema.parse({ ...baseReport, proof });
       process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+      printVerdict(report);
 
       // Human-facing summary on stderr (stdout stays clean JSON).
       if (proof.produced) {
         console.error("\n✓ PROOF PRODUCED (sandbox fork — no mainnet tx sent)");
         console.error(`   ${proof.headline}`);
         console.error(`   impersonated: ${proof.impersonatedVia}`);
+        console.error(`   notice:       ${proof.noticeSeconds === null ? "not established" : proof.noticeSeconds + "s"} — ${proof.noticeNote}`);
         for (const d of proof.deltas) {
           const usd = d.usd === null ? "USD undetermined" : `$${d.usd.toFixed(2)}`;
           console.error(`   - ${d.symbol}: moved ${d.delta} (${usd}) via ${d.priceSource}`);
@@ -188,5 +192,58 @@ program
       process.exitCode = 1;
     }
   });
+
+
+/**
+ * The day-4 headline, on stderr so stdout stays clean pipeable JSON.
+ *
+ * Prints the verdict, both sides, and — always — what is MISSING when the
+ * verdict degrades. A reader skimming the terminal must not be able to see a
+ * confident-looking status without also seeing the gaps behind it, which is
+ * why `missing` and the unmeasured legs are printed at the same level as the
+ * headline rather than left in the JSON.
+ */
+function printVerdict(report: Report): void {
+  const v = report.verdict;
+  if (!v) return;
+  const mark =
+    v.status === "trapped" || v.status === "no_notice"
+      ? "\u2716"
+      : v.status === "can_exit_in_time" || v.status === "no_rule_change_route_found"
+        ? "\u2713"
+        : "\u25cb";
+  console.error(`\n${mark} EXIT WINDOW VERDICT: ${v.status.toUpperCase().replace(/_/g, " ")} (confidence: ${v.confidence})`);
+  console.error(`   ${v.statement}`);
+  const ew = report.exitWindow;
+  if (ew) {
+    console.error(`   exit window   : ${ew.assessment.status}${v.exitWindowSeconds ? ` (${v.exitWindowSeconds}s)` : ""}`);
+    for (const route of ew.routes) {
+      console.error(
+        `     - ${route.label} → ${route.effectiveControllerType ?? "unresolved"} ${route.effectiveController ?? ""}: ${route.noticeStatus}${
+          route.noticeSeconds !== null ? ` (${route.noticeSeconds}s)` : route.nominalDelaySeconds !== null ? ` (nominal ${route.nominalDelaySeconds}s, NOT proven binding)` : ""
+        }`,
+      );
+    }
+    for (const bypass of ew.bypasses) console.error(`     ! bypass: ${bypass.kind} on ${bypass.route ?? "protocol"}`);
+    if (ew.bypasses.length === 0 && ew.routes.length > 0) {
+      console.error(
+        `     (no bypasses found; ${ew.checksPerformed.filter((c) => c.performed).length}/${ew.checksPerformed.length} checks were performed — see exitWindow.checksPerformed for what was NOT checked)`,
+      );
+    }
+  }
+  const tte = report.timeToExit;
+  if (tte) {
+    console.error(`   time to exit  : ${tte.status}${tte.atLeastSeconds !== null ? ` (${tte.tight ? "" : "at least "}${tte.atLeastSeconds}s)` : ""}`);
+    for (const leg of tte.legs) {
+      console.error(`     - ${leg.kind}: ${leg.name} = ${leg.seconds === null ? "UNKNOWN duration" : `${leg.seconds}s`}${leg.mutableBy ? ` [settable via ${leg.mutableBy}]` : ""}`);
+    }
+    if (tte.blockable.status !== "not_observed") console.error(`     ! exit blockability: ${tte.blockable.status}`);
+    console.error(`     - liquidity depth: NOT MODELLED (see timeToExit.liquidity.reason)`);
+  }
+  if (v.missing.length > 0) {
+    console.error(`   MISSING (why this verdict is not crisper):`);
+    for (const m of v.missing) console.error(`     - ${m}`);
+  }
+}
 
 program.parseAsync(process.argv);

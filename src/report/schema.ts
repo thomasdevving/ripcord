@@ -7,8 +7,8 @@
  */
 import { z } from "zod";
 
-export const schemaVersion = "0.6.0";
-export const rulesetVersion = "0.5.0";
+export const schemaVersion = "0.7.0";
+export const rulesetVersion = "0.6.0";
 
 const hexString = z.string().regex(/^0x[0-9a-fA-F]*$/);
 const address = z.string().regex(/^0x[0-9a-fA-F]{40}$/);
@@ -530,6 +530,20 @@ export const proofSchema = z.object({
   attempted: z.boolean(),
   produced: z.boolean(),
   archetype: z.string(),
+  /**
+   * The notice period attached to the impersonated authority, from the day-4
+   * exit window. Added on day 4 to close an honesty gap the exit-window work
+   * exposed in the day-3 engine: anvil impersonation executes as the
+   * controller WITHOUT its queue, so a proof driven from a timelocked
+   * authority demonstrates a capability that in reality requires N seconds of
+   * public notice first. "This authority CAN move $X" was true and misleading
+   * at once. The fork cannot skip a delay it never simulated, so the delay is
+   * stated instead: null means no notice applies (or none was established, per
+   * `noticeNote`), "0" means a genuinely zero-notice authority.
+   */
+  noticeSeconds: z.string().nullable(),
+  /** How `noticeSeconds` was derived, or why it is null. Always populated. */
+  noticeNote: z.string(),
   /** The capability this proof demonstrates, e.g. "CODE_CHANGE via upgrade". */
   capability: z.string().nullable(),
   /** The address impersonated — the RESOLVED effective controller from authorityResolution, not the proxy's nominal owner. */
@@ -548,6 +562,406 @@ export const proofSchema = z.object({
   evidence: z.array(evidenceSchema),
 });
 export type Proof = z.infer<typeof proofSchema>;
+
+// --- exit window (day 4) ---
+
+/**
+ * Whether a detected delay is actually BINDING on the authority it is meant
+ * to constrain. This is the crux of day 4 and the single most dangerous place
+ * in the whole tool to be optimistic: reporting a comforting delay that an
+ * admin can cut to zero is worse than reporting nothing at all.
+ *
+ * Determined by PROBE, never by reading source or guessing from a name (see
+ * exitWindow.ts). The four outcomes are deliberately asymmetric — the only way
+ * to reach `proven_binding` is positive evidence that the delay mutator can be
+ * reached ONLY through the timelock itself (so changing the delay is itself
+ * subject to the current delay), or that no delay mutator exists in the
+ * timelock's own interface at all. Everything else degrades.
+ */
+export const delayBindingSchema = z.enum([
+  /** The delay cannot be shortened faster than the delay itself. Positive evidence required. */
+  "proven_binding",
+  /** A delay mutator is reachable by a role/owner directly — the delay is a setting, not a constraint. */
+  "shortenable",
+  /** A mutator exists but its guard could not be read. NEVER treated as binding. */
+  "cannot_determine",
+]);
+export type DelayBinding = z.infer<typeof delayBindingSchema>;
+
+/** How the binding determination was reached — the evidence class, stated so a reader can audit the inference. */
+export const delayBindingMethodSchema = z.enum([
+  /** Probing the mutator produced a "caller must be the timelock itself" revert. */
+  "self_call_gated_revert",
+  /** Probing the mutator produced an Ownable/AccessControl-shaped revert — a role holder can call it directly. */
+  "role_gated_revert",
+  /** Neither updateDelay nor setDelay appears in the timelock's own dispatcher. */
+  "no_mutator_present",
+  /** A mutator exists; no probe returned an interpretable revert. Not a claim either way. */
+  "probe_inconclusive",
+  /** The delay itself could not be read, so there is nothing to bind. */
+  "delay_unreadable",
+]);
+export type DelayBindingMethod = z.infer<typeof delayBindingMethodSchema>;
+
+export const timelockBindingSchema = z.object({
+  address,
+  kind: z.enum(["openzeppelin", "compound_bravo", "unknown"]),
+  delaySeconds: z.string().nullable(),
+  binding: delayBindingSchema,
+  method: delayBindingMethodSchema,
+  /**
+   * Whether the timelock contract is ITSELF behind a proxy. A delay enforced
+   * by upgradeable code is only as binding as the upgrade authority over that
+   * code — checked explicitly rather than assumed away.
+   */
+  timelockIsUpgradeable: z.boolean().nullable(),
+  note: z.string(),
+  evidence: z.array(evidenceSchema),
+});
+export type TimelockBinding = z.infer<typeof timelockBindingSchema>;
+
+/**
+ * What notice a single authority route imposes. `noticeSeconds` is only ever
+ * non-null when the status justifies a number: "immediate" (proven zero — an
+ * EOA or Safe imposes no TIME barrier) or "delayed" (a proven-binding delay).
+ * A delay that exists but isn't proven binding carries its raw value in
+ * `nominalDelaySeconds` and leaves `noticeSeconds` null, so an unverified
+ * delay can never be read as a window.
+ */
+export const routeNoticeStatusSchema = z.enum([
+  "immediate",
+  "delayed",
+  "delay_not_proven_binding",
+  "undetermined",
+]);
+export type RouteNoticeStatus = z.infer<typeof routeNoticeStatusSchema>;
+
+/**
+ * Whether an AccessControl role route was established to confer any privilege
+ * at all.
+ *
+ * This exists because of a false positive found live on Ethena's sUSDe: three
+ * plain EOAs hold `FULL_RESTRICTED_STAKER_ROLE`, and the day-1/day-3 authority
+ * seeding treats every role member as an authority — so the exit window
+ * initially reported "3 of 4 routes can change the rules with zero notice"
+ * about three addresses that are BLACKLISTED USERS and can change nothing.
+ * OpenZeppelin AccessControl roles are used as markers and tags at least as
+ * often as they are used for privilege (restricted-staker, KYC, whitelist
+ * patterns), and membership alone establishes neither.
+ *
+ * So a role route must EARN its place in the window arithmetic, by one of
+ * three pieces of real evidence:
+ *   - it is DEFAULT_ADMIN_ROLE, which is privileged by construction in OZ
+ *     AccessControl (it administers every role by default);
+ *   - it is the `adminRole` of some other role, so it can grant roles; or
+ *   - a day-2 capability probe attributed a guard to this exact role hash.
+ * Anything else is `unverified`, and an unverified route contributes
+ * `undetermined` — never a proven zero.
+ *
+ * That direction is deliberate and its safety rests on one property: an
+ * unverified route can never produce a confident window either. A single
+ * unverified route forces the whole assessment out of `binding`, so this can
+ * only ever turn a false "zero notice" into an honest "not established" — it
+ * can never turn a real risk into a clean bill.
+ */
+export const rolePrivilegeSchema = z.enum(["not_a_role", "verified", "unverified"]);
+export type RolePrivilege = z.infer<typeof rolePrivilegeSchema>;
+
+export const exitWindowRouteSchema = z.object({
+  /** The relation this route was reached by — "proxyAdmin", "owner", "accessControl:MINTER_ROLE". */
+  label: z.string(),
+  rolePrivilege: rolePrivilegeSchema,
+  /** Why the route was or was not credited with privilege. Always populated. */
+  rolePrivilegeNote: z.string(),
+  /** The depth-1 authority this route starts at. */
+  root: address,
+  effectiveController: address.nullable(),
+  effectiveControllerType: authorityNodeTypeSchema.nullable(),
+  terminationReason: terminationReasonSchema,
+  noticeStatus: routeNoticeStatusSchema,
+  noticeSeconds: z.string().nullable(),
+  nominalDelaySeconds: z.string().nullable(),
+  timelock: timelockBindingSchema.nullable(),
+  /**
+   * Capability categories this route is known to reach, cross-referenced from
+   * attributed capability findings (plus CODE_CHANGE for a transparent proxy's
+   * admin, which is what a ProxyAdmin is FOR). Best-effort and possibly
+   * incomplete — an empty array means "none were attributed to this holder,"
+   * never "this route is harmless."
+   */
+  categories: z.array(capabilityCategorySchema),
+  confidence: depthConfidenceSchema,
+  note: z.string(),
+});
+export type ExitWindowRoute = z.infer<typeof exitWindowRouteSchema>;
+
+/** A concrete way the real window could be shorter than a nominal delay suggests. */
+export const bypassKindSchema = z.enum([
+  /** A parallel authority route with no delay at all. A timelock on one path is worth nothing beside it. */
+  "ungated_route",
+  /** The delay mutator is role-gated, so the constrained party can shorten it directly. */
+  "delay_shortenable",
+  /** A delay mutator exists and its guard could not be read — cannot rule out shortening. */
+  "delay_mutability_undetermined",
+  /** The timelock contract is itself upgradeable — the delay is only as binding as that upgrade authority. */
+  "timelock_upgradeable",
+  /** The timelock's delay reads zero. */
+  "zero_delay",
+  /** A timelock-shaped contract whose delay could not be read at all. */
+  "delay_undetermined",
+  /** An authority route whose controller could not be resolved — an un-delayed path cannot be excluded. */
+  "unresolved_authority",
+]);
+export type BypassKind = z.infer<typeof bypassKindSchema>;
+
+export const bypassSchema = z.object({
+  kind: bypassKindSchema,
+  /** The route this bypass applies to, or null when it is protocol-wide. */
+  route: z.string().nullable(),
+  detail: z.string(),
+  confidence: depthConfidenceSchema,
+  evidence: z.array(evidenceSchema),
+});
+export type Bypass = z.infer<typeof bypassSchema>;
+
+/**
+ * The record that a check RAN. Without this, an empty `bypasses[]` is
+ * ambiguous between "we checked and found none" and "we never looked" — and
+ * the second reading, presented as the first, is exactly the false-clean
+ * result this project forbids. `performed: false` entries name the checks
+ * Ripcord deliberately does NOT make, so the gaps are enumerated rather than
+ * invisible.
+ */
+export const bypassCheckSchema = z.object({
+  check: z.string(),
+  description: z.string(),
+  performed: z.boolean(),
+  found: z.boolean(),
+  note: z.string(),
+});
+export type BypassCheck = z.infer<typeof bypassCheckSchema>;
+
+/**
+ * The exit-window assessment, as a discriminated union on `status` — the same
+ * type-level enforcement of weakest-link provenance that `GuardStatus` applies
+ * to capabilities, applied here to the metric itself. ONLY the `binding`
+ * variant carries `windowSeconds`. A delay that could not be proven binding is
+ * structurally incapable of appearing as a window: zod rejects the shape. That
+ * is deliberate, because "reported a comforting delay an admin can bypass" is
+ * the worst failure this tool has available to it.
+ *
+ *  - `binding`                    every route resolved, every delay proven binding, minimum > 0.
+ *  - `no_notice`                  at least one resolved route imposes ZERO delay. Proven, not assumed.
+ *  - `not_proven_binding`         a delay exists but binding-ness (or another route) is unresolved.
+ *  - `no_rule_change_route_found` no privileged route was found at all. NOT a claim of immutability.
+ *  - `undetermined`               nothing could be resolved; `missing` names what is absent.
+ */
+export const exitWindowAssessmentSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("binding"),
+    windowSeconds: z.string(),
+    confidence: depthConfidenceSchema,
+    statement: z.string(),
+  }),
+  z.object({
+    status: z.literal("no_notice"),
+    confidence: depthConfidenceSchema,
+    statement: z.string(),
+  }),
+  z.object({
+    status: z.literal("not_proven_binding"),
+    /** The raw delay observed, carried HERE and never as a window. */
+    nominalDelaySeconds: z.string().nullable(),
+    missing: z.array(z.string()),
+    confidence: depthConfidenceSchema,
+    statement: z.string(),
+  }),
+  z.object({
+    status: z.literal("no_rule_change_route_found"),
+    caveats: z.array(z.string()),
+    confidence: depthConfidenceSchema,
+    statement: z.string(),
+  }),
+  z.object({
+    status: z.literal("undetermined"),
+    missing: z.array(z.string()),
+    confidence: depthConfidenceSchema,
+    statement: z.string(),
+  }),
+]);
+export type ExitWindowAssessment = z.infer<typeof exitWindowAssessmentSchema>;
+
+export const exitWindowSchema = z.object({
+  rulesVersion: z.string(),
+  assessment: exitWindowAssessmentSchema,
+  routes: z.array(exitWindowRouteSchema),
+  bypasses: z.array(bypassSchema),
+  checksPerformed: z.array(bypassCheckSchema),
+  evidence: z.array(evidenceSchema),
+});
+export type ExitWindow = z.infer<typeof exitWindowSchema>;
+
+// --- time to exit (day 4) ---
+
+/**
+ * One measured (or explicitly unmeasured) leg of the journey out. Legs
+ * compose SEQUENTIALLY in the request → wait → claim shape these mechanisms
+ * almost always take, so the model sums measured legs — see timeToExit.ts for
+ * that assumption stated in full.
+ *
+ * `measured: false` is a first-class outcome: a two-step withdrawal whose
+ * duration Ripcord cannot read is a leg of UNKNOWN length, which makes the
+ * whole time-to-exit "at least X, possibly more." It is never quietly treated
+ * as zero, which would flatter the protocol in exactly the direction that
+ * matters.
+ *
+ * `mutableBy` records that the leg's own duration is a privileged SETTING
+ * rather than a constant — e.g. a cooldown an owner can raise. A time-to-exit
+ * that the same authority can extend is not a property of the protocol, it is
+ * a property of that authority's current choice, and the distinction belongs
+ * in the report.
+ */
+export const exitLegKindSchema = z.enum([
+  "cooldown",
+  "claim_window",
+  "two_step",
+  "queue",
+  "pause",
+]);
+export type ExitLegKind = z.infer<typeof exitLegKindSchema>;
+
+export const exitLegSchema = z.object({
+  kind: exitLegKindSchema,
+  /** The exact accessor or selector pair this leg was detected from. */
+  name: z.string(),
+  seconds: z.string().nullable(),
+  measured: z.boolean(),
+  confidence: depthConfidenceSchema,
+  /** Non-null when the leg's duration is itself settable by a privileged holder — names the setter. */
+  mutableBy: z.string().nullable(),
+  note: z.string(),
+  evidence: z.array(evidenceSchema),
+});
+export type ExitLeg = z.infer<typeof exitLegSchema>;
+
+/**
+ * Liquidity depth is deliberately NOT modelled. Estimating whether a given
+ * position could actually be sold requires pool discovery and depth
+ * integration across venues — an indexer, which this project explicitly does
+ * not have (same reason the major-token list is curated, KNOWN EDGE #5). A
+ * fabricated depth number would be the least defensible figure in the report,
+ * so the field exists to say so out loud rather than to be silently absent.
+ * `modelled` is a literal false: the schema cannot express a made-up number.
+ */
+export const liquidityDepthSchema = z.object({
+  modelled: z.literal(false),
+  reason: z.string(),
+});
+export type LiquidityDepth = z.infer<typeof liquidityDepthSchema>;
+
+/**
+ * Whether someone can stop you leaving. This is separate from the exit WINDOW
+ * on purpose: a pause guardian does not shorten the notice before a rule
+ * change, it removes the exit entirely, which is a time-to-exit fact of
+ * unbounded size. `currently_blocked` is read state at the pinned block;
+ * `blockable` is a capability finding (an ACCESS_RESTRICTION capability
+ * attributed to a holder) and is CAPABILITY, not prediction.
+ */
+export const exitBlockabilitySchema = z.object({
+  status: z.enum(["currently_blocked", "blockable", "not_observed", "undetermined"]),
+  by: z.array(address),
+  note: z.string(),
+  evidence: z.array(evidenceSchema),
+});
+export type ExitBlockability = z.infer<typeof exitBlockabilitySchema>;
+
+/**
+ * How long a holder needs to get out, as a LOWER BOUND with its gaps named.
+ *
+ *  - `measured`               every detected leg was read; `tight` is true.
+ *  - `lower_bound`            at least one detected leg is of unknown length.
+ *  - `no_mechanism_detected`  no cooldown/queue/two-step pattern was found AND
+ *                             the dispatcher was readable — a positive
+ *                             observation at medium confidence, not proof of
+ *                             instant exit.
+ *  - `blocked`                exit is halted at the pinned block; the time is
+ *                             unbounded, not large.
+ *  - `undetermined`           the interface could not be read at all.
+ *
+ * `atLeastSeconds` is always a floor. `tight` says whether Ripcord believes
+ * that floor is the whole story; it is the only thing that lets the verdict
+ * make a two-sided comparison, and it is deliberately hard to earn.
+ */
+export const timeToExitSchema = z.object({
+  rulesVersion: z.string(),
+  status: z.enum(["measured", "lower_bound", "no_mechanism_detected", "blocked", "undetermined"]),
+  atLeastSeconds: z.string().nullable(),
+  tight: z.boolean(),
+  legs: z.array(exitLegSchema),
+  /** Legs known to exist but not measurable, and legs never attempted — each named with why. */
+  unmeasuredLegs: z.array(z.object({ name: z.string(), reason: z.string() })),
+  liquidity: liquidityDepthSchema,
+  blockable: exitBlockabilitySchema,
+  confidence: depthConfidenceSchema,
+  statement: z.string(),
+  evidence: z.array(evidenceSchema),
+});
+export type TimeToExit = z.infer<typeof timeToExitSchema>;
+
+// --- the verdict (day 4) ---
+
+/**
+ * The headline judgement, composed from the two sides. It is DATA, with every
+ * input and its confidence attached, not a prose sentence bolted onto the end
+ * of a report.
+ *
+ * The comparison is `timeToExit >= exitWindow` → trapped, using >= and not >
+ * deliberately: if leaving takes exactly as long as the notice you are
+ * guaranteed, you finish leaving at the moment the change takes effect, which
+ * is not leaving BEFORE it. `marginSeconds` is published so a dead heat is
+ * visible as a dead heat rather than disappearing into a category.
+ *
+ * Every statement is CAPABILITY, not intent: "before the rules CAN change,"
+ * never "will."
+ *
+ *  - `trapped`                     both sides determined, timeToExit >= window.
+ *  - `no_notice`                   a zero-notice rule-change route exists, so no
+ *                                  exit speed can beat it — the comparison
+ *                                  collapses rather than being computed.
+ *  - `can_exit_in_time`            both sides determined and tight, timeToExit < window.
+ *  - `no_rule_change_route_found`  no privileged route was found to compare against.
+ *  - `undetermined`                either side is unresolved; `missing` names exactly what.
+ */
+export const verdictStatusSchema = z.enum([
+  "trapped",
+  "no_notice",
+  "can_exit_in_time",
+  "no_rule_change_route_found",
+  "undetermined",
+]);
+export type VerdictStatus = z.infer<typeof verdictStatusSchema>;
+
+export const verdictInputSchema = z.object({
+  name: z.string(),
+  value: z.string().nullable(),
+  confidence: depthConfidenceSchema,
+  source: z.string(),
+});
+export type VerdictInput = z.infer<typeof verdictInputSchema>;
+
+export const verdictSchema = z.object({
+  status: verdictStatusSchema,
+  statement: z.string(),
+  exitWindowSeconds: z.string().nullable(),
+  timeToExitSeconds: z.string().nullable(),
+  /** window - timeToExit. Negative or zero means you cannot finish leaving first. */
+  marginSeconds: z.string().nullable(),
+  confidence: depthConfidenceSchema,
+  /** What is missing when the verdict degrades — never left to be inferred from a vague status. */
+  missing: z.array(z.string()),
+  inputs: z.array(verdictInputSchema),
+});
+export type Verdict = z.infer<typeof verdictSchema>;
 
 // --- top-level report ---
 
@@ -580,6 +994,17 @@ export const reportSchema = z.object({
   dependencies: dependencyGraphSchema,
   /** Day-3 proof engine. Null when no proof was attempted for this scan. */
   proof: proofSchema.nullable(),
+  /**
+   * Day-4 Exit Window: how long between a rule change becoming possible and it
+   * taking effect, minus every way that delay can be cut. Nullable so a scan
+   * that could not run the stage at all still validates — but a null here means
+   * the stage FAILED (see errors[]), never that the window is fine.
+   */
+  exitWindow: exitWindowSchema.nullable(),
+  /** Day-4 time-to-exit model: cooldowns, queues, and what is explicitly not modelled. */
+  timeToExit: timeToExitSchema.nullable(),
+  /** Day-4 composed judgement. Null only when both sides failed to run. */
+  verdict: verdictSchema.nullable(),
   disclosure: disclosureSchema,
   unknowns: z.array(unknownEntrySchema),
   errors: z.array(errorEntrySchema),

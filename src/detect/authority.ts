@@ -355,6 +355,25 @@ function preferredChild(node: AuthorityNode): AuthorityNode {
   );
 }
 
+/**
+ * The terminal leaf of a root's PREFERRED branch — the same walk `derivePath`
+ * uses, exposed because the day-4 exit-window model needs the terminal NODE
+ * (for its TimelockInfo), not just the address the path records. Kept here, next
+ * to `preferredChild`, so the two can never drift apart: a path whose
+ * `effectiveController` came from one walk and whose delay came from another
+ * would be an attribution error of exactly the kind this project forbids.
+ */
+export function terminalNodeOf(root: AuthorityNode): AuthorityNode {
+  let node: AuthorityNode = root;
+  const guard = new Set<string>();
+  for (;;) {
+    if (guard.has(node.address.toLowerCase())) return node;
+    guard.add(node.address.toLowerCase());
+    if (node.terminal || node.children.length === 0) return node;
+    node = preferredChild(node);
+  }
+}
+
 function derivePath(root: AuthorityNode): AuthorityPath {
   const hops: AuthorityPath["hops"] = [];
   let node: AuthorityNode = root;

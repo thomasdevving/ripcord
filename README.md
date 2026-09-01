@@ -8,7 +8,7 @@ An audit answers "is there a bug in this code." It does not answer "who holds th
 
 Every DeFi hack of this shape is preventable *in advance* — the proxy pattern, the admin address, whether it's an EOA or a multisig, the threshold, whether a timelock sits in between: all of it is public, on-chain, and readable before you deposit. Nobody reads it, because nobody automates it.
 
-Ripcord reads it. Day 1 built the **Power Map**: a static scan of who holds privileged power over a contract. Day 2 adds **capability detection** — which specific privileged functions exist (upgrade, mint, freeze, sweep, ...) and, where the evidence supports it, who can call them — and a one-level **dependency graph**: a protocol can be impeccably governed and you still aren't sovereign if the tokens it holds, or the oracle it trusts, can be frozen or repriced by someone else. (The full system also includes a fork-simulation Proof Engine, the Exit Window metric — upgrade delay versus real time-to-exit — and live Watchtower monitoring. Those come later in the week; see [What's next](#whats-next).)
+Ripcord reads it. Day 1 built the **Power Map**: a static scan of who holds privileged power over a contract. Day 2 adds **capability detection** — which specific privileged functions exist (upgrade, mint, freeze, sweep, ...) and, where the evidence supports it, who can call them — and a one-level **dependency graph**: a protocol can be impeccably governed and you still aren't sovereign if the tokens it holds, or the oracle it trusts, can be frozen or repriced by someone else. Day 3 added recursive authority resolution and a fork-simulation **Proof Engine**. Day 4 added the **[Exit Window](#the-exit-window)** — how long you have between a rule change becoming possible and it taking effect, minus everyone who can shorten that, versus how long you actually need to leave. (Live Watchtower monitoring comes later in the week; see [What's next](#whats-next).)
 
 ## Quickstart
 
@@ -20,7 +20,27 @@ cp .env.example .env   # then fill in RPC_URL_1 with a real mainnet RPC URL
 pnpm ripcord scan 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2 --block 25800000 --chain 1
 ```
 
-That's WETH — the simplest possible case: no proxy, no owner, nothing to see. Real, unedited output (the bytecode blob in `proxy.evidence[0].rawValue` is truncated to `...` here purely for README readability; nothing else is touched):
+That's WETH — the simplest possible case: no proxy, no owner, nothing to see.
+
+Alongside the JSON on stdout, every scan prints the headline judgement to stderr. Real, unedited, from Compound III's USDC market at the same block:
+
+```
+$ pnpm ripcord scan 0xc3d688B66703497DAA19211EEdff47f25384cdc3 --block 25800000
+provider: Alchemy (eth-mainnet.g.alchemy.com), chain 1, block 25800000
+
+✓ EXIT WINDOW VERDICT: CAN EXIT IN TIME (confidence: medium)
+   You can exit before the rules CAN change: the notice period is 2 days, leaving takes 0s,
+   leaving 2 days of slack. Liquidity depth is not modelled, so a position large relative to
+   available liquidity could still take longer than the measured exit path.
+   exit window   : binding (172800s)
+     - proxyAdmin → timelock 0x6d903f6003cca6255D85CcA4D3B5E5146dC33925: delayed (172800s)
+     (no bypasses found; 6/8 checks were performed — see exitWindow.checksPerformed for what
+      was NOT checked)
+   time to exit  : no_mechanism_detected (0s)
+     - liquidity depth: NOT MODELLED (see timeToExit.liquidity.reason)
+```
+
+The full JSON report for WETH follows (the bytecode blob in `proxy.evidence[0].rawValue` is truncated to `...` here purely for README readability; nothing else is touched). **Note:** this capture is from day 1 and shows `schemaVersion 0.1.0`; the current schema is `0.7.0` and adds `capabilities`, `authorityResolution`, `proof`, `disclosure`, and the day-4 `exitWindow`/`timeToExit`/`verdict` blocks described below. Everything shown here is still present and unchanged in shape.
 
 ```json
 {
@@ -215,6 +235,88 @@ Non-negotiable honesty rules, because auditors will (and should) probe them:
 
 The dollar figure is a **floor**, not a ceiling: it counts only the curated major-token holdings the [dependency graph](#what-a-report-contains) knows to look for, priced from Chainlink — value in unlisted tokens, LP positions, or staked principal is invisible to it. See [Limitations](#limitations).
 
+## The Exit Window
+
+This is the metric the rest of the tool exists to compute.
+
+```
+EXIT WINDOW    how long between a rule change becoming possible and it taking
+               effect — the timelock delay, MINUS everyone who can bypass or
+               shorten it.
+TIME TO EXIT   how long you actually need to get out: cooldowns, withdrawal
+               queues, two-step unstakes, and whether the exit is open at all.
+VERDICT        if TIME TO EXIT >= EXIT WINDOW you cannot finish leaving before
+               the rules can change. You are structurally trapped while every
+               checklist shows green.
+```
+
+**A raw timelock delay is not an exit window.** Reporting a comforting "2 days" that an admin can cut to zero is the most damaging thing this tool could do, so every rule below leans the same way: a delay is worth nothing until positive evidence says otherwise.
+
+**The window is a property of a route, not of a protocol.** Every depth-1 authority — `proxyAdmin`, `owner`, each AccessControl role — is its own path to changing the rules, with its own notice period, and the protocol's window is the **minimum** across them. A two-day timelock on the upgrade path is worth nothing beside an un-delayed role that can reprice your collateral. `exitWindow.routes[]` shows each one, with the capability categories it is known to reach.
+
+**A multisig is not a delay.** A 3-of-11 Safe raises how many parties must agree and adds *exactly zero* notice. The exit window measures time, so a Safe- or EOA-terminated route is `immediate` — `noticeSeconds: "0"`. The threshold is real and reported, as the different (collusion) property it is.
+
+**Binding-ness is established by probing, not by reading names.** A contract exposing `getMinDelay()` is not thereby a real timelock. What makes a delay binding is that its own mutator can be reached *only through the timelock itself*, so shortening the delay is subject to the current delay. Ripcord probes `updateDelay`/`setDelay` from three unrelated addresses at the pinned block and reads the revert — the same technique day 2 uses for guards:
+
+| revert observed | conclusion |
+| --- | --- |
+| `TimelockController: caller must be timelock` (OZ v4) | `proven_binding` |
+| `Timelock::setDelay: Call must come from Timelock.` (Compound) | `proven_binding` |
+| `TimelockUnauthorizedCaller(address)` (OZ v5 custom error) | `proven_binding` |
+| an Ownable/AccessControl-shaped revert | `shortenable` — a role holder can change the delay directly |
+| no mutator in the timelock's own dispatcher | `proven_binding` — the delay is immutable through its interface |
+| anything else, or no interpretable revert | `cannot_determine` — **never** credited as binding |
+
+Each detected timelock is also checked for being *itself* behind a proxy: a delay enforced by replaceable code binds only as strongly as the authority over that code.
+
+**An unproven delay can never appear as a window — the schema enforces it.** `exitWindow.assessment` is a discriminated union in which only the `binding` variant *has* a `windowSeconds` field. A delay that could not be verified carries its raw value in `not_proven_binding.nominalDelaySeconds`; zod rejects any shape that would put it where a window goes. Same technique as `GuardStatus`, applied to the metric itself.
+
+**"None found" and "not checked" are different answers.** `exitWindow.bypasses[]` lists concrete ways the window could be shorter than nominal, and `exitWindow.checksPerformed[]` records every check that ran — including the ones Ripcord deliberately does *not* make (governance proposal paths, Safe modules), with `performed: false` and a note on why that gap does not make a reported delay optimistic. An empty `bypasses[]` beside a populated `checksPerformed[]` is a claim; on its own it would be a silence pretending to be one.
+
+**Role membership is not authority.** Found live on Ethena's sUSDe: three plain EOAs hold `FULL_RESTRICTED_STAKER_ROLE` — they are *blacklisted users*, and the first run of this metric reported them as three zero-notice authority routes. OpenZeppelin roles are used as markers (restricted-staker, KYC, whitelist) at least as often as permissions, so a role route now has to earn its place in the arithmetic: it must be `DEFAULT_ADMIN_ROLE`, administer another role, or have a capability guard attributed to its exact role hash. Anything else is `rolePrivilege: "unverified"` and contributes `undetermined` rather than a proven zero. That direction is safe because an unverified route *also* blocks the assessment from reaching `binding` — it can turn a false alarm into an honest "not established," never a real risk into a clean bill.
+
+### Time to exit
+
+Modelled as a **lower bound with its gaps named**, never a precise-looking value.
+
+- **Cooldowns and claim windows** are read from a versioned table of accessor signatures (selectors derived by viem, matched exactly). Measured waiting legs are *summed* — these mechanisms are sequential (request, wait, claim). A **claim window is a deadline, not a delay**: it is recorded with its real duration but adds nothing to the total, because it constrains *when* you must act, not how long you wait.
+- **Two-step exits** are detected structurally, from request/claim selector *pairs* in the dispatcher. One with no readable duration is a leg of **unknown** length — which makes the whole time-to-exit "at least X, possibly more," and is strictly more useful than guessing or ignoring it.
+- **A mutable cooldown is not a protocol constant.** Where a cooldown's own setter is present, the leg records `mutableBy`. sUSDe reads `cooldownDuration() = 86400` with `setCooldownDuration` in the dispatcher and `MAX_COOLDOWN_DURATION()` of 90 days: reporting "1 day" without that context would be true and misleading at once.
+- **Exit blockability.** A pause getter reading true at the pinned block makes time-to-exit *unbounded*, not merely long. Separately, an `ACCESS_RESTRICTION` capability attributed to a holder means the exit can be closed — reported as capability, never prediction. Kept on this side of the metric deliberately: a pause does not shorten the notice before a rule change, it removes the exit, and those are different failures.
+- **Liquidity depth is not modelled.** Estimating whether a position could actually be sold needs pool discovery and depth integration across venues — an indexer, which Ripcord does not have. `liquidity.modelled` is a literal `false` in the schema, so a fabricated number cannot be expressed. The consequence, stated wherever the metric is quoted: for a position large relative to available liquidity the real time-to-exit is **longer** than reported, never shorter.
+
+`tight` is what lets the verdict make a two-sided comparison, and it is deliberately hard to earn: a readable dispatcher, every detected leg measured, and nothing currently blocking. An unmeasured leg doesn't merely lower confidence, it removes `tight` — a number that hides a gap is worse than an admitted gap.
+
+### The verdict
+
+`verdict` is data, with every input and its confidence attached — not a sentence bolted onto the end of a report.
+
+| status | meaning |
+| --- | --- |
+| `trapped` | `timeToExit >= exitWindow`. You cannot finish leaving before the rules can change. |
+| `no_notice` | A zero-notice route exists, so the comparison **collapses** rather than being computed — there is nothing to be faster than. |
+| `can_exit_in_time` | Both sides determined and tight, and you have slack. |
+| `no_rule_change_route_found` | No privileged route was found to compare against. Not a claim of immutability. |
+| `undetermined` | Either side is unresolved; `missing[]` names exactly what. |
+
+Two rules worth arguing with, so they are stated plainly. **`>=`, not `>`:** if leaving takes exactly as long as the notice you are guaranteed, you finish exiting at the instant the change becomes effective — that is a dead heat, not an escape, and `marginSeconds` is published so it reads as one. **Uncertainty may push the verdict toward caution and never away from it:** a non-tight exit bound can still yield `trapped` (a floor above the window can only grow) but can never yield `can_exit_in_time` (an unmeasured leg could exceed the whole margin).
+
+Everything stays capability, not intent: *"you cannot exit before the rules CAN change,"* never *"will."*
+
+### What it says about the eight fixtures
+
+| target | verdict | why |
+| --- | --- | --- |
+| WETH9 | `no_rule_change_route_found` | No proxy, no owner, no roles. Nothing can change the rules — stated with the caveat that 11 unmatched selectors were never evaluated for privilege. |
+| Compound Comet cUSDCv3 | `can_exit_in_time` | ProxyAdmin → Compound Timelock, `delay() = 172800`, **proven binding** by probe. Withdrawal is synchronous. 2 days of notice against a 0s exit. |
+| Ethena sUSDe | `trapped` (margin **0**) | Owner is an OZ TimelockController with a proven-binding `getMinDelay() = 86400`; `cooldownDuration() = 86400`. An exact dead heat — you become free to move at the moment the change lands. |
+| PAID (both proxies) | `no_notice` | `proxyAdmin` resolves to a single EOA with zero delay. On the live token, `paused()` also reads **true** at this block: the exit is not slow, it is shut. |
+| Frax FXS | `no_notice` | `DEFAULT_ADMIN_ROLE` → a 3-of-5 Safe. A real collusion barrier, and no time barrier at all. |
+| Aave PoolAddressesProvider | `undetermined` | The chain ends at Aave's PayloadsController, which holds delays keyed by access level — a custom shape Ripcord does not recognise. No Aave-specific detector was added; over-fitting to one protocol's governance is worse than an honest "undetermined." |
+| Wasabi PerpManager | `undetermined` | A confirmed UUPS proxy whose upgrade authority does not resolve. Something can change this code and Ripcord cannot say who or how fast. |
+
+Full reasoning per fixture, including exactly what was read live, is in [`test/fixtures/targets.json`](test/fixtures/targets.json).
+
 ## What a report contains
 
 - `target` — address, whether it has code, bytecode size and hash.
@@ -223,7 +325,10 @@ The dollar figure is a **floor**, not a ceiling: it counts only the curated majo
 - `powerHolders` — every address that turned up holding some capability, classified as `eoa` / `safe` / `contract`, with the Safe's threshold and owners read directly if it is one, and a list of which capabilities route through it.
 - `capabilities` — every privileged function Ripcord's dispatcher-based selector extraction found (`scannedAddress` — the *implementation*, for a proxy) that matches the versioned taxonomy (`CODE_CHANGE` / `FUND_MOVEMENT` / `SUPPLY` / `ACCESS_RESTRICTION` / `ECONOMIC` / `AUTHORITY_CHANGE`), grouped by the power it grants, not by name. `findings[]` carries a `guard` — `attributed` (a real probe found an OZ Ownable/AccessControl-shaped revert and mapped it to a known holder), `guarded_unknown_holder` (auth-shaped revert, holder unmapped), or `inconclusive` (nothing interpretable) — never omitted, never a false attribution. Probes are always sent to `probedAddress` (the target/proxy), never to the implementation, so the storage the revert reflects is the storage the named holder actually sits in. A capability where probing observed no auth-shaped revert from any of three unrelated probe addresses is never a normal finding: it moves to `needsManualVerification[]`, which can say "no guard was detected" but never "this is unguarded" — see [Disclosure policy](#disclosure-policy).
 - `authorityResolution` — the day-3 recursion. Each direct power holder that is a contract is followed into *its* own authority until it terminates, producing a `roots[]` tree and a flattened `paths[]` projection you can read as a chain: `proxyAdmin → ProxyAdmin contract → EOA 0x…`. Every path carries its `effectiveController` (the address the proof engine would impersonate), a per-hop `depth`, and a `confidence` that degrades with depth (`high` at depth 1, `medium` at 2, `low` at 3) — an effective controller three hops away is never asserted with a direct owner's certainty. Every leaf states an explicit `terminationReason` (`eoa`/`safe`/`timelock`/`max_depth`/`cycle`/`no_authority_found`); a contract that resolves to a timelock records the delay (`getMinDelay()`/`delay()`), and cycles (A owns B owns A — seen live on Aave governance) are recorded in `cyclesDetected`, never looped on.
-- `proof` — null unless you ran `ripcord prove`. When present it is the fork-simulation result: `produced: true` with a dollar-denominated `deltas[]`/`totalUsd` when funds actually moved, or `produced: false` with a `failureReason` when the archetype didn't apply — never a fabricated result. See [Proving it](#proving-it-the-fork-simulation).
+- `proof` — null unless you ran `ripcord prove`. When present it is the fork-simulation result: `produced: true` with a dollar-denominated `deltas[]`/`totalUsd` when funds actually moved, or `produced: false` with a `failureReason` when the archetype didn't apply — never a fabricated result. Since day 4 it also carries `noticeSeconds`/`noticeNote`, sourced from the matching exit-window route: anvil impersonation executes *as* the controller and therefore skips any timelock queue, so a proof driven from a timelocked authority states the notice period it skipped rather than reading as an instant drain. See [Proving it](#proving-it-the-fork-simulation).
+- `exitWindow` — the day-4 metric. `assessment` is a discriminated union (`binding` / `no_notice` / `not_proven_binding` / `no_rule_change_route_found` / `undetermined`) in which **only** `binding` carries `windowSeconds`. `routes[]` lists every authority route with its notice period, `rolePrivilege`, and the capability categories it reaches; `bypasses[]` lists concrete ways the window could be shorter; `checksPerformed[]` records what was and was not checked, so an empty bypass list means "checked, found none" rather than "never looked." See [The Exit Window](#the-exit-window).
+- `timeToExit` — cooldowns, claim windows and two-step exit shapes as a **lower bound** (`atLeastSeconds`) plus `tight`, with `unmeasuredLegs[]` naming every gap, `blockable` saying whether the exit can be closed (and by whom), and `liquidity.modelled` a literal `false`.
+- `verdict` — the composed judgement: `status`, a capability-not-intent `statement`, both sides, `marginSeconds`, a weakest-link `confidence`, `missing[]` naming what is absent when it degrades, and `inputs[]` carrying every input with its own confidence and source.
 - `dependencies` — one level deep. `tokens[]`: major ERC20s (a curated list, not full discovery — see Limitations) the target holds a nonzero balance of, each re-scanned for its own proxy/authority/capabilities. `oracles[]`: addresses returned by a short list of common oracle-getter probes, with authority detection run on each.
 - `unknowns` — always present. Anything Ripcord could not determine, and why. **Never empty just because everything looked fine** — an upgradeable proxy with no identified authority produces an explicit unknowns entry precisely because "nothing found" must never read as "nothing to find."
 - `errors` — always present. Any RPC read that actually failed (as opposed to a contract-level revert, which is a normal, evidence-carrying result, not an error).
@@ -269,16 +374,20 @@ So Ripcord keeps a small, **versioned** cleared registry ([`src/chain/clearedReg
 - **Guard attribution is by probing, not proof.** Ripcord calls each detected capability's selector with zero-valued arguments from three deterministic, protocol-unrelated addresses and parses the revert for a recognized OpenZeppelin Ownable/AccessControl shape. A recognized auth-shaped revert is real, strong evidence. The absence of one is not proof of absence: the call may revert for an unrelated reason before ever reaching an auth check (observed live: PAID Network's `unpause()` reverts with `"Pausable: not paused"`, telling us nothing about its guard), the contract may use a custom scheme Ripcord doesn't recognize (observed live: USDC's `"FiatToken: caller is not a minter"`), or the RPC provider may not return revert data at all (observed live: USDT against a public RPC). All three produce the same `needsManualVerification` outcome — genuinely different situations that probing alone cannot distinguish. See [Disclosure policy](#disclosure-policy).
 - **AccessControl role discovery depends on the provider's `eth_getLogs` range, and degrades to a *labelled partial* on a small one.** Non-enumerable role membership is reconstructed by replaying `RoleGranted`/`RoleRevoked` from the contract's deployment block (found by binary search over `getCode`, not an indexer). Ripcord probes the provider's real getLogs block-range at startup and chunks to it; if covering the full history would exceed a request budget (1500 requests), it scans the most recent affordable window and marks `authority.accessControl.reconstruction.complete = false` with a lowered `confidence` and the exact block window it *did* cover — never a silent truncation, never a false "no roles." **Completeness is a function of range × budget vs. history depth, not just "is the provider paid."** The scan is `complete: true` only when the provider's probed range covers the contract's whole deployment-to-pinned history within the budget — roughly `range ≳ history / 750`. A deep-history contract can therefore be an honest labelled partial even on a paid provider: FXS (~14.3M-block history) needs a ~19k-block range, larger than Infura's 10k or Alchemy PAYG's 2k, so under the default budget it reconstructs as `complete: false / medium` on every provider tested (blastapi and Alchemy free tier are both capped at ~9 blocks; verified live — see [`test/fixtures/targets.json`](test/fixtures/targets.json)). Raising `MAX_LOG_REQUESTS` or using an unbounded-range provider is what flips it to `complete: true`. **Enumerable membership is authoritative regardless of scan completeness** — a partial scan only risks missing a role that was never touched in the covered window, never the membership of a role it did find. Separately, this only recovers roles that were *granted* via an event; a role wired only through a constructor default with no emission is invisible.
 - **The proof engine covers exactly one archetype.** `ripcord prove` simulates only `CODE_CHANGE → drain` on an EIP-1967 **transparent** proxy via `ProxyAdmin.upgrade(address,address)` — the path validated live end-to-end. UUPS (`upgradeToAndCall` on the proxy), beacon, and legacy-zos upgrade paths return `produced: false` with a stated reason rather than a guessed simulation. Deliberate depth-over-breadth, not an oversight. Two further caveats on the ones it does run: the drained dollar figure counts only the curated major-token holdings (a **floor**, see above), and because anvil impersonation ignores signatures, a proof whose resolved controller is a **Safe** impersonates the Safe address directly — demonstrating "this Safe *can*, if its signers collude," not "one key can." The PAID demo impersonates a plain EOA, so that caveat doesn't apply there.
-- **Timelock detection reads the delay but does not yet resolve who can shorten it.** Day 3 classifies OZ `TimelockController` (`getMinDelay()`) and Compound/Bravo (`delay()`+`admin()`) timelocks and records the delay; a timelock-shaped contract with no readable delay accessor is reported as "delay undetermined," never ignored. `adminCanShortenDelay` is a **flag only** — the presence of `updateDelay`/`setDelay` in the timelock's own bytecode (i.e. the delay is mutable at all). *Who* can reach that path and under what constraint is the day-4 Exit Window question, surfaced today, not solved.
+- **Whether a delay is binding is decided by exact-string revert matching, and one of the three recognized forms has not been seen live.** `proven_binding` requires the canonical OZ v4 or Compound self-call-gate phrase (both read from mainnet before the code was written) or OZ v5's `TimelockUnauthorizedCaller(address)` custom error — the last of which is derived via viem and asserted in tests, but no OZ v5 timelock appeared among the calibration targets, so it is derivation-correct rather than live-verified. Matching is tight on purpose; the only flexibility is the contract-name prefix Compound forks vary. A well-built custom timelock whose self-call gate is phrased differently degrades to `cannot_determine` — never credited as binding, which is the safe direction, but it does mean Ripcord can *understate* a good timelock.
+- **A protocol whose delay lives off the executor is not detected.** Verified live on Aave: the Governance v3 `Executor` that owns Aave v3's `PoolAddressesProvider` exposes four selectors and no delay accessor at all — the delay sits in the PayloadsController, keyed by governance access level. Ripcord classifies timelocks by delay accessor, so the whole chain terminates as `max_depth` and the window is `undetermined`. No Aave-shaped detector was added; over-fitting to one protocol's governance is worse than an honest non-answer.
+- **The exit window counts every authority route and takes the minimum, which is deliberately blunt.** An un-delayed `MINTER_ROLE` holder drives the protocol window to zero even where the upgrade path is perfectly timelocked — a rule change that dilutes you with no notice is still a rule change. Per-route `categories` show which power each route carries but do not weight the arithmetic, and an empty `categories` means "nothing was attributed to this holder," never "harmless."
+- **A privileged role whose guard probe was inconclusive can be under-reported.** The `rolePrivilege` gate (added after the sUSDe false positive above) requires evidence before a role route enters the window arithmetic, so a genuinely privileged role Ripcord couldn't attribute becomes `unverified` and contributes `undetermined` instead of a proven zero. Acceptable only because of a structural property: an unverified route *also* prevents the assessment from reaching `binding`, so the gate can never turn a real risk into a clean bill. `powerHolders` still lists every role member regardless.
+- **Time-to-exit reads a curated, finite table of exit mechanisms.** ~12 cooldown accessors and ~5 two-step request/claim selector pairs. A protocol whose exit delay is exposed under another name, or stored per-user rather than as a global constant, yields `no_mechanism_detected` — reported at medium confidence with the caveat attached, never as proof of instant exit. A block-denominated accessor on a chain with no seconds-per-block constant becomes an *unmeasured* leg rather than a converted guess.
+- **Liquidity depth is not modelled at all**, by decision — see [Time to exit](#time-to-exit). For a position large relative to available liquidity the real time-to-exit is longer than reported.
 - **The dependency graph's token list is curated, not discovered.** `src/chain/majorTokens.ts` checks balances against 6 hand-verified mainnet tokens (USDC/USDT/DAI/WETH/WBTC/stETH). A target holding a large position in any other token produces no dependency finding for it — Ripcord does not run an indexer or a balance-discovery service, by design.
 - **Oracle dependency detection only tries three getter names** (`oracle()`, `priceOracle()`, `priceFeed()`) directly against the target. A protocol exposing its oracle under a different name, or only reachable through an intermediate contract, produces no oracle finding.
 - **Dependency-graph depth is exactly one level, on purpose.** A token a target holds is scanned for its own authority/capabilities; that token's *own* dependencies (if it wraps or is backed by something else) are not followed. Deliberate, not an oversight — see the day-2 brief.
-- **No Exit Window metric yet, and no monitoring.** The Exit Window metric (delay vs. time-to-exit) is day-4 scope; live monitoring is day-6. Fork simulation landed on day 3 — see [Proving it](#proving-it-the-fork-simulation).
+- **No live monitoring.** Watchtower (alerting when a rule change is actually queued) is day-6 scope. The Exit Window metric landed on day 4 — see [The Exit Window](#the-exit-window).
 
 ## What's next
 
-- **Day 4** — the Exit Clock: the Exit Window metric itself — upgrade/admin-change delay (using the day-3 timelock delay and the `adminCanShortenDelay` flag as inputs) minus who can bypass or shorten it, versus real time-to-exit (unstaking periods, withdrawal cooldowns, queues, liquidity depth).
-- **Day 5** — calibration against 10-15 real protocols, README/report polish.
+- **Day 5** — calibration against 10-15 real protocols, README/report polish. Reporting the false-negative rate (which unmatched selectors were genuinely privileged), not a classification percentage.
 - **Day 6 (optional)** — Watchtower: live monitoring of timelock queues, alerting when a rule change is actually queued.
 
 ## Development
@@ -292,7 +401,7 @@ pnpm ripcord prove <address> --block <n> --chain <id> [--artifact-dir <dir>]
 
 `prove` additionally requires the [`anvil`](https://book.getfoundry.sh/) binary on PATH (Foundry); `src/fork/preflight.ts` fails loud with install instructions if it's missing, and a `prove` run that can't reach its archetype falls back to `produced: false` rather than erroring. The fork simulation itself is not exercised in CI (it needs a real RPC and a fork); its pure-logic parts — the drainer bytecode assembler and the proof engine's honesty-rail gates — are covered by network-free unit tests (`test/drainer.test.ts`, `test/proofEngine.test.ts`).
 
-`pnpm test` runs in CI without any RPC access. It covers derived constants (asserted against the EIP-1967 reference values), bytecode pattern matching, the dispatcher's reachability-limited selector extraction (hand-built bytecode fixtures for every dispatch shape, plus real mainnet bytecode saved under `test/fixtures/bytecode/` for WETH9/USDC/WBTC/Aave's `PoolAddressesProvider`, each checked against an independently-sourced full ABI), guard-probe revert parsing (real captured mainnet revert bytes plus viem-encoded synthetic OZ v5 custom errors), the adaptive `getLogs` chunking / partial-reconstruction logic (a fake provider with a simulated range limit), the cleared-registry disclosure gate (both directions), the cache's provider-independent key, and capability/proxy-resolution wiring — all against network-free fakes. End-to-end verification against the **six** pinned fixtures in [`test/fixtures/targets.json`](test/fixtures/targets.json) (including FXS, which exercises the OpenZeppelin AccessControl path) requires a real RPC URL and was run manually during development; every observed result is recorded in that file alongside each target. Each scan prints the active provider (`provider: <name> (<host>)`) to stderr — host only, never the key.
+`pnpm test` runs in CI without any RPC access. It covers derived constants (asserted against the EIP-1967 reference values), bytecode pattern matching, the dispatcher's reachability-limited selector extraction (hand-built bytecode fixtures for every dispatch shape, plus real mainnet bytecode saved under `test/fixtures/bytecode/` for WETH9/USDC/WBTC/Aave's `PoolAddressesProvider`, each checked against an independently-sourced full ABI), guard-probe revert parsing (real captured mainnet revert bytes plus viem-encoded synthetic OZ v5 custom errors), the adaptive `getLogs` chunking / partial-reconstruction logic (a fake provider with a simulated range limit), the cleared-registry disclosure gate (both directions), the cache's provider-independent key, the exit-window binding determination (against the exact revert bytes read from mainnet) and its role-privilege gate, the time-to-exit leg composition, the verdict's comparison rules, and capability/proxy-resolution wiring — all against network-free fakes. End-to-end verification against the **eight** pinned fixtures in [`test/fixtures/targets.json`](test/fixtures/targets.json) (including FXS for the OpenZeppelin AccessControl path, Compound's Comet for a proven-binding timelock, and Ethena's sUSDe for a cooldown-versus-timelock dead heat) requires a real RPC URL and was run manually during development; every observed result is recorded in that file alongside each target. Each scan prints the active provider (`provider: <name> (<host>)`) to stderr — host only, never the key.
 
 ## Security
 
@@ -302,5 +411,5 @@ pnpm ripcord prove <address> --block <n> --chain <id> [--artifact-dir <dir>]
 
 ## What was built during this hackathon
 
-Everything in this repository — first commit dated 2026-08-31, day 1 of a 7-day solo build. See `git log` for the incremental history: repo hygiene and CI first, then derived constants, the cached chain access layer, the report schema, each detector, orchestration, the CLI, and finally verified fixtures and two bugs (a Solidity-metadata false positive and a silent "clean-looking" unknown-authority case) found and fixed by actually running the tool against live mainnet data rather than only unit tests.
+Everything in this repository — first commit dated 2026-08-31, day 1 of a 7-day solo build. See `git log` for the incremental history: repo hygiene and CI first, then derived constants, the cached chain access layer, the report schema, each detector, orchestration, the CLI, and finally verified fixtures. Several of the bugs that mattered most were found only by running the tool against live mainnet data rather than by unit tests: a Solidity-metadata false positive and a silent "clean-looking" unknown-authority case (day 1); an authority-resolution `catch` that turned a network outage into "no roles found" (consolidation pass); and on day 4, an infrastructure failure being cached as a contract *revert* — a false-clean result reached through the cache rather than through a detector — plus a live false positive where blacklisted users holding an AccessControl marker role were reported as zero-notice authority routes. Each is written up in KNOWN EDGES in `CLAUDE.md`.
 # ripcord

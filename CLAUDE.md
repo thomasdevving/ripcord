@@ -195,6 +195,47 @@ src/detect/
                    timelock's own bytecode (the delay is not immutable); WHO can
                    reach it under WHAT constraint is day-4 Exit Window work.
 
+  exitWindow.ts   (day 4, THE METRIC) The exit window = notice before a rule
+                   change takes effect, MINUS every way it can be cut. Models it
+                   per ROUTE (each depth-1 authority is its own path to changing
+                   the rules) and takes the MINIMUM: a 2-day timelock on the
+                   upgrade path is worth nothing beside an un-delayed role. A
+                   Safe is NOT a delay — it raises how many parties must agree
+                   and adds zero notice, so a Safe/EOA-terminated route is
+                   `immediate` (noticeSeconds 0). Binding-ness is decided BY
+                   PROBE, like day-2 guards: probe updateDelay/setDelay from
+                   unrelated addresses and read the revert. A self-call gate
+                   ("caller must be timelock" / "Call must come from Timelock.",
+                   both read live before this was written; plus OZ v5's
+                   TimelockUnauthorizedCaller custom error, derived) proves the
+                   delay binds itself → `proven_binding`. An Ownable/AccessControl
+                   gate → `shortenable`. Anything else → `cannot_determine`,
+                   NEVER credited as binding. Also checks whether the timelock is
+                   itself behind a proxy. The assessment is a zod discriminated
+                   union in which ONLY the `binding` variant has `windowSeconds`,
+                   so an unproven delay is structurally incapable of appearing as
+                   a window (same technique GuardStatus uses). `checksPerformed[]`
+                   records every check that RAN, so an empty `bypasses[]` means
+                   "checked, found none" rather than "never looked"; checks
+                   Ripcord deliberately skips are listed with `performed:false`.
+  timeToExit.ts   (day 4) How long a holder actually needs to leave, as a LOWER
+                   BOUND with its gaps named. Versioned tables of cooldown/claim
+                   accessors (selectors derived via viem, matched exactly) and
+                   two-step request→claim selector PAIRS; current pause state read
+                   at the pinned block; exit-blockability composed from day-2
+                   ACCESS_RESTRICTION findings attributed to a holder. Measured
+                   waiting legs SUM (they are sequential); a claim window is a
+                   deadline, not a delay, and adds zero. `tight` is deliberately
+                   hard to earn — a readable dispatcher, every detected leg
+                   measured, nothing currently blocking — and only a tight bound
+                   lets the verdict make a two-sided comparison. Records
+                   `mutableBy` when a cooldown's own setter exists (sUSDe reads
+                   86400s with setCooldownDuration present and a 90-day max), so
+                   a time-to-exit the authority can raise is never reported as a
+                   protocol constant. Liquidity depth is `modelled: false` with
+                   the reason — a literal false in the schema, so a made-up
+                   number cannot be expressed.
+
   dependencies.ts (day 2) One-level-deep dependency graph. Checks target
                    balances against the curated MAJOR_TOKENS list
                    (chain/majorTokens.ts); for each nonzero holding, reruns
@@ -242,6 +283,19 @@ src/fork/
                    call-trace artifact. `ripcord prove <addr> --block` runs it.
 
 src/report/
+  verdict.ts      (day 4) PURE composition of the two sides — no chain access,
+                   so the rules an auditor will argue with are exhaustively
+                   unit-testable. `timeToExit >= exitWindow` → trapped, using >=
+                   because finishing your exit at the instant a change lands is
+                   not leaving BEFORE it (the live sUSDe case: 86400s cooldown vs
+                   an 86400s owner-timelock). `marginSeconds` is published so a
+                   dead heat reads as one. A zero window returns `no_notice`
+                   rather than `trapped`: the comparison COLLAPSES rather than
+                   being computed, and the reason is what an auditor checks.
+                   Uncertainty may push the verdict toward caution and never
+                   away: a non-tight exit bound can still yield `trapped` (a
+                   floor above the window can only grow) but never
+                   `can_exit_in_time`.
   schema.ts       Zod schema for the report. Source of truth for the shape
                    of everything below.
   build.ts        Orchestrates all detectors into one Report, validates
@@ -317,6 +371,36 @@ only via delegatecall and is usually uninitialized.
   ALWAYS carries a `failureReason` and never an intent claim. This is the same
   "unknown is never safe" rule applied to simulation: a missing proof is
   honest, a fabricated one is disqualifying.
+- **The exit window is a discriminated union, so an unproven delay cannot be
+  laundered into a number (day 4).** `exitWindowAssessmentSchema` is a zod
+  discriminated union on `status` in which ONLY the `binding` variant has a
+  `windowSeconds` field. A delay that exists but was not proven un-shortenable
+  carries its raw value in `not_proven_binding.nominalDelaySeconds` — zod
+  rejects any shape that would put it where a window goes. Same technique as
+  `GuardStatus`, applied to the metric itself, and for the same reason: this is
+  the single most dangerous place in the tool to be optimistic.
+- **`checksPerformed[]` makes an empty `bypasses[]` mean something (day 4).**
+  Without it, "no bypasses" is ambiguous between "we checked and found none"
+  and "we never looked" — and the second presented as the first is exactly the
+  false-clean result the project forbids. Every check records
+  `performed`/`found`; the checks Ripcord deliberately does NOT make
+  (governance proposal paths, Safe modules) are listed with `performed: false`
+  and a note explaining why the gap does not make a reported delay optimistic.
+- **`rolePrivilege` on every exit-window route (day 4).** AccessControl roles
+  are used as markers as often as permissions, so a role route must earn its
+  place in the window arithmetic with real evidence — see KNOWN EDGE #18 and
+  the sUSDe fixture.
+- **Time-to-exit is a LOWER BOUND with named gaps.** `atLeastSeconds` is always
+  a floor; `tight` says whether that floor is believed to be the whole story
+  and is deliberately hard to earn (readable dispatcher, every detected leg
+  measured, nothing currently blocking). Unmeasured legs appear by name in
+  `unmeasuredLegs[]` and are never treated as zero. `liquidity.modelled` is a
+  literal `false`.
+- **The verdict is data with its inputs attached, not prose (day 4).**
+  `verdict.inputs[]` carries every input with its own confidence and source;
+  `verdict.missing[]` names exactly what is absent whenever the verdict
+  degrades. `marginSeconds` is published so a dead heat reads as a dead heat.
+  `trapped` uses `timeToExit >= window`, not `>`.
 - **Disclosure gate, enforced by the schema, not by discipline.** Every
   report carries a `disclosure` block: `publishable` is false whenever
   `needsManualVerification` is non-empty at the target OR anywhere in the
@@ -501,8 +585,8 @@ only via delegatecall and is usually uninitialized.
     bytecode (the delay is mutable at all). WHO can reach that path and under
     what constraint (normally the current delay itself gates it) is day-4 Exit
     Window work, surfaced today as an open sub-finding, not resolved.
-13. **A capped provider makes the role scan slow and single-transient-fragile
-    (found live, consolidation pass).** On a small-range provider the partial
+13. **[RESOLVED day 4] A capped provider made the role scan slow and
+    single-transient-fragile (found live, consolidation pass).** On a small-range provider the partial
     scan still fires up to ~1500 getLogs requests (750 chunks × 2 events); on
     the Alchemy FREE key (10-block cap, per-request rate limit) a single
     transient/rate-limit failure among them raises a ChainReadError that — now
@@ -512,10 +596,121 @@ only via delegatecall and is usually uninitialized.
     need a re-run (cached successes persist, so a retry resumes and usually
     completes). No transient-retry/backoff is built in yet — deferred, because
     distinguishing a transient 429 from a permanent failure reliably is real
-    work and day-4 shouldn't wait on it. **Day 5's calibration set wants an
-    unbounded/large-range, un-rate-limited provider** so this path is fast and
-    single-pass; the FREE key is not sufficient. Accepted-limitation for now.
-14. **The cleared-dependency registry is small, manual, and mainnet-only
+    work and day-4 shouldn't wait on it. **FIXED ON DAY 4**, after this exact
+    failure aborted the new sUSDe fixture's scan twice. The deferral rested on
+    needing to classify transient-vs-permanent *reliably*; that requirement
+    dissolves once the classification is made ASYMMETRIC instead of accurate
+    (`withTransientRetry` in client.ts): a transient-looking error is retried a
+    bounded number of times with backoff, anything else fails immediately as
+    before, and after the last attempt the ORIGINAL error is rethrown unchanged.
+    A misclassification in either direction therefore costs time, never
+    correctness, and no result is ever softened into a default. Note the range
+    rejection probeMaxLogRange binary-searches on does NOT match the transient
+    patterns, so the preflight is not slowed. Residual: a capped provider is
+    still SLOW (~1500 requests per non-Enumerable AccessControl contract) —
+    day 5 still wants a large-range endpoint for speed, just no longer for
+    correctness.
+14. **[FIXED day 4, recorded because it was live for three days] An
+    infrastructure failure on `eth_call` was cached as a REVERT.** `PinnedChain.call`
+    and `probeCall` caught every error unconditionally and returned
+    `reverted: true` — so a rate-limited or timed-out `owner()` was recorded,
+    and then permanently CACHED, as "this function reverted," which is
+    indistinguishable from a contract that genuinely has no owner. That is the
+    exact false-clean result rule 3 forbids, reached through the cache rather
+    than through a detector. Found on day 4 while adding transient retries.
+    Both call sites now raise a ChainReadError when the failure looks
+    infrastructural, so it lands in `errors[]` where infrastructure belongs; a
+    genuine revert is untouched and still cached as evidence. Anyone with a
+    cache populated before this fix should be aware it may contain reverts that
+    were really network failures — delete `.cache/` if that matters for a
+    specific claim.
+
+15. **The exit window counts EVERY non-pendingOwner authority route, and takes
+    the minimum (day 4).** This is deliberately blunt in the conservative
+    direction: an un-delayed MINTER_ROLE holder drives the protocol window to
+    zero even if the upgrade path is perfectly timelocked, because a rule change
+    that dilutes you with no notice is a rule change. Per-route `categories`
+    (cross-referenced from attributed capability findings, plus CODE_CHANGE for
+    a transparent proxy's admin) let a reader see WHICH power each route
+    carries, but they do not weight the arithmetic. `categories` is best-effort
+    and often empty — an empty array means "nothing was attributed to this
+    holder," never "this route is harmless."
+
+16. **Self-call-gate recognition is exact-string matching, and one of the three
+    forms has not been observed live (day 4).** `proven_binding` requires
+    matching the canonical OZ v4 / Compound revert phrases (both read from
+    mainnet before the code was written) or OZ v5's
+    `TimelockUnauthorizedCaller(address)` custom error. The v5 selector is
+    DERIVED via viem and asserted in tests, but no OZ v5 timelock appeared among
+    the calibration targets at the pinned block, so it is derivation-correct
+    rather than live-verified. The matching is tight on purpose: the only
+    flexibility permitted is the contract-name prefix Compound forks vary
+    (`Timelock::` → `XTimelock::`). A nonstandard timelock with an equivalent
+    self-call gate phrased differently degrades to `cannot_determine` — it is
+    never credited as binding, which is the safe direction, but it does mean
+    Ripcord can understate a genuinely well-built custom timelock.
+
+17. **Custom governance that holds the delay OFF the executor is not detected
+    (day 4, verified live on Aave).** Aave Governance v3's `Executor`
+    (0x5300A1a1…, the owner of Aave v3's PoolAddressesProvider) exposes exactly
+    four selectors — `executeTransaction`/`owner`/`transferOwnership`/
+    `renounceOwnership` — and NO delay accessor whatsoever; the delay lives in
+    the PayloadsController, keyed by governance access level. Ripcord's
+    timelock detection classifies by delay accessor, so the whole Aave chain
+    terminates as `max_depth` and the window is `undetermined`. An Aave-shaped
+    detector was deliberately NOT added: it would be over-fitting to one
+    protocol's governance, and "undetermined, and here is the address we
+    stopped at" is the honest output. The same will apply to any protocol whose
+    delay is enforced by a contract other than the one holding the authority.
+
+18. **AccessControl role membership does not establish privilege, and the
+    day-4 gate that handles it can under-report (found live on sUSDe).**
+    Three plain EOAs hold `FULL_RESTRICTED_STAKER_ROLE` on Ethena's sUSDe: they
+    are BLACKLISTED USERS, and the first day-4 run reported them as three
+    zero-notice authority routes. The `rolePrivilege` gate now requires real
+    evidence (DEFAULT_ADMIN_ROLE, administers another role, or a capability
+    guard attributed to the role hash) before a role route enters the window
+    arithmetic. The residual limitation is the mirror image: a genuinely
+    privileged role whose guard probe came back inconclusive is also
+    `unverified`, so a real zero-notice route can be downgraded to
+    `undetermined`. That is acceptable ONLY because of a structural property —
+    an unverified route also blocks the assessment from ever reaching
+    `binding` — so the gate can turn a false alarm into an honest "not
+    established," never a real risk into a clean bill. Note this affects the
+    EXIT WINDOW only; `powerHolders` still lists every role member, as it
+    should.
+
+19. **The cooldown/queue tables are curated and finite (day 4).**
+    `timeToExit.ts` calls a versioned table of ~12 cooldown accessors and
+    matches ~5 two-step request/claim selector pairs. A protocol whose exit
+    delay is exposed under a name not in that table, or is stored per-user
+    rather than as a global constant, produces `no_mechanism_detected` — which
+    is reported at MEDIUM confidence with the caveat stated, never as proof of
+    instant exit. A block-denominated accessor on a chain with no
+    seconds-per-block constant yields an UNMEASURED leg rather than a converted
+    guess.
+
+20. **Liquidity depth is not modelled at all (day 4, by decision).** Whether a
+    given position could actually be sold needs pool discovery and depth
+    integration across venues — an indexer, which is out of scope for the same
+    reason the major-token list is curated (edge 5). `timeToExit.liquidity` is
+    `{ modelled: false, reason }`, and `modelled` is a zod literal `false` so
+    the schema cannot express a fabricated number. Consequence to state
+    whenever the metric is quoted: for a position large relative to available
+    liquidity the real time-to-exit is LONGER than reported, never shorter.
+
+21. **The proof engine still skips the queue; it now says so (day 4).** Anvil
+    impersonation executes AS the resolved controller, so a proof driven from a
+    timelocked authority demonstrates a capability that in reality requires N
+    seconds of public notice first. Found on Comet, where the day-3 engine
+    would have printed "CAN move $540,604,938.71" about a protocol with a
+    2-day binding timelock. Not fixed by refusing such proofs (that would hide
+    a real capability) but by attaching `noticeSeconds`/`noticeNote` to the
+    Proof, sourced from the exit-window ROUTE so proof and verdict cannot quote
+    different delays. The simulation itself is unchanged and still does not
+    model the queue.
+
+22. **The cleared-dependency registry is small, manual, and mainnet-only
     (consolidation pass).** `clearedRegistry.ts` documents design-not-bug
     capabilities for the 6 curated majors (USDC/USDT/DAI/WBTC/stETH; WETH has
     none). It is deliberately curated, not derived — a capability on a token or
@@ -615,10 +810,27 @@ which were genuinely privileged, report THAT percentage.
   the highest-value find; confidence vocabulary unified and `nameMatchSpecificity`
   renamed; every catch justified; publishable surface confirmed); docs/targets
   reconciled. schema 0.6.0 / ruleset 0.5.0.
-- **Day 4.** Exit Window metric: upgrade/admin-change delay (minus bypass/
-  shortcut paths) vs. real time-to-exit (unstaking, withdrawal cooldowns,
-  queues, liquidity depth). Lighter than originally planned because timelock
-  detection landed on day 3 — this is the buffer if the proof engine overruns.
+- **Day 4 (DONE).** The Exit Window metric. `src/detect/exitWindow.ts`:
+  per-ROUTE modelling with the protocol window as the MINIMUM across routes; a
+  Safe modelled as zero notice (a threshold is not a delay); binding-ness
+  established BY PROBE against the delay mutator (self-call gate → binding,
+  role gate → shortenable, anything else → cannot_determine, never credited);
+  timelock-is-itself-upgradeable checked; bypass list plus `checksPerformed[]`
+  so "none found" ≠ "not checked"; the assessment a discriminated union so an
+  unproven delay is structurally incapable of appearing as a window.
+  `src/detect/timeToExit.ts`: versioned cooldown/two-step tables, current pause
+  state, exit-blockability from day-2 ACCESS_RESTRICTION findings, a lower
+  bound with named gaps, liquidity explicitly not modelled.
+  `src/report/verdict.ts`: pure composition, `>=` so a dead heat is trapped,
+  degrades to `undetermined` with `missing[]` whenever either side is
+  unresolved. schema 0.7.0 / ruleset 0.6.0.
+  Two fixtures added (the original six had no genuine timelock): Compound Comet
+  cUSDCv3 (proven-binding 2-day window, instant exit → healthy) and Ethena
+  sUSDe (proven-binding 1-day window vs 1-day cooldown → an exact dead heat).
+  Three things day 4 found and fixed beyond its brief: an infra failure cached
+  as a revert (edge 14), the transient-retry deferral from edge 13, and the
+  proof engine presenting a timelocked capability as if immediate (edge 21).
+  149 tests green, all 8 fixtures schema-valid with errors=[].
 - **Day 5.** Calibration against 10-15 real protocols; README/report polish.
   Published set filtered on `disclosure.publishable`. Report the FALSE-NEGATIVE
   rate, not a classification percentage — see "Taxonomy strategy" below.

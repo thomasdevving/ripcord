@@ -13,6 +13,9 @@ import { collectPowerHolders } from "../detect/accounts.js";
 import { resolveAuthorityGraph, type AuthoritySeed } from "../detect/authority.js";
 import { detectCapabilities } from "../detect/capabilities.js";
 import { detectDependencies } from "../detect/dependencies.js";
+import { analyseExitWindow } from "../detect/exitWindow.js";
+import { analyseTimeToExit } from "../detect/timeToExit.js";
+import { composeVerdict } from "./verdict.js";
 import { taxonomyVersion } from "../detect/taxonomy.js";
 import { clearedCapability, clearedRegistryVersion } from "../chain/clearedRegistry.js";
 import {
@@ -24,6 +27,8 @@ import {
   type DependencyGraph,
   type Disclosure,
   type ErrorEntry,
+  type ExitWindow,
+  type TimeToExit,
   type Report,
   type UnknownEntry,
 } from "./schema.js";
@@ -244,6 +249,45 @@ export async function buildReport(chain: ChainReader, target: Hex): Promise<Repo
     }
   }
 
+  // --- Day 4: the Exit Window, the time to exit, and the verdict. ---
+  //
+  // Ordering matters and is not incidental. Both stages consume what the
+  // earlier ones produced (authorityResolution for the routes, capabilities
+  // for the guard attributions and the dispatcher's selector set), so they run
+  // AFTER them and never re-derive any of it — a route whose delay came from
+  // one walk of the authority tree and whose controller came from another
+  // would be exactly the kind of quiet attribution error this project forbids.
+  //
+  // A null result here means the STAGE FAILED (and said so in errors[]). It
+  // never means the window is fine: the verdict below degrades to
+  // "undetermined" on a null, it does not skip the question.
+  const exitWindowDetection = await runStage<{ result: ExitWindow | null; unknowns: UnknownEntry[] }>(
+    "exitWindow",
+    () =>
+      analyseExitWindow(chain, {
+        proxy,
+        authorityResolution,
+        capabilities: capabilityDetection.result,
+        accessControlRoles: accessControlDetection.result.roles,
+      }),
+    errors,
+    () => ({ result: null, unknowns: [] }),
+  );
+  unknowns.push(...exitWindowDetection.unknowns);
+
+  const timeToExitDetection = await runStage<{ result: TimeToExit | null; unknowns: UnknownEntry[] }>(
+    "timeToExit",
+    () => analyseTimeToExit(chain, target, { proxy, capabilities: capabilityDetection.result }),
+    errors,
+    () => ({ result: null, unknowns: [] }),
+  );
+  unknowns.push(...timeToExitDetection.unknowns);
+
+  // The verdict is a pure composition of the two above — no chain access, no
+  // new facts. If it ever needs a read of its own, that read belongs in one of
+  // the two stages so it carries evidence.
+  const verdict = composeVerdict(exitWindowDetection.result, timeToExitDetection.result);
+
   const dependencyDetection = await runStage(
     "dependencies",
     () => detectDependencies(chain, target),
@@ -305,6 +349,9 @@ export async function buildReport(chain: ChainReader, target: Hex): Promise<Repo
     capabilities: capabilityDetection.result,
     dependencies: dependencyDetection.result,
     proof: null,
+    exitWindow: exitWindowDetection.result,
+    timeToExit: timeToExitDetection.result,
+    verdict,
     disclosure: assessDisclosure(chain.chainId, capabilityDetection.result, dependencyDetection.result),
     unknowns,
     errors,
