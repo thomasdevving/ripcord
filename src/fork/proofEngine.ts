@@ -44,7 +44,7 @@ import { MAJOR_TOKENS } from "../chain/majorTokens.js";
 import { feedForToken } from "../chain/priceFeeds.js";
 import { slotToAddress } from "../detect/bytecode.js";
 import type { Evidence } from "../chain/client.js";
-import type { AuthorityResolution, Proof, ProofDelta, ProxyResult } from "../report/schema.js";
+import type { AuthorityPath, AuthorityResolution, ExitWindow, Proof, ProofDelta, ProxyResult } from "../report/schema.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -86,8 +86,55 @@ export interface ProofRequest {
   target: Hex;
   proxy: ProxyResult;
   authorityResolution: AuthorityResolution | null;
+  /**
+   * The day-4 exit window for this target. The proof engine does not compute
+   * it; it REPORTS it, because a fork cannot show a delay it never simulated.
+   * See `noticeForPath` below and the `noticeSeconds` note on proofSchema.
+   */
+  exitWindow: ExitWindow | null;
   /** Where to write the trace/reproduce artifacts. */
   artifactDir: string;
+}
+
+/**
+ * The notice period a given authority path imposes, looked up from the day-4
+ * exit-window routes rather than recomputed — one source of truth for the
+ * number, so the proof and the verdict can never quote different delays for
+ * the same authority.
+ *
+ * This exists because of a real gap day 4 exposed in the day-3 engine: anvil
+ * impersonation executes AS the resolved controller, which for a timelocked
+ * authority silently skips the queue that makes the timelock a timelock. The
+ * simulation is still correct about the CAPABILITY — the funds really do move,
+ * and that authority really can move them — but presenting it without the
+ * notice period would let a two-day public queue read as an instant drain.
+ * Rather than refuse such proofs (which would hide a real capability), the
+ * notice is stated in the headline, so the proof and the exit window agree by
+ * construction instead of by luck.
+ */
+function noticeForPath(exitWindow: ExitWindow | null, path: AuthorityPath): { seconds: string | null; note: string } {
+  if (!exitWindow) {
+    return { seconds: null, note: "no exit-window assessment was available for this scan, so the notice attached to this authority is unstated — not zero." };
+  }
+  const route = exitWindow.routes.find(
+    (r) => r.label === path.label && r.root.toLowerCase() === (path.hops[0]?.address ?? "").toLowerCase(),
+  );
+  if (!route) {
+    return { seconds: null, note: "this authority path has no matching exit-window route, so the notice it imposes is unstated — not zero." };
+  }
+  if (route.noticeStatus === "immediate") {
+    return { seconds: "0", note: `this authority imposes NO notice period (${route.note}) — the simulated capability is available immediately.` };
+  }
+  if (route.noticeStatus === "delayed" && route.noticeSeconds !== null) {
+    return {
+      seconds: route.noticeSeconds,
+      note: `IMPORTANT: this authority is subject to a proven-binding ${route.noticeSeconds}s delay. The fork impersonates the controller directly, which SKIPS that queue — so the simulation shows what the authority can ultimately do, not something it can do without notice. In reality the operation would be publicly visible for ${route.noticeSeconds}s before it could execute.`,
+    };
+  }
+  return {
+    seconds: null,
+    note: `the notice this authority imposes was NOT established (route status: ${route.noticeStatus}${route.nominalDelaySeconds ? `, nominal delay ${route.nominalDelaySeconds}s not proven binding` : ""}) — treat the simulated capability as of unknown urgency, not as immediate.`,
+  };
 }
 
 function ev(params: Record<string, unknown>, rawValue: unknown, block: bigint): Evidence {
@@ -108,6 +155,10 @@ function notProduced(
     impersonated: extra.impersonated ?? null,
     impersonatedVia: extra.impersonatedVia ?? null,
     authorityPath: extra.authorityPath ?? null,
+    noticeSeconds: extra.noticeSeconds ?? null,
+    noticeNote:
+      extra.noticeNote ??
+      "no proof was produced, so no notice period is attached; this is not a statement that the authority acts without notice.",
     deltas: [],
     totalUsd: null,
     headline: `Proof not produced: ${reason}`,
@@ -168,6 +219,10 @@ export async function runProofEngine(req: ProofRequest): Promise<Proof> {
   const impersonatedVia = `resolved upgrade authority: ${upgradePath.hops
     .map((h) => `${h.relation}:${h.address}`)
     .join(" → ")} (depth ${upgradePath.hops.length}, confidence ${upgradePath.confidence})`;
+  // Attach the notice to every outcome from here on, produced or not: a
+  // not-produced proof against a timelocked authority is a different fact from
+  // one against a bare key, and the reason matters even when nothing moved.
+  const pathNotice = noticeForPath(req.exitWindow, upgradePath);
 
   // --- Preflight anvil, then run in the sandbox. ---
   try {
@@ -208,7 +263,7 @@ export async function runProofEngine(req: ProofRequest): Promise<Proof> {
         req,
         archetype,
         "the target holds none of the priced major tokens at the pinned block, so there is no fund movement to demonstrate — the upgrade capability is real (see the static finding), but this archetype proves it by moving held value and there is none here",
-        { authorityPath: upgradePath, impersonated: getAddress(controller), impersonatedVia },
+        { authorityPath: upgradePath, impersonated: getAddress(controller), impersonatedVia, noticeSeconds: pathNotice.seconds, noticeNote: pathNotice.note },
       );
     }
 
@@ -222,6 +277,8 @@ export async function runProofEngine(req: ProofRequest): Promise<Proof> {
         authorityPath: upgradePath,
         impersonated: getAddress(controller),
         impersonatedVia,
+        noticeSeconds: pathNotice.seconds,
+        noticeNote: pathNotice.note,
       });
     }
     const receipt = await fork.client.getTransactionReceipt({ hash: deploy.hash });
@@ -243,7 +300,7 @@ export async function runProofEngine(req: ProofRequest): Promise<Proof> {
         req,
         archetype,
         `impersonated controller ${controllerAddr} could not execute ProxyAdmin.upgrade — the resolved authority may be wrong, or the admin uses a non-standard upgrade entrypoint`,
-        { authorityPath: upgradePath, impersonated: controllerAddr, impersonatedVia },
+        { authorityPath: upgradePath, impersonated: controllerAddr, impersonatedVia, noticeSeconds: pathNotice.seconds, noticeNote: pathNotice.note },
       );
     }
     evidence.push(ev({ action: "ProxyAdmin.upgrade(target, drainer)", from: controllerAddr, admin: req.proxy.admin }, upgrade.hash, req.blockNumber));
@@ -276,7 +333,7 @@ export async function runProofEngine(req: ProofRequest): Promise<Proof> {
         req,
         archetype,
         "upgrade executed but no token balance moved — the drainer ran without transferring, which should not happen for a held ERC20; treated as a failed proof rather than a $0 claim",
-        { authorityPath: upgradePath, impersonated: controllerAddr, impersonatedVia },
+        { authorityPath: upgradePath, impersonated: controllerAddr, impersonatedVia, noticeSeconds: pathNotice.seconds, noticeNote: pathNotice.note },
       );
     }
 
@@ -289,7 +346,18 @@ export async function runProofEngine(req: ProofRequest): Promise<Proof> {
     });
 
     const usdStr = totalUsd === null ? "an undetermined USD amount (a price feed could not be read — see deltas)" : `$${totalUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
-    const headline = `In simulation on a fork at block ${req.blockNumber}, the resolved upgrade authority ${controllerAddr} CAN move ${usdStr} of the tokens this contract holds, in one upgrade path.`;
+    // The notice clause is part of the headline, not a footnote. A drain proof
+    // driven from a two-day-timelocked authority and one driven from a bare
+    // EOA are different findings, and a reader who only reads the headline must
+    // not come away with the wrong one.
+    const notice = pathNotice;
+    const noticeClause =
+      notice.seconds === null
+        ? " The notice period this authority is subject to was NOT established — see noticeNote."
+        : notice.seconds === "0"
+          ? " This authority is subject to NO notice period: the capability is available immediately, with no public warning."
+          : ` This authority is subject to a proven-binding ${notice.seconds}s notice period, which the fork skips by impersonation — in reality the operation would be publicly visible for that long before it could execute.`;
+    const headline = `In simulation on a fork at block ${req.blockNumber}, the resolved upgrade authority ${controllerAddr} CAN move ${usdStr} of the tokens this contract holds, in one upgrade path.${noticeClause}`;
 
     return {
       attempted: true,
@@ -299,6 +367,8 @@ export async function runProofEngine(req: ProofRequest): Promise<Proof> {
       impersonated: controllerAddr,
       impersonatedVia,
       authorityPath: upgradePath,
+      noticeSeconds: notice.seconds,
+      noticeNote: notice.note,
       deltas,
       totalUsd,
       headline,

@@ -78,6 +78,75 @@ export interface ChainReader {
   }): Promise<{ logs: unknown[]; evidence: Evidence }>;
 }
 
+/**
+ * Bounded retry for TRANSIENT network failures (day 4, resolving KNOWN EDGE
+ * #13's deferred work).
+ *
+ * The AccessControl role scan can fire ~1500 `eth_getLogs` requests against a
+ * range-capped provider. On a rate-limited endpoint a single 429 among them
+ * raised a ChainReadError that — correctly, per "fail loud" — aborted the whole
+ * stage, so an ordinary scan needed several manual re-runs to complete. That is
+ * honest but useless, and it was blocking real validation.
+ *
+ * The reason this was deferred was the worry that a transient 429 cannot be
+ * told from a permanent failure reliably. That worry is answered by making the
+ * classification ASYMMETRIC rather than accurate:
+ *   - Something that looks transient is retried a bounded number of times.
+ *     If it was actually permanent, we fail loud anyway, just later.
+ *   - Anything else fails immediately, exactly as before.
+ * So a misclassification in either direction costs time, never correctness, and
+ * no result is ever softened into a default. Crucially this is NOT a catch that
+ * swallows: after the last attempt the original error is rethrown unchanged.
+ *
+ * A provider's getLogs RANGE rejection must NOT be caught here — probeMaxLogRange
+ * binary-searches on exactly that rejection, and retrying it would triple the
+ * cost of every scan's preflight. Range errors do not match the patterns below.
+ */
+const TRANSIENT_PATTERNS = [
+  /429/,
+  /rate.?limit/i,
+  /too many requests/i,
+  /timeout/i,
+  /timed out/i,
+  /ETIMEDOUT/,
+  /ECONNRESET/,
+  /ECONNREFUSED/,
+  /socket hang up/i,
+  /service unavailable/i,
+  /bad gateway/i,
+  /\b50[0234]\b/,
+];
+
+function looksTransient(err: unknown): boolean {
+  let cur: unknown = err;
+  for (let depth = 0; cur && depth < 10; depth++) {
+    const message = (cur as { message?: unknown }).message;
+    if (typeof message === "string" && TRANSIENT_PATTERNS.some((p) => p.test(message))) return true;
+    const status = (cur as { status?: unknown }).status;
+    if (typeof status === "number" && (status === 429 || status >= 500)) return true;
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
+const RETRY_ATTEMPTS = 4;
+const RETRY_BASE_MS = 400;
+
+/** Runs `fn`, retrying only transient-looking failures with exponential backoff. Rethrows the ORIGINAL error when attempts run out. */
+async function withTransientRetry<T>(fn: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      if (!looksTransient(err) || attempt === RETRY_ATTEMPTS - 1) throw err;
+      await new Promise((r) => setTimeout(r, RETRY_BASE_MS * 2 ** attempt));
+    }
+  }
+  throw lastError;
+}
+
 /** Walks a thrown error's `.cause` chain looking for raw revert bytes (viem nests the RPC error several levels deep). */
 function extractRevertData(err: unknown): Hex | undefined {
   let cur: unknown = err;
@@ -135,7 +204,7 @@ export class PinnedChain implements ChainReader {
       async () => {
         this.networkCallsMade++;
         try {
-          return (await this.client.getCode({ address, blockNumber })) ?? "0x";
+          return await withTransientRetry(async () => (await this.client.getCode({ address, blockNumber })) ?? "0x");
         } catch (err) {
           throw new ChainReadError("getCode", `getCode(${address}) at block ${blockNumber} failed`, err);
         }
@@ -151,7 +220,7 @@ export class PinnedChain implements ChainReader {
       async () => {
         this.networkCallsMade++;
         try {
-          return (await this.client.getCode({ address, blockNumber: this.blockNumber })) ?? "0x";
+          return await withTransientRetry(async () => (await this.client.getCode({ address, blockNumber: this.blockNumber })) ?? "0x");
         } catch (err) {
           throw new ChainReadError("getCode", `getCode(${address}) failed`, err);
         }
@@ -175,7 +244,9 @@ export class PinnedChain implements ChainReader {
       async () => {
         this.networkCallsMade++;
         try {
-          const result = await this.client.getStorageAt({ address, slot, blockNumber: this.blockNumber });
+          const result = await withTransientRetry(() =>
+            this.client.getStorageAt({ address, slot, blockNumber: this.blockNumber }),
+          );
           return result ?? ("0x" + "0".repeat(64) as Hex);
         } catch (err) {
           throw new ChainReadError("getStorageAt", `getStorageAt(${address}, ${slot}) failed`, err);
@@ -196,11 +267,28 @@ export class PinnedChain implements ChainReader {
       async () => {
         this.networkCallsMade++;
         try {
-          const result = await this.client.call({ to: address, data, blockNumber: this.blockNumber });
+          const result = await withTransientRetry(() =>
+            this.client.call({ to: address, data, blockNumber: this.blockNumber }),
+          );
           return { result: result.data, reverted: false };
-        } catch {
-          // A revert is a legitimate, informative outcome (e.g. `owner()` not implemented)
-          // — it is cached like any other result, not thrown as a ChainReadError.
+        } catch (err) {
+          // A revert is a legitimate, informative outcome (e.g. `owner()` not
+          // implemented) — it is cached like any other result, not thrown as a
+          // ChainReadError.
+          //
+          // But an INFRASTRUCTURE failure must never take that path. This catch
+          // used to be unconditional, which meant a rate-limited or timed-out
+          // eth_call was recorded — and permanently CACHED — as "this function
+          // reverted." That is the exact false-clean result rule 3 forbids: a
+          // transient 429 on `owner()` would have become a cached "no owner,"
+          // indistinguishable from a contract that genuinely has none, for every
+          // future run against that cache. Found on day 4 while adding transient
+          // retries. A transient-looking failure is now retried and, if it still
+          // fails, raised as a ChainReadError so the caller records it in
+          // errors[] where infrastructure belongs.
+          if (looksTransient(err)) {
+            throw new ChainReadError("call", `eth_call(${address}) failed for infrastructure reasons, not a revert`, err);
+          }
           return { result: undefined, reverted: true };
         }
       },
@@ -242,9 +330,19 @@ export class PinnedChain implements ChainReader {
       async () => {
         this.networkCallsMade++;
         try {
-          const result = await this.client.call({ to: address, data, account: from, blockNumber: this.blockNumber });
+          const result = await withTransientRetry(() =>
+            this.client.call({ to: address, data, account: from, blockNumber: this.blockNumber }),
+          );
           return { reverted: false, revertData: undefined as Hex | undefined, result: result.data };
         } catch (err) {
+          // Same rule as `call` above: an infrastructure failure is not a
+          // revert. Caching one as `reverted: true, revertData: undefined`
+          // would look identical to "the provider returned no revert data"
+          // (KNOWN EDGE #4) and would silently degrade a guard attribution to
+          // inconclusive forever.
+          if (looksTransient(err)) {
+            throw new ChainReadError("probeCall", `eth_call(${address}) probe failed for infrastructure reasons, not a revert`, err);
+          }
           return { reverted: true, revertData: extractRevertData(err), result: undefined as Hex | undefined };
         }
       },
@@ -278,12 +376,14 @@ export class PinnedChain implements ChainReader {
       async () => {
         this.networkCallsMade++;
         try {
-          return await this.client.getLogs({
-            address: params.address,
-            event: parseAbiItem(params.event) as never,
-            fromBlock: params.fromBlock,
-            toBlock: params.toBlock,
-          });
+          return await withTransientRetry(() =>
+            this.client.getLogs({
+              address: params.address,
+              event: parseAbiItem(params.event) as never,
+              fromBlock: params.fromBlock,
+              toBlock: params.toBlock,
+            }),
+          );
         } catch (err) {
           throw new ChainReadError("getLogs", `getLogs(${params.event}, ${params.fromBlock}-${params.toBlock}) failed`, err);
         }
