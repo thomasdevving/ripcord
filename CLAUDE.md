@@ -710,6 +710,31 @@ only via delegatecall and is usually uninitialized.
     different delays. The simulation itself is unchanged and still does not
     model the queue.
 
+23. **[FIXED day 4, found by the mandated cold re-run] A cache MISS returned a
+    different TYPE than a cache HIT.** `DiskCache.set` serializes bigints to
+    strings because JSON has no bigint, but `wrap` handed back the raw fetched
+    value on a miss — so the same pinned read produced `blockNumber: 12345n`
+    cold and `blockNumber: "12345"` warm. Surfaced as a hard failure ("Do not
+    know how to serialize a BigInt") on a cold scan of sUSDe, whose `getLogs`
+    evidence embeds real viem log objects; it had never reproduced because
+    every previous run was warm, and the one other log-scanning fixture (FXS)
+    happens to cover a window containing no matching events, so its evidence
+    arrays are empty and carry no bigint. The crash was the lucky part — the
+    same defect silently made a COLD report differ from a WARM one in those
+    evidence fields, quietly weakening the determinism guarantee the cache
+    exists to provide. Fixed by normalizing on the miss path (`normalizeToCachedShape`):
+    a freshly-fetched value is round-tripped through the identical
+    serialization `set` uses, so miss and hit are indistinguishable BY
+    CONSTRUCTION rather than by luck, including when caching is disabled so
+    `--no-cache` cannot take a different code path either. Pinned by tests in
+    test/cache.test.ts. **This is the FOURTH defect to enter through the cache
+    boundary** (see #14 and the day-6 audit pass) and the first found before
+    that audit ran — which is itself evidence the audit is correctly scoped.
+    The general lesson, now stated explicitly: the cache boundary is where "a
+    value from the network" and "a value from disk" must be
+    INDISTINGUISHABLE — in type, in shape, and in meaning — and every place
+    they are not is a bug waiting for a cold run.
+
 22. **The cleared-dependency registry is small, manual, and mainnet-only
     (consolidation pass).** `clearedRegistry.ts` documents design-not-bug
     capabilities for the 6 curated majors (USDC/USDT/DAI/WBTC/stETH; WETH has
@@ -888,23 +913,31 @@ which were genuinely privileged, report THAT percentage.
   KNOWN EDGE #17), never as "the tool does not work on large protocols." The
   distinction is the whole honest-tool argument and it is lost if the framing
   slips.
-- **Day 6.** **FIRST: the cache-boundary audit pass.** Three separate
-  false-clean results have now entered through the same seam — the
-  `authority.ts` `.catch(() => null)` that turned a network outage into "no
-  roles found" (consolidation pass), the docs overclaiming `getLogs`
-  completeness (consolidation pass), and an infrastructure failure cached as a
-  contract revert (day 4, KNOWN EDGE #14). Three instances of one class is a
-  systemic weakness, not coincidence: **the cache boundary is where a failure
-  gets laundered into a fact.** The mechanism is always the same — something
-  that is really "we could not read this" gets stored, and later read back, as
-  "we read this and it was empty/absent."
-  So: walk EVERY path where a cached value can be interpreted as clean, and
-  justify each one in writing. Concretely — every `catch` in the read path;
-  every place a revert, an empty result, a zero word, or an absent key is
-  treated as a fact about the contract rather than about the read; and every
-  cache write that can record a non-answer. Each site either gets a comment
-  explaining why the conflation is impossible there, or gets fixed. This is
-  most likely the last category of latent bugs in the project, and it is far
-  better closed by us than opened by a judge.
+- **Day 6.** **FIRST: the cache-boundary audit pass.** FOUR separate defects
+  have now entered through the same seam — the `authority.ts` `.catch(() => null)`
+  that turned a network outage into "no roles found" (consolidation pass), the
+  docs overclaiming `getLogs` completeness (consolidation pass), an
+  infrastructure failure cached as a contract revert (day 4, KNOWN EDGE #14),
+  and a cache miss returning a different TYPE than a cache hit (day 4, KNOWN
+  EDGE #23, found by the mandated cold re-run). Four instances of one class is
+  a systemic weakness, not coincidence: **the cache boundary is where a failure
+  gets laundered into a fact, and where a value from the network and a value
+  from disk stop being indistinguishable.**
+  Two distinct failure modes to walk, because they need different checks:
+    (a) SEMANTIC — something that is really "we could not read this" gets
+        stored, and later read back, as "we read this and it was empty/absent."
+        Walk every `catch` in the read path; every place a revert, an empty
+        result, a zero word, or an absent key is treated as a fact about the
+        CONTRACT rather than about the READ; and every cache write that can
+        record a non-answer.
+    (b) STRUCTURAL — a miss and a hit differ in type or shape, so behaviour
+        depends on whether someone ran the scan before. #23 was this. The
+        general test is cheap and should be made routine: **wipe the cache and
+        re-run; a cold report must be byte-identical to a warm one.** That
+        single check would have caught #23 immediately and is now the day-5
+        step-zero procedure anyway.
+  Each site either gets a comment explaining why the conflation is impossible
+  there, or gets fixed. This is most likely the last category of latent bugs in
+  the project, and it is far better closed by us than opened by a judge.
   THEN (optional, if time remains): Watchtower — live monitoring of timelock
   queues, alerting when a rule change is actually queued.
