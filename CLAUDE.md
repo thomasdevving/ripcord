@@ -316,6 +316,38 @@ src/fork/
                    fabricated trace. Emits a reproduce command + a `cast run`
                    call-trace artifact. `ripcord prove <addr> --block` runs it.
 
+src/live/          (Mobula bounty) THE LIVE LAYER — deliberately OUTSIDE the
+                   pinned path, and the only module tree that is. Nothing under
+                   src/chain, src/detect, src/report, src/fork or src/cli.ts
+                   imports it, at any depth, and scripts/verify-boundary.mjs
+                   fails CI if that ever changes (transitive import walk; it
+                   prints the offending chain). Rationale in docs/MOBULA.md.
+  mobula.ts        Client for 3 REST endpoints: wallet/holdings (multi-chain,
+                   fetchAllChains), token/price (batch, second quote +
+                   liquidity), multi-metadata (names/logos). Returns a
+                   discriminated MobulaResult rather than throwing — a vendor
+                   outage is not a fact about the contract and must never take
+                   down a page whose verdict does not depend on it. NOT routed
+                   through PinnedChain: DiskCache is keyed by block and
+                   justified by "a historical block never changes", which is
+                   false for a price. Native assets arrive under the sentinel
+                   0xeeee…eeee, which is THE SAME on every chain, so every
+                   lookup is keyed by (chainId, address) — verified live on
+                   cbETH, where an address-keyed map quoted ETH at BNB's price.
+  exposure.ts      Composes the three into one LiveExposure. Identity is
+                   (chainId, address); the vendor's name/symbol are stored as
+                   `unverifiedSymbol`/`unverifiedName` because live wallet data
+                   really does contain phishing lures as token names. Each
+                   holding carries a `valuation` basis (endpoints_agree /
+                   single_source / uncorroborated / implausible_vs_liquidity) —
+                   weakest-link provenance applied to market data. The headline
+                   is computed HERE, never adopted from the vendor's own
+                   portfolio total, which read $11.8tn on one target. Withheld
+                   holdings are itemised one bucket per REASON.
+  logos.ts         Inlines logos as data: URIs at fetch time — verify-pages
+                   forbids a remote src, and hotlinking would leak every page
+                   view to the vendor.
+
 src/report/
   verdict.ts      (day 4) PURE composition of the two sides — no chain access,
                    so the rules an auditor will argue with are exhaustively

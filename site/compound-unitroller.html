@@ -122,6 +122,33 @@ summary{cursor:pointer;font-size:13px;color:var(--text-secondary);padding:6px 0;
 .tabletwin{margin-top:16px;}
 footer{margin-top:26px;font-size:12px;color:var(--text-secondary);}
 </style>
+<style>
+.lv{margin-top:30px;border:1px solid var(--border);border-left:4px solid #6b7cff;border-radius:9px;padding:16px 18px;background:var(--surface-1);}
+.lv-head h2{margin:0 0 6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.lv-badge{font-size:10.5px;letter-spacing:.08em;font-weight:700;color:#fff;background:#6b7cff;border-radius:999px;padding:3px 9px;}
+.lv-boundary{font-size:12.5px;color:var(--text-secondary);margin:0 0 14px;}
+.lv-headline{font-size:15px;margin:0 0 8px;}
+.lv-headline strong{font-size:17px;}
+.lv-note{font-size:12px;color:var(--text-secondary);margin:8px 0 0;}
+.lv-h3{font-size:13px;margin:16px 0 6px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);}
+.lv-withheld{margin:0;padding-left:18px;font-size:12.5px;color:var(--text-secondary);}
+.lv-withheld li{margin:3px 0;}
+.lv-logo{width:20px;height:20px;border-radius:50%;display:block;}
+.lv-logo-fallback{background:var(--plane);border:1px solid var(--border);font-size:11px;line-height:18px;text-align:center;color:var(--muted);}
+.lv-names{margin-top:3px;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;}
+.lv-unverified{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;border:1px solid var(--border);border-radius:3px;padding:1px 4px;color:var(--muted);}
+.lv-vendor{font-size:12px;color:var(--text-secondary);word-break:break-word;max-width:34ch;display:inline-block;}
+.lv-muted{color:var(--muted);}
+.lv-num{white-space:nowrap;}
+.lv-basis{font-size:11px;}
+.lv-ok{color:var(--text-secondary);}
+.lv-single{color:var(--muted);border-bottom:1px dotted var(--muted);cursor:help;}
+.lv-warn{color:var(--warn-ink);}
+.lv-nonvalue{color:var(--muted);font-style:italic;}
+.lv-new{font-size:11px;color:#4a56c8;}
+.lv-unavailable{font-size:13px;margin:0;}
+.lv-concentration{font-size:12.5px;margin:8px 0 0;padding:8px 10px;border-radius:6px;background:var(--warn-bg);color:var(--warn-ink);}
+</style>
 <main class="page">
   <header class="masthead">
     <div class="brand">RIPCORD</div>
@@ -241,6 +268,43 @@ footer{margin-top:26px;font-size:12px;color:var(--text-secondary);}
     <div class="kv"><dt>Time-to-exit rules</dt><dd>0.1.0</dd></div>
     <div class="kv"><dt>Taxonomy version</dt><dd>0.2.0</dd></div>
   </dl></section>
+
+  
+  <section class="lv">
+    <div class="lv-head">
+      <h2>Live exposure <span class="lv-badge">LIVE · MOBULA</span></h2>
+      <p class="lv-boundary">Live market data (Mobula) — <strong>not part of the reproducible verdict</strong>.
+      Fetched <time datetime="2026-09-02T16:49:34.488Z">2026-09-02 16:49:34 UTC</time>. Everything above this line is pinned to the report's block and is byte-identical on a cold
+      re-run; this section is a snapshot of the present and will differ every time it is fetched.</p>
+    </div>
+    <p class="lv-headline">Current exposure
+    <strong>$784</strong>
+    across <strong>1</strong> token
+    on <strong>7</strong> chains.</p>
+     <p class="lv-concentration"><strong>100.0% of this figure is one token</strong>
+         (<code>0x39aa39c0…5e7563</code>). Ripcord does not verify third-party price or liquidity data, and a single dominant holding is exactly where a
+         vendor's figures are least worth trusting. Treat the total as a pointer to look, not as a measurement.</p>
+     
+     <div class="scroll"><table>
+       <thead><tr><th></th><th>Token identity</th><th>Chains</th><th>Live value</th><th>Pinned report</th></tr></thead>
+       <tbody><tr>
+    <td><span class="lv-logo lv-logo-fallback" aria-hidden="true">3</span></td>
+    <td><code class="addr" title="0x39aa39c021dfbae8fac545936693ac917d5e7563">0x39aa39c0…5e7563</code><div class="lv-names"><span class="lv-unverified" title="Supplied by the data vendor and chosen by the token's deployer. Not verified by Ripcord.">unverified</span>
+         <span class="lv-vendor">CUSDC · Compound USDC</span></div></td>
+    <td>Ethereum</td>
+    <td class="lv-num"><strong>$784.25</strong><br><span class="lv-basis lv-ok" title="The wallet-holdings figure and the batch-price quote agree. Both come from the same vendor, so this is a consistency check rather than independent verification.">two endpoints agree</span></td>
+    <td><span class="lv-new">outside curated list</span></td>
+  </tr></tbody>
+     </table></div>
+     <p class="lv-note"><strong>Tokens are identified by chain and contract address.</strong> Names and symbols come from the
+     data vendor, originate with whoever deployed the token, and are shown only as unverified labels — wallet data routinely
+     contains airdropped tokens whose names are phishing lures.</p>
+     <h3 class="lv-h3">What is not in the total</h3>
+     <ul class="lv-withheld"><li><strong>377</strong> below the $1 display floor <span class="lv-muted">($0.04 in total)</span></li></ul>
+     <p class="lv-note">Endpoints answered — holdings: yes,
+    price: yes, metadata: no.
+    metadata unavailable — metadata: HTTP 429.</p>
+  </section>
 
   <footer>
     <p>Generated by Ripcord from a pinned JSON report. This page performs no network access, at render time or view time.

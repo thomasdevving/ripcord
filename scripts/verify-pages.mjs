@@ -49,6 +49,7 @@ const NETWORK_PATTERNS = [
 
 let failures = 0;
 let figuresChecked = 0;
+let livePanels = 0;
 const fail = (msg) => {
   console.log(`  ✗ ${msg}`);
   failures++;
@@ -96,6 +97,43 @@ for (const page of pages.sort()) {
   // --- 2. no network at view time ---
   for (const re of NETWORK_PATTERNS) {
     if (re.test(html)) fail(`page contains a network-capable construct matching ${re}`);
+  }
+
+  // --- 2b. the live layer, if present, is LABELLED and SEPARATE ---
+  //
+  // verify-boundary proves the pinned CODE cannot reach the live layer. This
+  // proves the rendered PAGE keeps them apart, which is a different claim and
+  // the one a reader actually experiences. Three properties:
+  //
+  //   (a) No figure in the provenance manifest may come from live data. Every
+  //       entry must resolve against the pinned report — that is already checked
+  //       above, so this asserts the complementary thing: no manifest path may
+  //       name a live-layer field. Without it, a future refactor could log a
+  //       market number as though the report had asserted it.
+  //   (b) The panel must carry its boundary sentence and a machine-readable
+  //       fetch timestamp. An unlabelled live figure beside a pinned verdict is
+  //       indistinguishable from a pinned figure, which is the whole risk.
+  //   (c) The panel must come AFTER the verdict hero in document order, so it
+  //       reads as commentary beside the verdict and never as part of it.
+  const LIVE_FIELDS = /^(liveLayerVersion|fetchedAt|exposureUsd|vendorReportedTotalUsd|holdings|concentration|withheld)\b/;
+  for (const fig of figures) {
+    if (LIVE_FIELDS.test(fig.jsonPath)) {
+      fail(`figure "${fig.label}" reads ${fig.jsonPath}, which is a live-layer path — provenance must come from the pinned report`);
+    }
+  }
+  const liveIdx = html.indexOf('<section class="lv">');
+  if (liveIdx !== -1) {
+    livePanels++;
+    if (!html.includes("not part of the reproducible verdict")) {
+      fail(`the live panel does not carry its boundary label`);
+    }
+    if (!/<time datetime="20\d\d-\d\d-\d\dT/.test(html) && !html.includes("Live data unavailable") && !html.includes("Live data not fetched")) {
+      fail(`the live panel shows data but no machine-readable fetch timestamp`);
+    }
+    const heroIdx = html.indexOf('<section class="hero');
+    if (heroIdx !== -1 && liveIdx < heroIdx) {
+      fail(`the live panel is rendered before the verdict — live data must sit beside the verdict, never above it`);
+    }
   }
 
   // --- 3. an unestablished verdict must not wear the healthy tone ---
@@ -264,6 +302,6 @@ for (const file of readdirSync(reportsDir).filter((f) => f.endsWith(".json")).so
 console.log(`${reportsChecked} reports checked for the enumeration invariant`);
 
 console.log(
-  `\n${pages.length} pages · ${figuresChecked} figures checked against their source reports · ${reportsChecked} reports checked for the enumeration invariant · ${failures} failure(s)`,
+  `\n${pages.length} pages · ${figuresChecked} figures checked against their source reports · ${livePanels} live panel(s) checked for separation · ${reportsChecked} reports checked for the enumeration invariant · ${failures} failure(s)`,
 );
 process.exit(failures === 0 ? 0 : 1);

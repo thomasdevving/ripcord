@@ -122,6 +122,33 @@ summary{cursor:pointer;font-size:13px;color:var(--text-secondary);padding:6px 0;
 .tabletwin{margin-top:16px;}
 footer{margin-top:26px;font-size:12px;color:var(--text-secondary);}
 </style>
+<style>
+.lv{margin-top:30px;border:1px solid var(--border);border-left:4px solid #6b7cff;border-radius:9px;padding:16px 18px;background:var(--surface-1);}
+.lv-head h2{margin:0 0 6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.lv-badge{font-size:10.5px;letter-spacing:.08em;font-weight:700;color:#fff;background:#6b7cff;border-radius:999px;padding:3px 9px;}
+.lv-boundary{font-size:12.5px;color:var(--text-secondary);margin:0 0 14px;}
+.lv-headline{font-size:15px;margin:0 0 8px;}
+.lv-headline strong{font-size:17px;}
+.lv-note{font-size:12px;color:var(--text-secondary);margin:8px 0 0;}
+.lv-h3{font-size:13px;margin:16px 0 6px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);}
+.lv-withheld{margin:0;padding-left:18px;font-size:12.5px;color:var(--text-secondary);}
+.lv-withheld li{margin:3px 0;}
+.lv-logo{width:20px;height:20px;border-radius:50%;display:block;}
+.lv-logo-fallback{background:var(--plane);border:1px solid var(--border);font-size:11px;line-height:18px;text-align:center;color:var(--muted);}
+.lv-names{margin-top:3px;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;}
+.lv-unverified{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;border:1px solid var(--border);border-radius:3px;padding:1px 4px;color:var(--muted);}
+.lv-vendor{font-size:12px;color:var(--text-secondary);word-break:break-word;max-width:34ch;display:inline-block;}
+.lv-muted{color:var(--muted);}
+.lv-num{white-space:nowrap;}
+.lv-basis{font-size:11px;}
+.lv-ok{color:var(--text-secondary);}
+.lv-single{color:var(--muted);border-bottom:1px dotted var(--muted);cursor:help;}
+.lv-warn{color:var(--warn-ink);}
+.lv-nonvalue{color:var(--muted);font-style:italic;}
+.lv-new{font-size:11px;color:#4a56c8;}
+.lv-unavailable{font-size:13px;margin:0;}
+.lv-concentration{font-size:12.5px;margin:8px 0 0;padding:8px 10px;border-radius:6px;background:var(--warn-bg);color:var(--warn-ink);}
+</style>
 <main class="page">
   <header class="masthead">
     <div class="brand">RIPCORD</div>
@@ -239,6 +266,131 @@ footer{margin-top:26px;font-size:12px;color:var(--text-secondary);}
     <div class="kv"><dt>Time-to-exit rules</dt><dd>0.1.0</dd></div>
     <div class="kv"><dt>Taxonomy version</dt><dd>0.2.0</dd></div>
   </dl></section>
+
+  
+  <section class="lv">
+    <div class="lv-head">
+      <h2>Live exposure <span class="lv-badge">LIVE · MOBULA</span></h2>
+      <p class="lv-boundary">Live market data (Mobula) — <strong>not part of the reproducible verdict</strong>.
+      Fetched <time datetime="2026-09-02T16:50:08.596Z">2026-09-02 16:50:08 UTC</time>. Everything above this line is pinned to the report's block and is byte-identical on a cold
+      re-run; this section is a snapshot of the present and will differ every time it is fetched.</p>
+    </div>
+    <p class="lv-headline">Current exposure
+    <strong>$102,138,866</strong>
+    across <strong>11</strong> tokens
+    on <strong>21</strong> chains.</p>
+     <p class="lv-concentration"><strong>97.9% of this figure is one token</strong>
+         (<code>0xc425c087…b24bc4</code>, which the vendor cannot name). Ripcord does not verify third-party price or liquidity data, and a single dominant holding is exactly where a
+         vendor's figures are least worth trusting. Treat the total as a pointer to look, not as a measurement.</p>
+     <p class="lv-note">The vendor reports a portfolio total of $4,951,604,160 for this
+       address. Ripcord's figure counts only holdings whose value survived the checks below, so the two differ by design —
+       vendor portfolio totals include tokens whose quoted price no market could honour.</p>
+     <div class="scroll"><table>
+       <thead><tr><th></th><th>Token identity</th><th>Chains</th><th>Live value</th><th>Pinned report</th></tr></thead>
+       <tbody><tr>
+    <td><span class="lv-logo lv-logo-fallback" aria-hidden="true">◆</span></td>
+    <td><code class="addr">native asset</code><div class="lv-names"><span class="lv-unverified" title="Supplied by the data vendor and chosen by the token's deployer. Not verified by Ripcord.">unverified</span>
+         <span class="lv-vendor">ETH · Ethereum</span></div></td>
+    <td>Ethereum, Optimism, Arbitrum, evm:4663, Base</td>
+    <td class="lv-num"><span class="lv-nonvalue">not counted</span><br><span class="lv-basis lv-warn">marked $4,849,455,655.40 against $91,677,941.38 of reported liquidity (53x)</span></td>
+    <td><span class="lv-new">outside curated list</span></td>
+  </tr>
+<tr>
+    <td><span class="lv-logo lv-logo-fallback" aria-hidden="true">C</span></td>
+    <td><code class="addr" title="0xc425c0877c7b0f8179cdbd636b2efe3204b24bc4">0xc425c087…b24bc4</code><div class="lv-names"><span class="lv-vendor lv-muted">no name supplied</span></div></td>
+    <td>Ethereum</td>
+    <td class="lv-num"><strong>$99,989,989.93</strong><br><span class="lv-basis lv-single" title="wallet holdings only — the price endpoint returned no entry for this token">single source</span></td>
+    <td><span class="lv-new">outside curated list</span></td>
+  </tr>
+<tr>
+    <td><span class="lv-logo lv-logo-fallback" aria-hidden="true">C</span></td>
+    <td><code class="addr" title="0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2">0xc02aaa39…756cc2</code><div class="lv-names"><span class="lv-unverified" title="Supplied by the data vendor and chosen by the token's deployer. Not verified by Ripcord.">unverified</span>
+         <span class="lv-vendor">ETH · Ethereum</span></div></td>
+    <td>Ethereum, Optimism, Polygon, Arbitrum, Avalanche, evm:4663, evm:5000, Scroll, evm:80094, Base</td>
+    <td class="lv-num"><strong>$1,845,701.37</strong><br><span class="lv-basis lv-single" title="wallet holdings only — the price endpoint returned no entry for this token">single source</span></td>
+    <td><span class="lv-muted">on curated list</span></td>
+  </tr>
+<tr>
+    <td><span class="lv-logo lv-logo-fallback" aria-hidden="true">A</span></td>
+    <td><code class="addr" title="0xa9d54f37ebb99f83b603cc95fc1a5f3907aaccfd">0xa9d54f37…aaccfd</code><div class="lv-names"><span class="lv-unverified" title="Supplied by the data vendor and chosen by the token's deployer. Not verified by Ripcord.">unverified</span>
+         <span class="lv-vendor">PIKA · Pikaboss</span></div></td>
+    <td>Ethereum</td>
+    <td class="lv-num"><strong>$111,359.59</strong><br><span class="lv-basis lv-single" title="wallet holdings only — the price endpoint returned no entry for this token">single source</span></td>
+    <td><span class="lv-new">outside curated list</span></td>
+  </tr>
+<tr>
+    <td><span class="lv-logo lv-logo-fallback" aria-hidden="true">E</span></td>
+    <td><code class="addr" title="0xeae8b28ee984133ad9e5b989ff75fdb56095e658">0xeae8b28e…95e658</code><div class="lv-names"><span class="lv-vendor lv-muted">no name supplied</span></div></td>
+    <td>Ethereum</td>
+    <td class="lv-num"><strong>$98,121.07</strong><br><span class="lv-basis lv-single" title="wallet holdings only — the price endpoint returned no entry for this token">single source</span></td>
+    <td><span class="lv-new">outside curated list</span></td>
+  </tr>
+<tr>
+    <td><span class="lv-logo lv-logo-fallback" aria-hidden="true">◆</span></td>
+    <td><code class="addr">native asset</code><div class="lv-names"><span class="lv-unverified" title="Supplied by the data vendor and chosen by the token's deployer. Not verified by Ripcord.">unverified</span>
+         <span class="lv-vendor">BNB</span></div></td>
+    <td>BNB Chain</td>
+    <td class="lv-num"><strong>$31,300.90</strong><br><span class="lv-basis lv-single" title="wallet holdings only — a native asset has no ERC20 contract for the price endpoint to quote">single source</span></td>
+    <td><span class="lv-new">outside curated list</span></td>
+  </tr>
+<tr>
+    <td><span class="lv-logo lv-logo-fallback" aria-hidden="true">D</span></td>
+    <td><code class="addr" title="0xdac17f958d2ee523a2206206994597c13d831ec7">0xdac17f95…831ec7</code><div class="lv-names"><span class="lv-unverified" title="Supplied by the data vendor and chosen by the token's deployer. Not verified by Ripcord.">unverified</span>
+         <span class="lv-vendor">USDT · Tether</span></div></td>
+    <td>Ethereum, Polygon, BNB Chain</td>
+    <td class="lv-num"><strong>$24,568.01</strong><br><span class="lv-basis lv-single" title="wallet holdings only — the price endpoint returned no entry for this token">single source</span></td>
+    <td><span class="lv-muted">on curated list</span></td>
+  </tr>
+<tr>
+    <td><span class="lv-logo lv-logo-fallback" aria-hidden="true">5</span></td>
+    <td><code class="addr" title="0x5200b34e6a519f289f5258de4554ebd3db12e822">0x5200b34e…12e822</code><div class="lv-names"><span class="lv-unverified" title="Supplied by the data vendor and chosen by the token's deployer. Not verified by Ripcord.">unverified</span>
+         <span class="lv-vendor">GOAT · Goatseus Maximus</span></div></td>
+    <td>Ethereum</td>
+    <td class="lv-num"><strong>$14,597.33</strong><br><span class="lv-basis lv-single" title="wallet holdings only — the price endpoint returned no entry for this token">single source</span></td>
+    <td><span class="lv-new">outside curated list</span></td>
+  </tr>
+<tr>
+    <td><span class="lv-logo lv-logo-fallback" aria-hidden="true">9</span></td>
+    <td><code class="addr" title="0x95ad61b0a150d79219dcf64e1e6cc01f0b64c4ce">0x95ad61b0…64c4ce</code><div class="lv-names"><span class="lv-unverified" title="Supplied by the data vendor and chosen by the token's deployer. Not verified by Ripcord.">unverified</span>
+         <span class="lv-vendor">SHIB · Shiba Inu</span></div></td>
+    <td>Ethereum</td>
+    <td class="lv-num"><strong>$7,612.77</strong><br><span class="lv-basis lv-single" title="wallet holdings only — the price endpoint returned no entry for this token">single source</span></td>
+    <td><span class="lv-new">outside curated list</span></td>
+  </tr>
+<tr>
+    <td><span class="lv-logo lv-logo-fallback" aria-hidden="true">A</span></td>
+    <td><code class="addr" title="0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48">0xa0b86991…06eb48</code><div class="lv-names"><span class="lv-unverified" title="Supplied by the data vendor and chosen by the token's deployer. Not verified by Ripcord.">unverified</span>
+         <span class="lv-vendor">USDC</span></div></td>
+    <td>Ethereum, Optimism, Polygon, Arbitrum, Base</td>
+    <td class="lv-num"><strong>$6,260.53</strong><br><span class="lv-basis lv-single" title="wallet holdings only — the price endpoint returned no entry for this token">single source</span></td>
+    <td><span class="lv-muted">on curated list</span></td>
+  </tr>
+<tr>
+    <td><span class="lv-logo lv-logo-fallback" aria-hidden="true">B</span></td>
+    <td><code class="addr" title="0xb03eef386a61b5b462051636001485fffdd3d843">0xb03eef38…d3d843</code><div class="lv-names"><span class="lv-unverified" title="Supplied by the data vendor and chosen by the token's deployer. Not verified by Ripcord.">unverified</span>
+         <span class="lv-vendor">AMERICA · America Party</span></div></td>
+    <td>Ethereum</td>
+    <td class="lv-num"><strong>$5,600.94</strong><br><span class="lv-basis lv-single" title="wallet holdings only — the price endpoint returned no entry for this token">single source</span></td>
+    <td><span class="lv-new">outside curated list</span></td>
+  </tr>
+<tr>
+    <td><span class="lv-logo lv-logo-fallback" aria-hidden="true">1</span></td>
+    <td><code class="addr" title="0x1f9840a85d5af5bf1d1762f925bdaddc4201f984">0x1f9840a8…01f984</code><div class="lv-names"><span class="lv-unverified" title="Supplied by the data vendor and chosen by the token's deployer. Not verified by Ripcord.">unverified</span>
+         <span class="lv-vendor">UNI · Uniswap</span></div></td>
+    <td>Ethereum</td>
+    <td class="lv-num"><strong>$3,753.17</strong><br><span class="lv-basis lv-single" title="wallet holdings only — the price endpoint returned no entry for this token">single source</span></td>
+    <td><span class="lv-new">outside curated list</span></td>
+  </tr></tbody>
+     </table></div>
+     <p class="lv-note"><strong>Tokens are identified by chain and contract address.</strong> Names and symbols come from the
+     data vendor, originate with whoever deployed the token, and are shown only as unverified labels — wallet data routinely
+     contains airdropped tokens whose names are phishing lures.</p>
+     <h3 class="lv-h3">What is not in the total</h3>
+     <ul class="lv-withheld"><li><strong>5295</strong> below the $1 display floor <span class="lv-muted">($5.80 in total)</span></li><li><strong>34</strong> beyond the top 12 shown <span class="lv-muted">($9,633.58 in total)</span></li><li><strong>1</strong> shown, but not counted in the total: marked value exceeds reported liquidity by over 10x</li></ul>
+     <p class="lv-note">Endpoints answered — holdings: yes,
+    price: no, metadata: no.
+    price enrichment unavailable — price: fetch failed; metadata unavailable — metadata: fetch failed.</p>
+  </section>
 
   <footer>
     <p>Generated by Ripcord from a pinned JSON report. This page performs no network access, at render time or view time.

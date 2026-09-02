@@ -59,6 +59,14 @@ jobs:
       # pages it ships is the day-6 drift failure, shipped.
       - run: pnpm verify:claims
 
+      # The Mobula live layer must stay OUT of the pinned path. This walks the
+      # import graph from the pinned roots and fails if it can reach src/live,
+      # checks that no pinned report carries a live field or a vendor reference,
+      # and checks that no committed sidecar or page embeds an API key. It needs
+      # no network and no key: the property being checked is structural, so it
+      # holds whether or not anyone has fetched live data. See docs/MOBULA.md.
+      - run: pnpm verify:boundary
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

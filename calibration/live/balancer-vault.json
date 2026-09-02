@@ -1,0 +1,25 @@
+{
+  "liveLayerVersion": "0.4.0",
+  "fetchedAt": "2026-09-02T17:03:08.460Z",
+  "target": "0xBA12222222228d8Ba445958a75a0704d566BF2C8",
+  "chainId": 1,
+  "status": "unavailable",
+  "reason": "holdings: HTTP 503",
+  "exposureUsd": null,
+  "countedHoldings": 0,
+  "vendorReportedTotalUsd": null,
+  "holdingsCount": null,
+  "chainCount": null,
+  "chains": [],
+  "holdings": [],
+  "withheld": [],
+  "concentration": null,
+  "floorUsd": 1,
+  "cap": 12,
+  "endpoints": {
+    "holdings": false,
+    "price": false,
+    "metadata": false
+  },
+  "notes": []
+}

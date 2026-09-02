@@ -72,7 +72,7 @@ the type checker rather than by anyone remembering to check.
 | **[viem](https://viem.sh)** | Ethereum RPC, ABI encode/decode, keccak. Also the source of every derived constant: storage slots and selectors are *computed from their preimages in code*, never hand-copied, and asserted in tests against independent reference values. |
 | **[zod](https://zod.dev)** | Runtime schema validation — and load-bearing, not decorative. The report's structural honesty invariants (discriminated unions, `z.literal(true)` witnesses) are enforced by zod. A report that fails its own schema is treated as a Ripcord bug, not a target problem. |
 | **[Foundry](https://book.getfoundry.sh) (`anvil`, `cast`)** | Ephemeral mainnet-fork EVM for the proof engine, and `cast run --trace` for the human-readable call trace. The only non-npm dependency. |
-| **[vitest](https://vitest.dev)** | 224 unit tests, all network-free, so CI needs no RPC key. |
+| **[vitest](https://vitest.dev)** | 248 unit tests, all network-free, so CI needs no RPC key. |
 | **[gitleaks](https://github.com/gitleaks/gitleaks)** | Secret scanning over the full history, in CI on every push. |
 | **commander** | CLI argument parsing. |
 
@@ -80,6 +80,7 @@ the type checker rather than by anyone remembering to check.
 
 - **Alchemy** — the mainnet RPC provider used for development and for the entire calibration run. Ripcord names the active provider by **host only** at the start of every scan (`Alchemy (eth-mainnet.g.alchemy.com)`), never the full URL, because that carries the key. Working against a real provider is also what produced two of the project's most important findings: the free tier's 9-block `eth_getLogs` cap is what forced role reconstruction to degrade into an explicitly *labelled* partial rather than a silent truncation, and reproducing real provider failures against it is what exposed a bug where an infrastructure error was being cached as a contract revert (see [Deployment](#deployment) and `docs/CALIBRATION.md` §10).
 - **Chainlink** — price feeds are what turn the proof engine's output from "some tokens moved" into a dollar figure. `src/chain/priceFeeds.ts` maps the six curated major tokens to their aggregators; a feed that cannot be read at the pinned block yields `usd: null` **with the reason**, never a silent `$0` that would make a real drain look harmless.
+- **Mobula** — the **live exposure** layer, and deliberately the one partner technology that is *not* allowed to touch the verdict. Mobula's multi-chain wallet-holdings, batch-price and metadata endpoints answer a question the pinned report structurally cannot: Ripcord's dependency graph checks a curated list of six mainnet ERC20s, so it can never see native ETH — and Lido's withdrawal queue holds tens of millions of dollars of it. The live panel sits *beside* the verdict, stamped with its fetch time and labelled "not part of the reproducible verdict", and `pnpm verify:boundary` walks the import graph to prove no pinned code can reach it. Live wallet data is also treated as hostile input, because it is: tokens are identified by contract address only, vendor names are shown as explicitly unverified metadata (real holdings contain phishing lures as token names), and a vendor's own portfolio total is never adopted as a headline (one calibration target reports $11.8 trillion). See **[docs/MOBULA.md](docs/MOBULA.md)**.
 - **Foundry** — `anvil` is the sandbox the proof engine executes in, and it is what makes "capability, not intent" enforceable rather than aspirational: impersonation works precisely *because* no signature and no key are involved, so the demonstration can never become a real transaction.
 
 ## How to run / test
@@ -93,12 +94,13 @@ git clone https://github.com/thomasdevving/ripcord.git
 cd ripcord
 pnpm install
 pnpm typecheck      # tsc --noEmit
-pnpm test           # 224 unit tests, network-free
+pnpm test           # 248 unit tests, network-free
 pnpm verify:pages   # re-check every published page against its source report
 pnpm verify:claims  # re-check this README's claims against those reports
+pnpm verify:boundary # prove the live data layer cannot reach the pinned verdict
 ```
 
-The last two are worth understanding, because they are where the honesty claims stop being prose. `verify:pages` re-resolves every headline figure on every rendered page back to the exact JSON path it came from, then checks properties that would each be a credibility failure if violated — an undetermined verdict never wearing the healthy tone, an unproven delay never drawn as a settled window, a partial role reconstruction always showing its covered block range, and **no reassuring verdict sitting on an incomplete enumeration anywhere in its authority graph** (derived independently of the code that computes it, so a bug in the derivation cannot hide itself). `verify:claims` does the same for prose, because on day 6 the sentences in this README drifted from the reports and nothing caught it.
+The last two are worth understanding, because they are where the honesty claims stop being prose. `verify:pages` re-resolves every headline figure on every rendered page back to the exact JSON path it came from, then checks properties that would each be a credibility failure if violated — an undetermined verdict never wearing the healthy tone, an unproven delay never drawn as a settled window, a partial role reconstruction always showing its covered block range, and **no reassuring verdict sitting on an incomplete enumeration anywhere in its authority graph** (derived independently of the code that computes it, so a bug in the derivation cannot hide itself). `verify:claims` does the same for prose, because on day 6 the sentences in this README drifted from the reports and nothing caught it. `verify:boundary` does it for the Mobula live layer: it walks the import graph transitively from the pinned roots and fails if it can reach `src/live` by any number of hops, so "live market data never enters the verdict" is a build failure rather than a promise.
 
 To scan a live contract, add an RPC URL:
 

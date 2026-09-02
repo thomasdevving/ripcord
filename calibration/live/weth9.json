@@ -1,0 +1,480 @@
+{
+  "liveLayerVersion": "0.4.0",
+  "fetchedAt": "2026-09-02T16:50:08.596Z",
+  "target": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+  "chainId": 1,
+  "status": "ok",
+  "reason": null,
+  "exposureUsd": 102138865.61871123,
+  "countedHoldings": 11,
+  "vendorReportedTotalUsd": 4951604160.404361,
+  "holdingsCount": 5341,
+  "chainCount": 21,
+  "chains": [
+    "evm:1",
+    "evm:10",
+    "evm:100",
+    "evm:1088",
+    "evm:137",
+    "evm:143",
+    "evm:196",
+    "evm:34443",
+    "evm:42161",
+    "evm:421614",
+    "evm:43114",
+    "evm:4663",
+    "evm:5000",
+    "evm:534352",
+    "evm:56",
+    "evm:59144",
+    "evm:6342",
+    "evm:80094",
+    "evm:8453",
+    "evm:9745",
+    "evm:999"
+  ],
+  "holdings": [
+    {
+      "chainId": "evm:1",
+      "address": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "isNative": true,
+      "unverifiedSymbol": "ETH",
+      "unverifiedName": "Ethereum",
+      "logo": "https://metadata.mobula.io/assets/logos/d90e937d915ab0c865ff6e335361386c56524d4d33fb66f2f04defe1500082eb.png",
+      "amount": 2023236.9913848762,
+      "valuation": {
+        "basis": "implausible_vs_liquidity",
+        "usd": null,
+        "markedUsd": 4849455655.400985,
+        "liquidityUsd": 91677941.37500986,
+        "multiple": 52.89664648515853
+      },
+      "holdingsQuoteUsd": 4849455655.400985,
+      "priceQuoteUsd": null,
+      "liquidityUsd": 91677941.37500986,
+      "chains": [
+        {
+          "chainId": "evm:1",
+          "chainName": "Ethereum",
+          "amountUSD": 4838771501.879078
+        },
+        {
+          "chainId": "evm:10",
+          "chainName": "Optimism",
+          "amountUSD": 155753.2610589608
+        },
+        {
+          "chainId": "evm:42161",
+          "chainName": "Arbitrum",
+          "amountUSD": 55751.42701939863
+        },
+        {
+          "chainId": "evm:4663",
+          "chainName": "evm:4663",
+          "amountUSD": 0
+        },
+        {
+          "chainId": "evm:8453",
+          "chainName": "Base",
+          "amountUSD": 18132.48819110785
+        }
+      ],
+      "outsideCuratedList": true,
+      "logoDataUri": null
+    },
+    {
+      "chainId": "evm:1",
+      "address": "0xc425c0877c7b0f8179cdbd636b2efe3204b24bc4",
+      "isNative": false,
+      "unverifiedSymbol": "",
+      "unverifiedName": "",
+      "logo": "https://metadata.mobula.io/assets/logos/evm_1_0xc425c0877c7b0f8179cdbd636b2efe3204b24bc4.webp",
+      "amount": 100000000,
+      "valuation": {
+        "basis": "single_source",
+        "usd": 99989989.9304465,
+        "source": "wallet holdings only — the price endpoint returned no entry for this token"
+      },
+      "holdingsQuoteUsd": 99989989.9304465,
+      "priceQuoteUsd": null,
+      "liquidityUsd": 47369965740.395584,
+      "chains": [
+        {
+          "chainId": "evm:1",
+          "chainName": "Ethereum",
+          "amountUSD": 99989989.9304465
+        }
+      ],
+      "outsideCuratedList": true,
+      "logoDataUri": null
+    },
+    {
+      "chainId": "evm:1",
+      "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+      "isNative": false,
+      "unverifiedSymbol": "ETH",
+      "unverifiedName": "Ethereum",
+      "logo": "https://metadata.mobula.io/assets/logos/d90e937d915ab0c865ff6e335361386c56524d4d33fb66f2f04defe1500082eb.png",
+      "amount": 771.7069878078814,
+      "valuation": {
+        "basis": "single_source",
+        "usd": 1845701.369381608,
+        "source": "wallet holdings only — the price endpoint returned no entry for this token"
+      },
+      "holdingsQuoteUsd": 1845701.369381608,
+      "priceQuoteUsd": null,
+      "liquidityUsd": 91677941.37500986,
+      "chains": [
+        {
+          "chainId": "evm:1",
+          "chainName": "Ethereum",
+          "amountUSD": 1829117.2343981646
+        },
+        {
+          "chainId": "evm:10",
+          "chainName": "Optimism",
+          "amountUSD": 520.0625330576614
+        },
+        {
+          "chainId": "evm:137",
+          "chainName": "Polygon",
+          "amountUSD": 6855.672257334989
+        },
+        {
+          "chainId": "evm:42161",
+          "chainName": "Arbitrum",
+          "amountUSD": 912.6295726723621
+        },
+        {
+          "chainId": "evm:43114",
+          "chainName": "Avalanche",
+          "amountUSD": 456.5394126892029
+        },
+        {
+          "chainId": "evm:4663",
+          "chainName": "evm:4663",
+          "amountUSD": 19.461481125553547
+        },
+        {
+          "chainId": "evm:5000",
+          "chainName": "evm:5000",
+          "amountUSD": 61.95170847215228
+        },
+        {
+          "chainId": "evm:534352",
+          "chainName": "Scroll",
+          "amountUSD": 1.4385456486621906
+        },
+        {
+          "chainId": "evm:80094",
+          "chainName": "evm:80094",
+          "amountUSD": 173.02650494363385
+        },
+        {
+          "chainId": "evm:8453",
+          "chainName": "Base",
+          "amountUSD": 7543.368759064879
+        }
+      ],
+      "outsideCuratedList": false,
+      "logoDataUri": null
+    },
+    {
+      "chainId": "evm:1",
+      "address": "0xa9d54f37ebb99f83b603cc95fc1a5f3907aaccfd",
+      "isNative": false,
+      "unverifiedSymbol": "PIKA",
+      "unverifiedName": "Pikaboss",
+      "logo": "https://metadata.mobula.io/assets/logos/e329dcf165ee891e51aeba3cfe3e288d8d7a29802037d3ba42476ea23bcd4262.png",
+      "amount": 6028777777354.798,
+      "valuation": {
+        "basis": "single_source",
+        "usd": 111359.589285782,
+        "source": "wallet holdings only — the price endpoint returned no entry for this token"
+      },
+      "holdingsQuoteUsd": 111359.589285782,
+      "priceQuoteUsd": null,
+      "liquidityUsd": 224729.312378615,
+      "chains": [
+        {
+          "chainId": "evm:1",
+          "chainName": "Ethereum",
+          "amountUSD": 111359.589285782
+        }
+      ],
+      "outsideCuratedList": true,
+      "logoDataUri": null
+    },
+    {
+      "chainId": "evm:1",
+      "address": "0xeae8b28ee984133ad9e5b989ff75fdb56095e658",
+      "isNative": false,
+      "unverifiedSymbol": "",
+      "unverifiedName": "",
+      "logo": "https://metadata.mobula.io/assets/logos/evm_1_0xeae8b28ee984133ad9e5b989ff75fdb56095e658.webp",
+      "amount": 724872420.3610618,
+      "valuation": {
+        "basis": "single_source",
+        "usd": 98121.07408184576,
+        "source": "wallet holdings only — the price endpoint returned no entry for this token"
+      },
+      "holdingsQuoteUsd": 98121.07408184576,
+      "priceQuoteUsd": null,
+      "liquidityUsd": 186415.1838538659,
+      "chains": [
+        {
+          "chainId": "evm:1",
+          "chainName": "Ethereum",
+          "amountUSD": 98121.07408184576
+        }
+      ],
+      "outsideCuratedList": true,
+      "logoDataUri": null
+    },
+    {
+      "chainId": "evm:56",
+      "address": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "isNative": true,
+      "unverifiedSymbol": "BNB",
+      "unverifiedName": "BNB",
+      "logo": "https://metadata.mobula.io/assets/logos/100001566.webp",
+      "amount": 45.565936707300125,
+      "valuation": {
+        "basis": "single_source",
+        "usd": 31300.899695134452,
+        "source": "wallet holdings only — a native asset has no ERC20 contract for the price endpoint to quote"
+      },
+      "holdingsQuoteUsd": 31300.899695134452,
+      "priceQuoteUsd": null,
+      "liquidityUsd": 23322221.55883973,
+      "chains": [
+        {
+          "chainId": "evm:56",
+          "chainName": "BNB Chain",
+          "amountUSD": 31300.899695134452
+        }
+      ],
+      "outsideCuratedList": true,
+      "logoDataUri": null
+    },
+    {
+      "chainId": "evm:1",
+      "address": "0xdac17f958d2ee523a2206206994597c13d831ec7",
+      "isNative": false,
+      "unverifiedSymbol": "USDT",
+      "unverifiedName": "Tether",
+      "logo": "https://metadata.mobula.io/assets/logos/Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB.webp",
+      "amount": 24571.569257172883,
+      "valuation": {
+        "basis": "single_source",
+        "usd": 24568.014715764006,
+        "source": "wallet holdings only — the price endpoint returned no entry for this token"
+      },
+      "holdingsQuoteUsd": 24568.014715764006,
+      "priceQuoteUsd": null,
+      "liquidityUsd": 82377616.6145632,
+      "chains": [
+        {
+          "chainId": "evm:1",
+          "chainName": "Ethereum",
+          "amountUSD": 22401.988822835563
+        },
+        {
+          "chainId": "evm:137",
+          "chainName": "Polygon",
+          "amountUSD": 20.387451309488192
+        },
+        {
+          "chainId": "evm:56",
+          "chainName": "BNB Chain",
+          "amountUSD": 2145.638441618954
+        }
+      ],
+      "outsideCuratedList": false,
+      "logoDataUri": null
+    },
+    {
+      "chainId": "evm:1",
+      "address": "0x5200b34e6a519f289f5258de4554ebd3db12e822",
+      "isNative": false,
+      "unverifiedSymbol": "GOAT",
+      "unverifiedName": "Goatseus Maximus",
+      "logo": "https://metadata.mobula.io/assets/logos/2eb30c1f22897a8b364b6ae88c9ef0da702282967a937115c99903623670b732.png",
+      "amount": 1000000,
+      "valuation": {
+        "basis": "single_source",
+        "usd": 14597.327820593084,
+        "source": "wallet holdings only — the price endpoint returned no entry for this token"
+      },
+      "holdingsQuoteUsd": 14597.327820593084,
+      "priceQuoteUsd": null,
+      "liquidityUsd": 17329.78999139584,
+      "chains": [
+        {
+          "chainId": "evm:1",
+          "chainName": "Ethereum",
+          "amountUSD": 14597.327820593084
+        }
+      ],
+      "outsideCuratedList": true,
+      "logoDataUri": null
+    },
+    {
+      "chainId": "evm:1",
+      "address": "0x95ad61b0a150d79219dcf64e1e6cc01f0b64c4ce",
+      "isNative": false,
+      "unverifiedSymbol": "SHIB",
+      "unverifiedName": "Shiba Inu",
+      "logo": "https://metadata.mobula.io/assets/logos/4cfd9e2396a4fa9f58841261a5a2f74809e2f02cd515a686b707fcdd95a94a80.png",
+      "amount": 1465516738.108282,
+      "valuation": {
+        "basis": "single_source",
+        "usd": 7612.767680464247,
+        "source": "wallet holdings only — the price endpoint returned no entry for this token"
+      },
+      "holdingsQuoteUsd": 7612.767680464247,
+      "priceQuoteUsd": null,
+      "liquidityUsd": 1835599.880865409,
+      "chains": [
+        {
+          "chainId": "evm:1",
+          "chainName": "Ethereum",
+          "amountUSD": 7612.767680464247
+        }
+      ],
+      "outsideCuratedList": true,
+      "logoDataUri": null
+    },
+    {
+      "chainId": "evm:1",
+      "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+      "isNative": false,
+      "unverifiedSymbol": "USDC",
+      "unverifiedName": "USDC",
+      "logo": "https://metadata.mobula.io/assets/logos/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v.webp",
+      "amount": 6259.915945000034,
+      "valuation": {
+        "basis": "single_source",
+        "usd": 6260.528854818608,
+        "source": "wallet holdings only — the price endpoint returned no entry for this token"
+      },
+      "holdingsQuoteUsd": 6260.528854818608,
+      "priceQuoteUsd": null,
+      "liquidityUsd": 48065636.13453592,
+      "chains": [
+        {
+          "chainId": "evm:1",
+          "chainName": "Ethereum",
+          "amountUSD": 6169.792628683429
+        },
+        {
+          "chainId": "evm:10",
+          "chainName": "Optimism",
+          "amountUSD": 3.801722191058044
+        },
+        {
+          "chainId": "evm:137",
+          "chainName": "Polygon",
+          "amountUSD": 5.300518924226296e-13
+        },
+        {
+          "chainId": "evm:42161",
+          "chainName": "Arbitrum",
+          "amountUSD": 86.93450394408728
+        },
+        {
+          "chainId": "evm:8453",
+          "chainName": "Base",
+          "amountUSD": 3.312946439596275e-11
+        }
+      ],
+      "outsideCuratedList": false,
+      "logoDataUri": null
+    },
+    {
+      "chainId": "evm:1",
+      "address": "0xb03eef386a61b5b462051636001485fffdd3d843",
+      "isNative": false,
+      "unverifiedSymbol": "AMERICA",
+      "unverifiedName": "America Party",
+      "logo": "https://metadata.mobula.io/assets/logos/5273e7456c89dd03f9e0e0c9c0dd68663ca0a2a17969a2f6dde618a6ff93b0a1.png",
+      "amount": 200000000,
+      "valuation": {
+        "basis": "single_source",
+        "usd": 5600.944600319509,
+        "source": "wallet holdings only — the price endpoint returned no entry for this token"
+      },
+      "holdingsQuoteUsd": 5600.944600319509,
+      "priceQuoteUsd": null,
+      "liquidityUsd": 43831.35898773113,
+      "chains": [
+        {
+          "chainId": "evm:1",
+          "chainName": "Ethereum",
+          "amountUSD": 5600.944600319509
+        }
+      ],
+      "outsideCuratedList": true,
+      "logoDataUri": null
+    },
+    {
+      "chainId": "evm:1",
+      "address": "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984",
+      "isNative": false,
+      "unverifiedSymbol": "UNI",
+      "unverifiedName": "Uniswap",
+      "logo": "https://metadata.mobula.io/assets/logos/6d4549504ac05756a4dd78fdfb9fc22dafe1b16e24f4813791c29feca4a8b41d.png",
+      "amount": 640.424834998318,
+      "valuation": {
+        "basis": "single_source",
+        "usd": 3753.172148412104,
+        "source": "wallet holdings only — the price endpoint returned no entry for this token"
+      },
+      "holdingsQuoteUsd": 3753.172148412104,
+      "priceQuoteUsd": null,
+      "liquidityUsd": 7827486.64735362,
+      "chains": [
+        {
+          "chainId": "evm:1",
+          "chainName": "Ethereum",
+          "amountUSD": 3753.172148412104
+        }
+      ],
+      "outsideCuratedList": true,
+      "logoDataUri": null
+    }
+  ],
+  "withheld": [
+    {
+      "reason": "below the $1 display floor",
+      "count": 5295,
+      "totalUsd": 5.8044103967528216
+    },
+    {
+      "reason": "beyond the top 12 shown",
+      "count": 34,
+      "totalUsd": 9633.580253663258
+    },
+    {
+      "reason": "shown, but not counted in the total: marked value exceeds reported liquidity by over 10x",
+      "count": 1,
+      "totalUsd": null
+    }
+  ],
+  "concentration": {
+    "topShare": 0.9789612340488824,
+    "topAddress": "0xc425c0877c7b0f8179cdbd636b2efe3204b24bc4",
+    "topIsUnnamed": true
+  },
+  "floorUsd": 1,
+  "cap": 12,
+  "endpoints": {
+    "holdings": true,
+    "price": false,
+    "metadata": false
+  },
+  "notes": [
+    "price enrichment unavailable — price: fetch failed",
+    "metadata unavailable — metadata: fetch failed"
+  ]
+}

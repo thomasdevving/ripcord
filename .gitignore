@@ -8,6 +8,13 @@ dist/
 # Proof engine artifacts (regenerable, machine-specific paths)
 .ripcord/
 
+# Mobula live sidecars (calibration/live/*.json) are COMMITTED too, for the same
+# reason as the pages: a clean clone can then re-render every page without a
+# Mobula API key. They are timestamped snapshots and are DELIBERATELY not
+# deterministic — `pnpm determinism` covers calibration/reports/ only, and
+# `pnpm verify:boundary` checks that no API key ever lands in one. See
+# docs/MOBULA.md.
+
 # Rendered calibration pages and the pinned reports they come from are COMMITTED
 # on purpose: they are the day-5 evidence, and they let anyone re-render or
 # re-check the numbers without an RPC key. Nothing here is regenerated at view

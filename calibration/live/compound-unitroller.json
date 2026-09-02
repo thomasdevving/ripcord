@@ -1,0 +1,71 @@
+{
+  "liveLayerVersion": "0.4.0",
+  "fetchedAt": "2026-09-02T16:49:34.488Z",
+  "target": "0x3d9819210A31b4961b30EF54bE2aeD79B9c9Cd3B",
+  "chainId": 1,
+  "status": "ok",
+  "reason": null,
+  "exposureUsd": 784.2549891394897,
+  "countedHoldings": 1,
+  "vendorReportedTotalUsd": 784.2929688169814,
+  "holdingsCount": 378,
+  "chainCount": 7,
+  "chains": [
+    "evm:1",
+    "evm:100",
+    "evm:137",
+    "evm:4663",
+    "evm:56",
+    "evm:8453",
+    "evm:9745"
+  ],
+  "holdings": [
+    {
+      "chainId": "evm:1",
+      "address": "0x39aa39c021dfbae8fac545936693ac917d5e7563",
+      "isNative": false,
+      "unverifiedSymbol": "CUSDC",
+      "unverifiedName": "Compound USDC",
+      "logo": "https://metadata.mobula.io/assets/logos/128b89c6deddf1f3ae656de1d1730d52edcd9c93ab895d0bad89a0acd8bca15a.png",
+      "amount": 31001,
+      "valuation": {
+        "basis": "endpoints_agree",
+        "usd": 784.2549891394897
+      },
+      "holdingsQuoteUsd": 784.2549891394897,
+      "priceQuoteUsd": 784.2549891394897,
+      "liquidityUsd": 697.5971962883381,
+      "chains": [
+        {
+          "chainId": "evm:1",
+          "chainName": "Ethereum",
+          "amountUSD": 784.2549891394897
+        }
+      ],
+      "outsideCuratedList": true,
+      "logoDataUri": null
+    }
+  ],
+  "withheld": [
+    {
+      "reason": "below the $1 display floor",
+      "count": 377,
+      "totalUsd": 0.0379796774916724
+    }
+  ],
+  "concentration": {
+    "topShare": 1,
+    "topAddress": "0x39aa39c021dfbae8fac545936693ac917d5e7563",
+    "topIsUnnamed": false
+  },
+  "floorUsd": 1,
+  "cap": 12,
+  "endpoints": {
+    "holdings": true,
+    "price": true,
+    "metadata": false
+  },
+  "notes": [
+    "metadata unavailable — metadata: HTTP 429"
+  ]
+}

@@ -122,6 +122,33 @@ summary{cursor:pointer;font-size:13px;color:var(--text-secondary);padding:6px 0;
 .tabletwin{margin-top:16px;}
 footer{margin-top:26px;font-size:12px;color:var(--text-secondary);}
 </style>
+<style>
+.lv{margin-top:30px;border:1px solid var(--border);border-left:4px solid #6b7cff;border-radius:9px;padding:16px 18px;background:var(--surface-1);}
+.lv-head h2{margin:0 0 6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.lv-badge{font-size:10.5px;letter-spacing:.08em;font-weight:700;color:#fff;background:#6b7cff;border-radius:999px;padding:3px 9px;}
+.lv-boundary{font-size:12.5px;color:var(--text-secondary);margin:0 0 14px;}
+.lv-headline{font-size:15px;margin:0 0 8px;}
+.lv-headline strong{font-size:17px;}
+.lv-note{font-size:12px;color:var(--text-secondary);margin:8px 0 0;}
+.lv-h3{font-size:13px;margin:16px 0 6px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);}
+.lv-withheld{margin:0;padding-left:18px;font-size:12.5px;color:var(--text-secondary);}
+.lv-withheld li{margin:3px 0;}
+.lv-logo{width:20px;height:20px;border-radius:50%;display:block;}
+.lv-logo-fallback{background:var(--plane);border:1px solid var(--border);font-size:11px;line-height:18px;text-align:center;color:var(--muted);}
+.lv-names{margin-top:3px;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;}
+.lv-unverified{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;border:1px solid var(--border);border-radius:3px;padding:1px 4px;color:var(--muted);}
+.lv-vendor{font-size:12px;color:var(--text-secondary);word-break:break-word;max-width:34ch;display:inline-block;}
+.lv-muted{color:var(--muted);}
+.lv-num{white-space:nowrap;}
+.lv-basis{font-size:11px;}
+.lv-ok{color:var(--text-secondary);}
+.lv-single{color:var(--muted);border-bottom:1px dotted var(--muted);cursor:help;}
+.lv-warn{color:var(--warn-ink);}
+.lv-nonvalue{color:var(--muted);font-style:italic;}
+.lv-new{font-size:11px;color:#4a56c8;}
+.lv-unavailable{font-size:13px;margin:0;}
+.lv-concentration{font-size:12.5px;margin:8px 0 0;padding:8px 10px;border-radius:6px;background:var(--warn-bg);color:var(--warn-ink);}
+</style>
 <main class="page">
   <header class="masthead">
     <div class="brand">RIPCORD</div>
@@ -260,6 +287,51 @@ footer{margin-top:26px;font-size:12px;color:var(--text-secondary);}
     <div class="kv"><dt>Time-to-exit rules</dt><dd>0.1.0</dd></div>
     <div class="kv"><dt>Taxonomy version</dt><dd>0.2.0</dd></div>
   </dl></section>
+
+  
+  <section class="lv">
+    <div class="lv-head">
+      <h2>Live exposure <span class="lv-badge">LIVE · MOBULA</span></h2>
+      <p class="lv-boundary">Live market data (Mobula) — <strong>not part of the reproducible verdict</strong>.
+      Fetched <time datetime="2026-09-02T16:39:32.433Z">2026-09-02 16:39:32 UTC</time>. Everything above this line is pinned to the report's block and is byte-identical on a cold
+      re-run; this section is a snapshot of the present and will differ every time it is fetched.</p>
+    </div>
+    <p class="lv-headline">Current exposure
+    <strong>$5,892</strong>
+    across <strong>2</strong> tokens
+    on <strong>6</strong> chains.</p>
+     <p class="lv-concentration"><strong>99.3% of this figure is one token</strong>
+         (<code>0x3432b6a6…c964d0</code>). Ripcord does not verify third-party price or liquidity data, and a single dominant holding is exactly where a
+         vendor's figures are least worth trusting. Treat the total as a pointer to look, not as a measurement.</p>
+     
+     <div class="scroll"><table>
+       <thead><tr><th></th><th>Token identity</th><th>Chains</th><th>Live value</th><th>Pinned report</th></tr></thead>
+       <tbody><tr>
+    <td><img class="lv-logo" src="data:image/png;base64,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" alt="" width="20" height="20"></td>
+    <td><code class="addr" title="0x3432b6a60d23ca0dfca7761b7ab56459d9c964d0">0x3432b6a6…c964d0</code><div class="lv-names"><span class="lv-unverified" title="Supplied by the data vendor and chosen by the token's deployer. Not verified by Ripcord.">unverified</span>
+         <span class="lv-vendor">FRAX · Frax (prev. FXS)</span></div></td>
+    <td>Ethereum</td>
+    <td class="lv-num"><strong>$5,850.47</strong><br><span class="lv-basis lv-ok" title="The wallet-holdings figure and the batch-price quote agree. Both come from the same vendor, so this is a consistency check rather than independent verification.">two endpoints agree</span></td>
+    <td><span class="lv-new">outside curated list</span></td>
+  </tr>
+<tr>
+    <td><span class="lv-logo lv-logo-fallback" aria-hidden="true">B</span></td>
+    <td><code class="addr" title="0xb26df3cadef9f4b771d98d20a7f05e055173f90a">0xb26df3ca…73f90a</code><div class="lv-names"><span class="lv-unverified" title="Supplied by the data vendor and chosen by the token's deployer. Not verified by Ripcord.">unverified</span>
+         <span class="lv-vendor">VELT · Veltrixa</span></div></td>
+    <td>BNB Chain</td>
+    <td class="lv-num"><strong>$41.57</strong><br><span class="lv-basis lv-ok" title="The wallet-holdings figure and the batch-price quote agree. Both come from the same vendor, so this is a consistency check rather than independent verification.">two endpoints agree</span></td>
+    <td><span class="lv-new">outside curated list</span></td>
+  </tr></tbody>
+     </table></div>
+     <p class="lv-note"><strong>Tokens are identified by chain and contract address.</strong> Names and symbols come from the
+     data vendor, originate with whoever deployed the token, and are shown only as unverified labels — wallet data routinely
+     contains airdropped tokens whose names are phishing lures.</p>
+     <h3 class="lv-h3">What is not in the total</h3>
+     <ul class="lv-withheld"><li><strong>20</strong> below the $1 display floor <span class="lv-muted">($0.05 in total)</span></li></ul>
+     <p class="lv-note">Endpoints answered — holdings: yes,
+    price: yes, metadata: no.
+    metadata unavailable — metadata: HTTP 429.</p>
+  </section>
 
   <footer>
     <p>Generated by Ripcord from a pinned JSON report. This page performs no network access, at render time or view time.

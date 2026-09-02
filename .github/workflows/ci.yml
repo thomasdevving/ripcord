@@ -44,6 +44,16 @@ jobs:
       # actually running the documented command from a clean clone.
       - run: pnpm verify:claims
 
+      # The Mobula live layer must stay OUT of the pinned path, and this is what
+      # makes that a test rather than a promise: it walks the import graph from
+      # the pinned roots (src/cli.ts, src/chain, src/detect, src/report,
+      # src/fork) and fails if it can reach src/live by ANY number of hops, then
+      # checks that no pinned report carries a live-layer field or a vendor
+      # reference and that no committed sidecar or page embeds an API key.
+      # Needs no network and no API key — the property is structural, so it
+      # holds whether or not live data was ever fetched. See docs/MOBULA.md.
+      - run: pnpm verify:boundary
+
   # Secret scan over the FULL history, every run.
   #
   # This deliberately does NOT use gitleaks/gitleaks-action@v2. That action

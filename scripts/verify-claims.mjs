@@ -25,6 +25,13 @@ const reportsDir = process.argv[3] ?? "calibration/reports";
 // test/fixtures/targets.json is included deliberately: it is the manual
 // verification LOG, i.e. prose asserting what was observed, and prose is exactly
 // what drifts. Its claims are as checkable as the README's and no more trusted.
+// docs/MOBULA.md is DELIBERATELY absent from this list. Every figure in it is a
+// LIVE market observation stamped with the instant it was read, not a claim about
+// a pinned report — Lido's native-ETH balance and cbETH's vendor total change
+// whenever anyone fetches them. Checking them against calibration/reports/ would
+// fail by construction, and checking them against the sidecars would fail on the
+// next fetch. That document states its own observation instant instead, and says
+// so where the figures appear. The exclusion is a decision, not an oversight.
 const docs = ["README.md", "CLAUDE.md", "docs/TECHNICAL.md", "docs/CALIBRATION.md", "docs/QUESTIONNAIRES.md", "test/fixtures/targets.json"].filter(existsSync);
 
 const reports = {};

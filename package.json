@@ -22,7 +22,10 @@
     "calibrate:summary": "node scripts/summarize.mjs calibration/reports",
     "calibrate:blockers": "node scripts/manual-verification-audit.mjs calibration/reports",
     "determinism": "node scripts/compare-reports.mjs",
-    "verify:claims": "node scripts/verify-claims.mjs"
+    "verify:claims": "node scripts/verify-claims.mjs",
+    "live:fetch": "tsx scripts/fetch-live.ts",
+    "verify:boundary": "node scripts/verify-boundary.mjs",
+    "live:revalue": "tsx scripts/revalue-live.ts"
   },
   "dependencies": {
     "commander": "^12.1.0",
