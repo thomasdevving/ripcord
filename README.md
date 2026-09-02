@@ -683,6 +683,45 @@ not in `site/`. The published set is filtered on `disclosure.publishable`
 computed by the tool, never on a per-protocol judgement made under time
 pressure.
 
+### Why the unpublishable reports are still in this repository
+
+`calibration/reports/` contains **all 26** JSON reports, including the four whose
+`disclosure.publishable` is `false`. That looks like a contradiction — the gate
+says "do not publish", the repository publishes — so it is worth stating exactly
+what the flag governs, because the distinction is the whole point.
+
+**The flag governs whether a rendered verdict PAGE is produced, not whether the
+raw evidence exists.** A page is a readable judgement about a named protocol,
+written for a non-specialist, and that is what must not go out while a capability
+is unresolved. `site/` therefore contains 22 pages, not 26, and
+`scripts/verify-pages.mjs` **fails the build** if an unpublishable report ever
+acquires one. The JSON is the reproducibility substrate: without it,
+`compare-reports.mjs` cannot run over the full set, the determinism gate covers
+only part of the calibration, and "check our numbers yourself" stops being true.
+
+Three properties make shipping the raw reports safe, and all three are checkable
+rather than asserted:
+
+1. **The blocked reports assert nothing.** Every blocking entry carries the
+   sentence *"this does not prove the function is unguarded"* in its own `note`.
+   The report's positive claim is "no guard was recognised by probing", which is
+   a statement about Ripcord's coverage — the opposite of a vulnerability claim.
+   `verdict.status` on all four is `no_notice`, `trapped` or `undetermined`;
+   none is reassuring, and none names an exploit.
+2. **Nothing in them is undisclosed.** Every blocker was decoded and
+   hand-classified (§6), and the one that looked strongest was followed to the
+   state level and cleared (§12). Calibration found **zero** genuinely unguarded
+   privileged functions, so there is no finding being sat on.
+3. **Everything in them is public and re-derivable.** They contain contract
+   addresses, storage slots, role hashes, revert payloads and block numbers —
+   all readable by anyone with an RPC endpoint. Ripcord discovers no private
+   information; its contribution is reading public facts systematically.
+
+The rule that actually protects anyone is the one the tool enforces: **a report
+that cannot rule out an unguarded capability does not get a page.** That rule is
+in the schema, printed loudly by the CLI, and checked in CI — never left to
+whoever is running it under time pressure.
+
 ### Cleared dependency registry
 
 Taken literally, the gate above blocks essentially every protocol on earth — because almost all of them hold USDC, and USDC's blacklist/pause/mint are exactly the powerful, probe-resistant capabilities the gate is built to catch. But those are not latent vulnerabilities: they are the loudly-documented, audited design of a centrally-issued stablecoin. Circle *can* freeze a USDC balance; that is the defining, publicly-known property of the asset, not something Ripcord discovered.
