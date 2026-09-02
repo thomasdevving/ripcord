@@ -1,7 +1,7 @@
 {
-  "schemaVersion": "0.10.0",
-  "rulesetVersion": "0.9.0",
-  "generatedAt": "2026-09-02T06:40:04.528Z",
+  "schemaVersion": "0.11.0",
+  "rulesetVersion": "0.10.0",
+  "generatedAt": "2026-09-02T13:38:27.302Z",
   "chainId": 1,
   "block": {
     "number": "25800000",
@@ -2126,7 +2126,7 @@
       "status": "immutable_within_checks",
       "enumeration": {
         "complete": true,
-        "basis": "Every role enumeration this verdict rests on reported itself complete: the target, every contract the authority recursion walked, and every dependency token. No stage failed."
+        "basis": "Every enumeration this verdict rests on reported itself complete: the target's role set, every contract the authority recursion walked, every dependency token, and the target's own privileged surface. No stage failed."
       },
       "basis": [
         "proxy detection found no DELEGATECALL in the runtime bytecode, so this contract's code cannot be replaced behind the address",
@@ -2307,7 +2307,7 @@
   "enumeration": {
     "complete": true,
     "gaps": [],
-    "note": "Every role enumeration this verdict rests on reported itself complete: the target, every contract the authority recursion walked, and every dependency token. No stage failed."
+    "note": "Every enumeration this verdict rests on reported itself complete: the target's role set, every contract the authority recursion walked, every dependency token, and the target's own privileged surface. No stage failed."
   },
   "disclosure": {
     "publishable": true,

@@ -1,7 +1,7 @@
 {
-  "schemaVersion": "0.10.0",
-  "rulesetVersion": "0.9.0",
-  "generatedAt": "2026-09-02T05:56:43.832Z",
+  "schemaVersion": "0.11.0",
+  "rulesetVersion": "0.10.0",
+  "generatedAt": "2026-09-02T13:37:56.387Z",
   "chainId": 1,
   "block": {
     "number": "25800000",
@@ -1176,14 +1176,15 @@
     "marginSeconds": null,
     "confidence": "low",
     "missing": [
-      "target is a confirmed proxy (pattern=unknown) but no authority route could be resolved — something can change this code and Ripcord could not identify it"
+      "target is a confirmed proxy (pattern=unknown) but no authority route could be resolved — something can change this code and Ripcord could not identify it",
+      "the privileged-surface evaluation at capabilitySurface could not be shown complete, so an authority route may exist that was never seen: 8 of 8 selector(s) are not in Ripcord's taxonomy and were never evaluated for privilege, while 1 privileged party/parties exist over this contract (admin()). An unevaluated selector is \"unclassified\", never \"not privileged\" — so a capability that restricts or halts the exit cannot be ruled out, and no reassuring assessment can rest on this surface. Evaluating those selectors requires their signatures, which Ripcord does not retrieve from any external source — see the README on why a block-explorer lookup would break the pinned-and-cached determinism model."
     ],
     "inputs": [
       {
         "name": "enumeration.complete",
-        "value": "true",
-        "confidence": "high",
-        "source": "every role enumeration behind these routes reported itself complete"
+        "value": "false",
+        "confidence": "low",
+        "source": "1 enumeration site(s) could not be shown complete — see enumeration.gaps"
       },
       {
         "name": "exitWindow.assessment.status",
@@ -1253,9 +1254,18 @@
     ]
   },
   "enumeration": {
-    "complete": true,
-    "gaps": [],
-    "note": "Every role enumeration this verdict rests on reported itself complete: the target, every contract the authority recursion walked, and every dependency token. No stage failed."
+    "complete": false,
+    "gaps": [
+      {
+        "where": "capabilitySurface",
+        "site": {
+          "kind": "capabilitySurface",
+          "id": ""
+        },
+        "reason": "8 of 8 selector(s) are not in Ripcord's taxonomy and were never evaluated for privilege, while 1 privileged party/parties exist over this contract (admin()). An unevaluated selector is \"unclassified\", never \"not privileged\" — so a capability that restricts or halts the exit cannot be ruled out, and no reassuring assessment can rest on this surface. Evaluating those selectors requires their signatures, which Ripcord does not retrieve from any external source — see the README on why a block-explorer lookup would break the pinned-and-cached determinism model."
+      }
+    ],
+    "note": "1 enumeration site(s) could not be shown complete, so the authority picture may be missing routes. The exit window is the MINIMUM notice across routes, and a minimum over an incomplete set can only be too generous — so no reassuring assessment is available here, whatever the routes that WERE found happen to say."
   },
   "disclosure": {
     "publishable": true,

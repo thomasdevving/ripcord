@@ -16,7 +16,7 @@ The audience is anyone deciding whether to put money into a protocol and, more s
 
 Because "audited" has become a synonym for "safe", and it is not the same claim. The gap between them is where a large share of user losses actually live, and it is a *legibility* problem rather than a cryptography problem — the information is already published, just never assembled.
 
-Ripcord's contribution is to assemble it and then refuse to overstate it. That second half is the harder half and it is the whole design: a tool that flags everything is worthless, and a tool that reassures you is dangerous. Calibrated against 26 mainnet protocols, Ripcord produced **zero false-clean results** — no protocol was told it was fine when it was not. Its remaining error mode is under-determination: on 15 of 26 it says "I could not establish this" and names exactly what is missing. That trade is deliberate and it is the right way round, because an under-determination is visible and arguable in the report, while a false clean bill is invisible by construction.
+Ripcord's contribution is to assemble it and then refuse to overstate it. That second half is the harder half and it is the whole design: a tool that flags everything is worthless, and a tool that reassures you is dangerous. Calibrated against 26 mainnet protocols, Ripcord produced **zero false-clean results** — no protocol was told it was fine when it was not. Its remaining error mode is under-determination: on 17 of 26 it says "I could not establish this" and names exactly what is missing. That trade is deliberate and it is the right way round, because an under-determination is visible and arguable in the report, while a false clean bill is invisible by construction.
 
 ## How it works
 
@@ -56,7 +56,7 @@ none of them are on a roadmap to be fixed by the end of the week.
 | **Enumeration is bounded by the provider's `eth_getLogs` range** | Role membership on a non-Enumerable contract is reconstructed by replaying events. On a range-capped endpoint a deep-history contract is only partially scanned — and Ripcord then refuses to issue a reassuring verdict at all. See [Aave's ACLManager](docs/TECHNICAL.md#the-aave-case-what-a-bounded-answer-looks-like) for the worked example. **By design, not by accident.** |
 | **It does not follow authority it cannot model** | Custom registries, Aragon ACLs, Maker's `wards`, governance whose delay lives off the executor — Ripcord detects that an indirection *exists* where it can, names the address, and stops. It never calls into what it finds and never guesses at the structure behind it. |
 | **It does not monitor** | There is no watchtower, no alerting, no queue-watching. A report is a photograph of one block, not a subscription. |
-| **It is frequently less useful than a good auditor** | 15 of 26 calibration protocols come back `undetermined`. That is the deliberate trade: an under-determination is visible and arguable in the report, while a false clean bill is invisible by construction. |
+| **It is frequently less useful than a good auditor** | 17 of 26 calibration protocols come back `undetermined`. That is the deliberate trade: an under-determination is visible and arguable in the report, while a false clean bill is invisible by construction. |
 
 **The one thing it will not do, under any circumstance, is tell you a contract
 is safe when it has not established that.** Every reassuring result in Ripcord is

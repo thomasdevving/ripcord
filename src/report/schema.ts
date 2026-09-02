@@ -7,8 +7,8 @@
  */
 import { z } from "zod";
 
-export const schemaVersion = "0.10.0";
-export const rulesetVersion = "0.9.0";
+export const schemaVersion = "0.11.0";
+export const rulesetVersion = "0.10.0";
 
 const hexString = z.string().regex(/^0x[0-9a-fA-F]*$/);
 const address = z.string().regex(/^0x[0-9a-fA-F]{40}$/);
@@ -168,7 +168,7 @@ export type RoleReconstruction = z.infer<typeof roleReconstructionSchema>;
  * SAME site.
  */
 export const enumerationSiteSchema = z.object({
-  kind: z.enum(["stage", "target", "authority", "dependency", "authorityResolution"]),
+  kind: z.enum(["stage", "target", "authority", "dependency", "authorityResolution", "capabilitySurface"]),
   /** The address, stage name, or "" for the singleton kinds. Lowercased where it is an address. */
   id: z.string(),
 });

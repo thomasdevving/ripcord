@@ -134,9 +134,9 @@ footer{margin-top:26px;font-size:12px;color:var(--text-secondary);}
 
   
 
-  <section class="hero good">
-    <div class="verdict-badge">✓ You can exit in time</div>
-    <p class="verdict-statement">You can exit before the rules CAN change: the notice period is 2 days, leaving takes 0s, leaving 2 days of slack. Liquidity depth is not modelled, so a position large relative to available liquidity could still take longer than the measured exit path.</p>
+  <section class="hero unknown">
+    <div class="verdict-badge">? Undetermined</div>
+    <p class="verdict-statement">Verdict undetermined on the exit-window side: A 172800s delay was proven binding on every one of the 1 authority route(s) FOUND — but the authority picture behind those routes was not shown complete, so the route set itself is not established. The exit window is the MINIMUM notice across all routes, and a minimum taken over an incomplete set can only be too generous. The 172800s figure is reported as a nominal delay, not as a window. Time to exit is at least 0s, but the comparison cannot be made against a window that was not established.</p>
     <figure class="chart">
   <svg viewBox="0 0 720 162" role="img" aria-label="Notice before the rules can change, against the time needed to leave">
     <defs>
@@ -153,10 +153,11 @@ footer{margin-top:26px;font-size:12px;color:var(--text-secondary);}
     <line x1="4" y1="6" x2="4" y2="140" stroke="var(--baseline)" stroke-width="1" />
     <g>
       <text x="4" y="20" class="bar-label">Notice before the rules can change</text>
-      <title>Notice before the rules can change: 2 days</title>
-      <rect x="4" y="28" width="506" height="22" rx="4" fill="var(--series-1)" />
-      <text x="520" y="43" class="bar-value">2 days</text>
-      <text x="4" y="65" class="bar-sub">proven binding on every route found</text>
+      <title>Notice before the rules can change: 2 days nominal — not proven binding</title>
+      <rect x="4" y="28" width="506" height="22" rx="4"
+                 fill="url(#hatch-series-1)" stroke="var(--series-1)" stroke-width="1.5" stroke-dasharray="4 3" />
+      <text x="520" y="43" class="bar-value">2 days nominal — not proven binding</text>
+      <text x="4" y="65" class="bar-sub">delay present, NOT proven binding — an authority may be able to shorten it</text>
     </g>
 <g>
       <text x="4" y="84" class="bar-label">Time needed to leave</text>
@@ -173,18 +174,18 @@ footer{margin-top:26px;font-size:12px;color:var(--text-secondary);}
     <span><i class="sw swn"></i>Flat tint = nothing to measure (no route was found to exist)</span>
   </figcaption>
 </figure>
-    <p class="margin">Margin: <strong>2 days</strong> between finishing your exit and the change taking effect.</p>
     
     
+    <div class="missing"><strong>What is missing, and why this verdict is not crisper</strong><ul><li>the privileged-surface evaluation at capabilitySurface could not be shown complete, so a route with less notice may exist and not have been seen: 7 of 7 selector(s) are not in Ripcord's taxonomy and were never evaluated for privilege, while 1 privileged party/parties exist over this contract (owner()). An unevaluated selector is &quot;unclassified&quot;, never &quot;not privileged&quot; — so a capability that restricts or halts the exit cannot be ruled out, and no reassuring assessment can rest on this surface. Evaluating those selectors requires their signatures, which Ripcord does not retrieve from any external source — see the README on why a block-explorer lookup would break the pinned-and-cached determinism model.</li></ul></div>
     <details class="tabletwin"><summary>The same two figures as a table</summary>
       <div class="scroll"><table>
     <thead><tr><th>Measure</th><th>Value</th><th>Established?</th></tr></thead>
-    <tbody><tr><td>Notice before the rules can change</td><td>2 days</td><td>yes</td></tr><tr><td>Time needed to leave</td><td>0 — none at all</td><td>yes</td></tr></tbody>
+    <tbody><tr><td>Notice before the rules can change</td><td>2 days nominal — not proven binding</td><td>no — nominal only</td></tr><tr><td>Time needed to leave</td><td>0 — none at all</td><td>yes</td></tr></tbody>
   </table></div>
     </details>
   </section>
 
-  <section><h2>Exit window</h2><p class="note">The exit window is the notice you get before a rule change takes effect, minus every way that notice can be cut. It is modelled per route and the protocol figure is the <strong>minimum</strong> across them: a timelock on one path is worth nothing beside an un-delayed one.</p><p class="statement">Exit window is 172800s: every one of the 1 authority route(s) found imposes a delay that was proven binding, and the shortest is 172800s. A rule change on any of them CAN begin at any time, but cannot take effect for at least that long.</p>
+  <section><h2>Exit window</h2><p class="note">The exit window is the notice you get before a rule change takes effect, minus every way that notice can be cut. It is modelled per route and the protocol figure is the <strong>minimum</strong> across them: a timelock on one path is worth nothing beside an un-delayed one.</p><p class="statement">A 172800s delay was proven binding on every one of the 1 authority route(s) FOUND — but the authority picture behind those routes was not shown complete, so the route set itself is not established. The exit window is the MINIMUM notice across all routes, and a minimum taken over an incomplete set can only be too generous. The 172800s figure is reported as a nominal delay, not as a window.</p>
      
      <h3>Routes to changing the rules</h3>
      <div class="scroll"><table>
@@ -228,15 +229,19 @@ footer{margin-top:26px;font-size:12px;color:var(--text-secondary);}
 
   
 
-  
+  <section><h2>Unknowns and errors</h2><p class="note">Always present, never suppressed to look clean. An empty list here is a claim that nothing went wrong.</p><div class="scroll"><table>
+    <thead><tr><th>Field</th><th>Reason</th></tr></thead>
+    <tbody><tr><td><code>exitWindow</code></td><td>the privileged-surface evaluation at capabilitySurface could not be shown complete, so a route with less notice may exist and not have been seen: 7 of 7 selector(s) are not in Ripcord's taxonomy and were never evaluated for privilege, while 1 privileged party/parties exist over this contract (owner()). An unevaluated selector is &quot;unclassified&quot;, never &quot;not privileged&quot; — so a capability that restricts or halts the exit cannot be ruled out, and no reassuring assessment can rest on this surface. Evaluating those selectors requires their signatures, which Ripcord does not retrieve from any external source — see the README on why a block-explorer lookup would break the pinned-and-cached determinism model.</td></tr></tbody>
+  </table></div>
+           <p class="muted">No infrastructure errors.</p></section>
 
   <section><h2>Provenance</h2><p class="note">Everything above is pinned to one block and reproducible from the JSON report this page was rendered from.</p><dl class="meta">
     <div class="kv"><dt>Target</dt><dd><code>0x1F98431c8aD98523631AE4a59f267346ea31F984</code></dd></div>
     <div class="kv"><dt>Chain</dt><dd>1</dd></div>
     <div class="kv"><dt>Pinned block</dt><dd><code>25800000</code></dd></div>
     <div class="kv"><dt>Block hash</dt><dd><code>0xeb4ccbdb418b083ebbf646b371092c7c02016194e3a90caba9a9492becba8a2d</code></dd></div>
-    <div class="kv"><dt>Schema version</dt><dd>0.10.0</dd></div>
-    <div class="kv"><dt>Ruleset version</dt><dd>0.9.0</dd></div>
+    <div class="kv"><dt>Schema version</dt><dd>0.11.0</dd></div>
+    <div class="kv"><dt>Ruleset version</dt><dd>0.10.0</dd></div>
     <div class="kv"><dt>Cleared-registry version</dt><dd>0.1.0</dd></div>
     <div class="kv"><dt>Exit-window rules</dt><dd>0.1.0</dd></div>
     <div class="kv"><dt>Time-to-exit rules</dt><dd>0.1.0</dd></div>
@@ -249,4 +254,4 @@ footer{margin-top:26px;font-size:12px;color:var(--text-secondary);}
     <p class="muted">Capability, not intent: nothing here claims anyone will do anything. It reports what a privileged address is technically able to do, and how much notice you would get.</p>
   </footer>
 </main>
-<script type="application/json" id="ripcord-figures">[{"jsonPath":"verdict.status","raw":"can_exit_in_time","rendered":"You can exit in time","label":"verdict status"},{"jsonPath":"verdict.exitWindowSeconds","raw":"172800","rendered":"2 days","label":"exit window"},{"jsonPath":"verdict.timeToExitSeconds","raw":"0","rendered":"0 — none at all","label":"time to exit"},{"jsonPath":"block.number","raw":"25800000","rendered":"25800000","label":"pinned block"},{"jsonPath":"verdict.marginSeconds","raw":"172800","rendered":"2 days","label":"margin seconds"}]</script>
+<script type="application/json" id="ripcord-figures">[{"jsonPath":"verdict.status","raw":"undetermined","rendered":"Undetermined","label":"verdict status"},{"jsonPath":"exitWindow.assessment.nominalDelaySeconds","raw":"172800","rendered":"2 days nominal — not proven binding","label":"nominal delay"},{"jsonPath":"verdict.timeToExitSeconds","raw":"0","rendered":"0 — none at all","label":"time to exit"},{"jsonPath":"block.number","raw":"25800000","rendered":"25800000","label":"pinned block"}]</script>

@@ -44,7 +44,7 @@
  * CAPABILITY, NOT INTENT, in every string: "before the rules CAN change,"
  * never "will."
  */
-import { enumerationSiteKey } from "./enumeration.js";
+import { enumerationSiteKey, gapSubject } from "./enumeration.js";
 import type {
   DepthConfidence,
   EnumerationCompleteness,
@@ -114,7 +114,7 @@ export function composeVerdict(
   const enumerationMissing = enumeration.gaps
     .filter((g: EnumerationGap) => !cited.has(enumerationSiteKey(g.site)))
     .map(
-      (g: EnumerationGap) => `role enumeration at ${g.where} could not be shown complete, so an authority route may exist that was never seen: ${g.reason}`,
+      (g: EnumerationGap) => `${gapSubject(g.site)} at ${g.where} could not be shown complete, so an authority route may exist that was never seen: ${g.reason}`,
     );
   return { ...verdict, missing: [...verdict.missing, ...enumerationMissing] };
 }

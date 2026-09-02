@@ -318,6 +318,25 @@ describe("the dependency graph — a failed balance read is not 'nothing held'",
   });
 });
 
+/** A fully-evaluated privileged surface with nobody privileged over it — isolates these cases to the stage property they test. */
+const cleanSurface = () => ({
+  capabilities: {
+    taxonomyVersion: "test",
+    dispatcherRecognized: true,
+    scannedAddress: "0x00000000000000000000000000000000000000aa" as Hex,
+    probedAddress: "0x00000000000000000000000000000000000000aa" as Hex,
+    selectorsExtracted: 0,
+    unmatchedSelectors: [],
+    findings: [],
+    needsManualVerification: [],
+    evidence: [],
+  },
+  owner: { address: null, source: "owner() reverted", evidence: [] },
+  pendingOwner: { address: null, source: "pendingOwner() reverted", evidence: [] },
+  proxy: { pattern: "not_a_proxy", isProxy: false, implementation: null, beacon: null, admin: null, evidence: [] },
+  indirection: null,
+}) as unknown as Pick<Parameters<typeof deriveEnumerationCompleteness>[0], "capabilities" | "owner" | "pendingOwner" | "proxy" | "indirection">;
+
 describe("the enumeration witness — a failed stage can never support a reassuring claim", () => {
   it("turns a stage error into a gap, and the gap withholds the witness", () => {
     const e = deriveEnumerationCompleteness({
@@ -325,6 +344,7 @@ describe("the enumeration witness — a failed stage can never support a reassur
       authorityResolution: { maxDepth: 3, roots: [], paths: [], cyclesDetected: [] },
       dependencies: { tokens: [], oracles: [] },
       errors: [{ stage: "accessControl", message: "eth_call failed without any positive sign of a contract revert" }],
+      ...cleanSurface(),
     });
     expect(e.complete).toBe(false);
     expect(witnessOf(e)).toBeNull(); // `binding` / `immutable_within_checks` become unconstructable
@@ -340,6 +360,7 @@ describe("the enumeration witness — a failed stage can never support a reassur
       authorityResolution: { maxDepth: 3, roots: [], paths: [], cyclesDetected: [] },
       dependencies: { tokens: [], oracles: [] },
       errors: [],
+      ...cleanSurface(),
     });
     expect(clean.complete).toBe(true);
   });
