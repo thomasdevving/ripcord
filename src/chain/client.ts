@@ -147,6 +147,85 @@ async function withTransientRetry<T>(fn: () => Promise<T>): Promise<T> {
   throw lastError;
 }
 
+/**
+ * Positively identifies a CONTRACT REVERT — the day-6 semantic-audit fix, and
+ * the most load-bearing few lines in this file.
+ *
+ * THE BUG THIS CLOSES. Until now `call`/`probeCall` asked the opposite
+ * question: "does this failure look TRANSIENT?" If not, the failure was
+ * recorded — and permanently CACHED — as `reverted: true`. That is fail-OPEN,
+ * and it matters because roughly twenty call sites downstream read a revert as
+ * a fact about the CONTRACT: `owner()` reverted therefore no owner,
+ * `DEFAULT_ADMIN_ROLE()` reverted therefore not AccessControl, `balanceOf()`
+ * reverted therefore nothing held. An infrastructure failure that slipped
+ * through the transient patterns became, silently and permanently, an absence.
+ *
+ * This is not hypothetical. Three realistic failures were reproduced live
+ * against a real provider during the day-6 audit, and NONE of them matched a
+ * single transient pattern:
+ *
+ *   bad/expired API key   -32600  "Must be authenticated!"
+ *   unreachable endpoint  (none)  "fetch failed" / "bad port"
+ *   block not available   -32001  "block not found: 0x…"
+ *
+ * The third is the one to dwell on: every Ripcord read is pinned to a
+ * HISTORICAL block, so a non-archive endpoint fails exactly this way — and
+ * would have produced a complete, schema-valid, confidently clean report in
+ * which every contract has no owner, no roles, and no capabilities. The
+ * determinism gate cannot catch it either: such a report is byte-identical
+ * cold and warm, because the failure is consistent. It is precisely the
+ * false-clean result this project exists to make impossible, reached through
+ * the cache rather than through a detector, and it is the FIFTH defect to
+ * enter through this boundary.
+ *
+ * THE FIX IS THE INVERSION, not a longer pattern list. Adding "Must be
+ * authenticated" and friends to TRANSIENT_PATTERNS would fix these three and
+ * leave the class wide open, because the residual is unbounded: it is every
+ * failure mode of every provider nobody has met yet. So the question is
+ * inverted to the fail-CLOSED direction — a result is a revert only when
+ * something positively says so; everything else is infrastructure and throws.
+ * Same discipline as `report/enumeration.ts`'s `=== true`: completeness, and
+ * now revert-ness, is a positive claim.
+ *
+ * WHAT COUNTS AS POSITIVE, all four derived from live observation rather than
+ * memory (`scripts/audit-error-shapes.ts` reproduces the table):
+ *   1. raw revert bytes anywhere in the cause chain — only the EVM makes those;
+ *   2. viem's own `ExecutionRevertedError` in the chain;
+ *   3. an RPC error carrying EIP-1474 code 3 ("execution error");
+ *   4. the node's own message saying `execution reverted`.
+ * Every genuine revert observed carries 2, 3 and 4 together — including the
+ * ones with NO revert data at all (KNOWN EDGE #4's USDT case) and custom-error
+ * reverts (sUSDe's `OperationNotAllowed()`), which is what makes the tight
+ * classifier safe for the existing calibration set rather than merely
+ * theoretically better.
+ *
+ * DELIBERATELY EXCLUDED: viem's `nodeMessage` regex also matches "gas required
+ * exceeds allowance", which is a gas-configuration failure, not a contract
+ * decision. Reading it as a revert would reintroduce the bug in miniature.
+ *
+ * THE COST IS THE RIGHT WAY ROUND. A genuine revert phrased in some way all
+ * four tests miss now becomes a loud `errors[]` entry instead of a silent
+ * absence: visible, arguable, and blocking a reassuring verdict through the
+ * enumeration witness. Wrong in the safe direction, which is the whole trade
+ * this project makes everywhere else.
+ */
+const REVERT_MESSAGE = /execution reverted/i;
+
+/** Exported for direct unit testing against the exact error objects observed live. */
+export function looksLikeContractRevert(err: unknown): boolean {
+  if (extractRevertData(err) !== undefined) return true;
+  let cur: unknown = err;
+  for (let depth = 0; cur && depth < 10; depth++) {
+    const e = cur as { name?: unknown; code?: unknown; details?: unknown; message?: unknown };
+    if (e.name === "ExecutionRevertedError") return true;
+    if (e.code === 3) return true;
+    if (typeof e.details === "string" && REVERT_MESSAGE.test(e.details)) return true;
+    if (typeof e.message === "string" && REVERT_MESSAGE.test(e.message)) return true;
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
 /** Walks a thrown error's `.cause` chain looking for raw revert bytes (viem nests the RPC error several levels deep). */
 function extractRevertData(err: unknown): Hex | undefined {
   let cur: unknown = err;
@@ -276,18 +355,22 @@ export class PinnedChain implements ChainReader {
           // implemented) — it is cached like any other result, not thrown as a
           // ChainReadError.
           //
-          // But an INFRASTRUCTURE failure must never take that path. This catch
-          // used to be unconditional, which meant a rate-limited or timed-out
-          // eth_call was recorded — and permanently CACHED — as "this function
-          // reverted." That is the exact false-clean result rule 3 forbids: a
-          // transient 429 on `owner()` would have become a cached "no owner,"
-          // indistinguishable from a contract that genuinely has none, for every
-          // future run against that cache. Found on day 4 while adding transient
-          // retries. A transient-looking failure is now retried and, if it still
-          // fails, raised as a ChainReadError so the caller records it in
-          // errors[] where infrastructure belongs.
-          if (looksTransient(err)) {
-            throw new ChainReadError("call", `eth_call(${address}) failed for infrastructure reasons, not a revert`, err);
+          // But an INFRASTRUCTURE failure must never take that path, because
+          // ~20 detectors downstream read a revert as a fact about the
+          // CONTRACT. Day 4 narrowed this catch from unconditional to
+          // "transient-looking failures throw" (KNOWN EDGE #14); day 6's
+          // semantic audit INVERTED it, because the day-4 shape was still
+          // fail-open — a bad API key, an unreachable host and a
+          // block-not-found all matched no transient pattern and were being
+          // cached as "this function reverted." Now the revert must be
+          // positively identified; anything else is infrastructure and lands
+          // in errors[] where it belongs. See looksLikeContractRevert.
+          if (!looksLikeContractRevert(err)) {
+            throw new ChainReadError(
+              "call",
+              `eth_call(${address}) failed without any positive sign of a contract revert — treated as an infrastructure failure, not as "this function reverted"`,
+              err,
+            );
           }
           return { result: undefined, reverted: true };
         }
@@ -335,13 +418,21 @@ export class PinnedChain implements ChainReader {
           );
           return { reverted: false, revertData: undefined as Hex | undefined, result: result.data };
         } catch (err) {
-          // Same rule as `call` above: an infrastructure failure is not a
-          // revert. Caching one as `reverted: true, revertData: undefined`
-          // would look identical to "the provider returned no revert data"
-          // (KNOWN EDGE #4) and would silently degrade a guard attribution to
-          // inconclusive forever.
-          if (looksTransient(err)) {
-            throw new ChainReadError("probeCall", `eth_call(${address}) probe failed for infrastructure reasons, not a revert`, err);
+          // Same rule as `call` above, and it bites harder here. Caching an
+          // infrastructure failure as `reverted: true, revertData: undefined`
+          // is indistinguishable from "the provider returned no revert data"
+          // (KNOWN EDGE #4) — so a guard probe would be permanently, silently
+          // degraded to inconclusive, and a capability would be routed to
+          // needsManualVerification for a reason that was never true. The
+          // no-data revert IS still recognised: it was reproduced live on
+          // USDT.pause() and carries code 3 + "execution reverted" even with
+          // an empty payload, so edge #4's real case is unaffected.
+          if (!looksLikeContractRevert(err)) {
+            throw new ChainReadError(
+              "probeCall",
+              `eth_call(${address}) probe failed without any positive sign of a contract revert — treated as an infrastructure failure, not as "this function reverted"`,
+              err,
+            );
           }
           return { reverted: true, revertData: extractRevertData(err), result: undefined as Hex | undefined };
         }

@@ -23,6 +23,15 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
 
+      # The rendered calibration pages are checked against the pinned reports
+      # they came from: every headline figure must still resolve to the same
+      # value at the same JSON path, and the honesty properties (an undetermined
+      # verdict never wearing the healthy tone, an unproven delay never shown as
+      # a settled window, a partial reconstruction always labelled, only
+      # publishable reports rendered) must still hold. Needs no network — both
+      # sides are committed — so it belongs in CI rather than in a manual pass.
+      - run: pnpm verify:pages
+
   gitleaks:
     runs-on: ubuntu-latest
     steps:

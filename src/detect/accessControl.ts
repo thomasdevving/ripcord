@@ -238,6 +238,20 @@ async function readRoleViaEnumerable(
   evidence.push(countEvidence);
 
   const members: Hex[] = [];
+  // A revert HERE is not the ordinary "this contract isn't Enumerable" case —
+  // that was already settled, positively, by getRoleMemberCount succeeding on
+  // DEFAULT_ADMIN_ROLE before this function was ever called. So a failure at
+  // this point leaves the membership of THIS role unknown, and an empty
+  // `members` array would read as "nobody holds it" — a role that vanishes
+  // from the report is a route that vanishes from the exit window's minimum.
+  // Recorded as an unknown so it reaches the report rather than the floor.
+  if (countReverted || !countRaw) {
+    unknowns.push({
+      field: `authority.accessControl.roles[${role}].members`,
+      reason:
+        "getRoleMemberCount reverted for this role on a contract already established as AccessControlEnumerable — its membership is UNKNOWN, not empty",
+    });
+  }
   if (!countReverted && countRaw) {
     const count = decodeFunctionResult({ abi: accessControlAbi, functionName: "getRoleMemberCount", data: countRaw }) as bigint;
     for (let i = 0n; i < count; i++) {
@@ -296,6 +310,13 @@ async function readRoleAdmin(chain: ChainReader, target: Hex, role: Hex, evidenc
   const data = encodeFunctionData({ abi: accessControlAbi, functionName: "getRoleAdmin", args: [role] });
   const { result, reverted, evidence: callEvidence } = await chain.call(target, data);
   evidence.push(callEvidence);
+  // `null` here means "this role's admin was not established", never "this role
+  // has no admin". The day-4 rolePrivilege gate reads adminRole as one of three
+  // ways a role can earn privilege, so a null costs the role that evidence and
+  // pushes the route toward `unverified` — which blocks a `binding` window
+  // rather than enabling one (KNOWN EDGE #18). The failure direction is
+  // therefore conservative by construction, which is why this stays a plain
+  // null rather than an unknowns[] entry on every non-AccessControl contract.
   if (reverted || !result) return null;
   return decodeFunctionResult({ abi: accessControlAbi, functionName: "getRoleAdmin", data: result }) as Hex;
 }

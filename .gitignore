@@ -7,3 +7,8 @@ dist/
 
 # Proof engine artifacts (regenerable, machine-specific paths)
 .ripcord/
+
+# Rendered calibration pages and the pinned reports they come from are COMMITTED
+# on purpose: they are the day-5 evidence, and they let anyone re-render or
+# re-check the numbers without an RPC key. Nothing here is regenerated at view
+# time.

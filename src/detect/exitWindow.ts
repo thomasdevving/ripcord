@@ -86,7 +86,9 @@ import { ERROR_STRING_SELECTOR, PROBE_ADDRESSES, parseAuthShape } from "./guardP
 import { terminalNodeOf } from "./authority.js";
 import { detectProxy } from "./proxy.js";
 import { extractDispatcherSelectors } from "./dispatcher.js";
+import { enumerationSiteKey, witnessOf } from "../report/enumeration.js";
 import type {
+  AuthorityIndirection,
   AuthorityNode,
   AuthorityResolution,
   Bypass,
@@ -94,6 +96,7 @@ import type {
   CapabilitiesResult,
   CapabilityCategory,
   DepthConfidence,
+  EnumerationCompleteness,
   Evidence,
   ExitWindow,
   ExitWindowAssessment,
@@ -426,6 +429,18 @@ export async function analyseExitWindow(
     capabilities: CapabilitiesResult;
     /** The TARGET's own reconstructed roles — needed to tell a privileged role from a marker role. */
     accessControlRoles: RoleEntry[];
+    /**
+     * Day-5 authority-indirection markers. Null means the check did not run,
+     * which is treated as "cannot rule out delegated authority" rather than as
+     * "none" — see the inverted default in `assess`.
+     */
+    authorityIndirection: AuthorityIndirection | null;
+    /**
+     * The aggregate enumeration witness. Required, not nullable: whether the
+     * route set was fully seen is a precondition of the window arithmetic, so
+     * there is no "we did not check" state — see report/enumeration.ts.
+     */
+    enumeration: EnumerationCompleteness;
   },
 ): Promise<ExitWindowDetection> {
   const unknowns: UnknownEntry[] = [];
@@ -744,7 +759,12 @@ function buildChecks(
 /** Composes the per-route notices into one assessment. Ordering is the model: proven zero beats unknown, and unknown beats an unverified delay. */
 function assess(
   routes: ExitWindowRoute[],
-  args: { proxy: ProxyResult; capabilities: CapabilitiesResult },
+  args: {
+    proxy: ProxyResult;
+    capabilities: CapabilitiesResult;
+    authorityIndirection: AuthorityIndirection | null;
+    enumeration: EnumerationCompleteness;
+  },
   unknowns: UnknownEntry[],
 ): ExitWindowAssessment {
   if (routes.length === 0) {
@@ -756,6 +776,7 @@ function assess(
         missing: [
           `target is a confirmed proxy (pattern=${args.proxy.pattern}) but no authority route could be resolved — something can change this code and Ripcord could not identify it`,
         ],
+        citedGapSites: [],
         confidence: "low",
         statement:
           "Exit window undetermined: this contract is upgradeable, but the authority that can upgrade it was not identified, so the notice before a rule change cannot be bounded.",
@@ -770,20 +791,116 @@ function assess(
         missing: [
           "privileged capabilities were detected but none could be attributed to an identified holder, so no route could be built and no notice period can be bounded",
         ],
+        citedGapSites: [],
         confidence: "low",
         statement:
           "Exit window undetermined: privileged functions exist but their holders could not be identified, so the notice before a rule change cannot be bounded.",
       };
     }
+    // --- THE INVERTED DEFAULT (day 5) ---
+    //
+    // Reaching here means no authority route was BUILT. Until day 5 that alone
+    // produced a reassuring status, which conflated "we found nothing" with
+    // "there is nothing" and was wrong on two of the three mainnet contracts it
+    // fired on (see the day-5 split documented on exitWindowAssessmentSchema).
+    //
+    // Now "clean" must be EARNED. Each condition below is a read Ripcord
+    // actually performed and can point at; a condition that is merely absent
+    // never counts. Anything missing sends the assessment to `undetermined`,
+    // which is the safe outcome and the one reached by falling through.
+    const missingBasis: string[] = [];
+    const basis: string[] = [];
+
+    // 1. The code itself cannot be swapped. This is the strongest evidence
+    //    available and it comes from the bytecode, not from a getter: proxy
+    //    detection found no DELEGATECALL at all. `unknown` means a DELEGATECALL
+    //    WAS found and not classified, which is the opposite of reassuring, and
+    //    is already handled by the isProxy branch above for confirmed proxies.
+    if (args.proxy.pattern === "not_a_proxy") {
+      basis.push("proxy detection found no DELEGATECALL in the runtime bytecode, so this contract's code cannot be replaced behind the address");
+    } else {
+      missingBasis.push(`proxy pattern is "${args.proxy.pattern}" rather than a positively-established "not_a_proxy", so code replacement cannot be ruled out`);
+    }
+
+    // 2. The dispatcher was actually decoded. Without this the selector set was
+    //    never enumerated, so "no privileged capability found" is not a finding
+    //    about the contract — it is a statement that we could not look.
+    if (args.capabilities.dispatcherRecognized) {
+      basis.push(`the dispatcher was decoded and all ${args.capabilities.selectorsExtracted} selector(s) enumerated`);
+    } else {
+      missingBasis.push("the dispatcher could not be decoded, so the contract's function set was never enumerated and no capability claim about it is possible");
+    }
+
+    // 3. No handle to authority elsewhere. A null result means the check did
+    //    NOT run, which cannot support a positive claim either.
+    if (args.authorityIndirection === null) {
+      missingBasis.push("the authority-indirection check did not run, so a delegated-authorisation handle cannot be ruled out");
+    } else if (args.authorityIndirection.markers.length > 0) {
+      missingBasis.push(
+        `authority appears to be delegated elsewhere: ${args.authorityIndirection.markers
+          .map((m: AuthorityIndirection["markers"][number]) => `${m.signature} → ${m.target}`)
+          .join(", ")} — Ripcord does not resolve what that contract permits or who controls it`,
+      );
+    } else {
+      basis.push(`none of the ${args.authorityIndirection.gettersProbed.length} authority-indirection getters probed resolved to a non-zero address`);
+    }
+
+    // 4. Nothing privileged turned up, including entries that only needed
+    //    manual review — an untested capability is not an absent one.
+    if (args.capabilities.findings.length === 0 && args.capabilities.needsManualVerification.length === 0) {
+      basis.push("no capability in Ripcord's taxonomy matched any of this contract's selectors");
+    } else {
+      missingBasis.push("privileged capabilities were detected on this contract but could not be attributed to a holder");
+    }
+
+    // 5. No authority handle on the contract itself.
+    basis.push("owner(), pendingOwner() and AccessControl role detection all came back empty");
+
+    if (missingBasis.length > 0) {
+      for (const m of missingBasis) unknowns.push({ field: "exitWindow", reason: m });
+      return {
+        status: "undetermined",
+        missing: missingBasis,
+        citedGapSites: [],
+        confidence: "low",
+        statement:
+          "Exit window undetermined: no authority route was found, but immutability was not positively established either — so this is an absence of evidence, not evidence of absence. See `missing` for exactly which positive check failed.",
+      };
+    }
+
+    // A positive claim on an incompletely enumerated authority is a false
+    // positive by construction: "no route exists" cannot be asserted from a
+    // role set that may be missing entries.
+    const immutabilityWitness = witnessOf(args.enumeration);
+    if (!immutabilityWitness) {
+      const enumerationMissing = args.enumeration.gaps.map(
+        (g) => `no rule-change route was found, but role enumeration at ${g.where} was incomplete, so "no route exists" cannot be claimed: ${g.reason}`,
+      );
+      for (const m of enumerationMissing) unknowns.push({ field: "exitWindow", reason: m });
+      return {
+        status: "undetermined",
+        missing: enumerationMissing,
+        // Every gap is narrated here, so every site is cited: the verdict adds
+        // none of them again. Recorded as KEYS, so the suppression downstream
+        // is identity-based and cannot collide with unrelated prose.
+        citedGapSites: args.enumeration.gaps.map((g) => enumerationSiteKey(g.site)),
+        confidence: "low",
+        statement:
+          "Exit window undetermined: no authority route was found, but the role enumeration was incomplete, so this cannot be a positive finding of immutability — only an absence of evidence.",
+      };
+    }
+
     return {
-      status: "no_rule_change_route_found",
+      status: "immutable_within_checks",
+      enumeration: immutabilityWitness,
+      basis,
       caveats: [
-        "this is not a proof of immutability: it means no proxy pattern, no owner, no AccessControl role and no attributed privileged capability was found",
         `${args.capabilities.unmatchedSelectors.length} selector(s) on this contract are not in Ripcord's taxonomy and were NOT evaluated for privilege — an unmatched selector is "unclassified," never "not privileged"`,
+        "authority enforced by a bespoke registry that exposes no getter at all (Rocket Pool's RocketStorage is the calibration example) is invisible to every check above, so this status is bounded by the checks named in `basis`, not a general claim of immutability",
       ],
-      confidence: args.capabilities.dispatcherRecognized ? "medium" : "low",
+      confidence: "medium",
       statement:
-        "No rule-change route was found: no upgrade path, owner, role or attributed privileged capability was detected, so no authority was found that could change the rules on a holder.",
+        "No rule-change route exists within the checks Ripcord performs: the code cannot be replaced, no owner or role holds authority, no delegated-authorisation handle resolves, and no taxonomy capability matched. This is a positive finding bounded by `caveats`, not a general proof of immutability.",
     };
   }
 
@@ -826,6 +943,7 @@ function assess(
       return {
         status: "undetermined",
         missing,
+        citedGapSites: [],
         confidence: weakest(confidences),
         statement: `Exit window not established: ${missing.length} authority route(s) could not be resolved to a controller, and no route was found to impose any delay. Unknown notice is not the same as no risk, and it is not the same as a delay either.`,
       };
@@ -834,6 +952,7 @@ function assess(
       status: "not_proven_binding",
       nominalDelaySeconds: nominal,
       missing,
+      citedGapSites: [],
       confidence: weakest(confidences),
       statement: `Delay present but NOT proven binding: the shortest observed delay is ${nominal}s, but it is not reported as an exit window because ${missing.length} route(s) could not be verified. An unverified delay is not a window.`,
     };
@@ -841,9 +960,41 @@ function assess(
 
   // Every route resolved to a proven-binding, non-zero delay.
   const min = routes.map((r) => BigInt(r.noticeSeconds!)).reduce((a, b) => (a < b ? a : b));
+
+  // ...but a minimum is only as good as the set it ranges over. If any role
+  // enumeration behind these routes was partial, an un-enumerated role could
+  // hold a zero-notice power, and the true minimum would be lower than this one
+  // — possibly zero. So `binding` requires the witness, and without it the
+  // result degrades rather than being reported.
+  //
+  // It degrades to `not_proven_binding` rather than `undetermined` on purpose:
+  // that variant's meaning is already "a delay exists but binding-ness OR
+  // ANOTHER ROUTE is unresolved", which is exactly the situation, and it keeps
+  // the observed figure instead of discarding it. The direction stays safe
+  // because verdict.ts's branch for it can only yield `trapped` or
+  // `undetermined`, never a reassuring verdict — and it can still reach
+  // `trapped` when the exit already takes longer than the delay, which unseen
+  // routes could only reinforce.
+  const witness = witnessOf(args.enumeration);
+  if (!witness) {
+    const enumerationMissing = args.enumeration.gaps.map(
+      (g) => `role enumeration at ${g.where} could not be shown complete, so a route with less notice may exist and not have been seen: ${g.reason}`,
+    );
+    for (const m of enumerationMissing) unknowns.push({ field: "exitWindow", reason: m });
+    return {
+      status: "not_proven_binding",
+      nominalDelaySeconds: min.toString(),
+      missing: enumerationMissing,
+      citedGapSites: args.enumeration.gaps.map((g) => enumerationSiteKey(g.site)),
+      confidence: "low",
+      statement: `A ${min}s delay was proven binding on every one of the ${routes.length} authority route(s) FOUND — but the role enumeration behind those routes was incomplete, so the route set itself is not established. The exit window is the MINIMUM notice across all routes, and a minimum taken over an incomplete set can only be too generous. The ${min}s figure is reported as a nominal delay, not as a window.`,
+    };
+  }
+
   return {
     status: "binding",
     windowSeconds: min.toString(),
+    enumeration: witness,
     confidence: weakest(confidences),
     statement: `Exit window is ${min}s: every one of the ${routes.length} authority route(s) found imposes a delay that was proven binding, and the shortest is ${min}s. A rule change on any of them CAN begin at any time, but cannot take effect for at least that long.`,
   };

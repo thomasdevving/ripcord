@@ -105,6 +105,13 @@ export async function detectProxy(chain: ChainReader, target: Hex): Promise<Prox
       try {
         implementation = decodeFunctionResult({ abi: beaconAbi, functionName: "implementation", data: result }) as Hex;
       } catch {
+        // `implementation: null` on a CONFIRMED beacon proxy is not read as
+        // "no implementation": the pattern stays `eip1967_beacon` with
+        // `isProxy: true`, and capabilities.ts turns exactly that combination
+        // into an explicit unknowns[] entry ("confirmed proxy, implementation
+        // unresolved — capability detection skipped") rather than an empty
+        // capability set. The proxy-ness, which is what drives the exit
+        // window, is established by the storage slot and is unaffected.
         implementation = null;
       }
     }

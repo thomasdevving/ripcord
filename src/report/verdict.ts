@@ -44,7 +44,16 @@
  * CAPABILITY, NOT INTENT, in every string: "before the rules CAN change,"
  * never "will."
  */
-import type { DepthConfidence, ExitWindow, TimeToExit, Verdict, VerdictInput } from "./schema.js";
+import { enumerationSiteKey } from "./enumeration.js";
+import type {
+  DepthConfidence,
+  EnumerationCompleteness,
+  EnumerationGap,
+  ExitWindow,
+  TimeToExit,
+  Verdict,
+  VerdictInput,
+} from "./schema.js";
 
 /** Weakest-link: the verdict is only as strong as its weakest input. */
 function weakest(values: DepthConfidence[]): DepthConfidence {
@@ -64,12 +73,71 @@ export function humanDuration(seconds: bigint): string {
   return `${seconds}s`;
 }
 
-export function composeVerdict(exitWindow: ExitWindow | null, timeToExit: TimeToExit | null): Verdict {
+/**
+ * Wraps the composition so the enumeration gaps reach `missing[]` on EVERY
+ * branch, not just the ones that happen to degrade.
+ *
+ * Without this a report could say `missing: []` while one of its own
+ * reconstruction blocks said the role set may be incomplete — an internally
+ * self-contradicting report, and a credibility problem quite apart from the
+ * false-clean it used to enable. A `no_notice` or `trapped` verdict keeps its
+ * status (unseen routes cannot make a bad finding safer, so the caution-only
+ * direction is preserved) but still has to admit what was not enumerated.
+ */
+export function composeVerdict(
+  exitWindow: ExitWindow | null,
+  timeToExit: TimeToExit | null,
+  enumeration: EnumerationCompleteness,
+): Verdict {
+  const verdict = composeVerdictInner(exitWindow, timeToExit, enumeration);
+  if (enumeration.complete) return verdict;
+
+  // Dedupe by SITE IDENTITY. When the exit-window assessment already degraded
+  // over a gap, it named that site in its own words, and appending a second
+  // near-identical sentence makes the report look careless on precisely the
+  // finding it exists to communicate.
+  //
+  // The identity has to be structural, and this is the day-6 tighten. The first
+  // version of this dedup asked whether any `missing[]` entry CONTAINED the
+  // gap's `where` string. That happens to behave on the current calibration set,
+  // but only by an accident of wording: `where` for the target is the bare word
+  // "target", so any unrelated sentence mentioning a target would have
+  // suppressed a real gap — and suppressing an enumeration gap is exactly the
+  // failure this whole subsystem exists to prevent, arrived at through a
+  // cosmetic tidy-up. Prose is not an identifier. The assessment now publishes
+  // the canonical KEYS of the sites it cited, and this compares keys, so a
+  // suppression can only ever collapse the two representations of the same site
+  // and never a coincidental collision with unrelated text.
+  const cited = new Set<string>(
+    exitWindow && "citedGapSites" in exitWindow.assessment ? exitWindow.assessment.citedGapSites : [],
+  );
+  const enumerationMissing = enumeration.gaps
+    .filter((g: EnumerationGap) => !cited.has(enumerationSiteKey(g.site)))
+    .map(
+      (g: EnumerationGap) => `role enumeration at ${g.where} could not be shown complete, so an authority route may exist that was never seen: ${g.reason}`,
+    );
+  return { ...verdict, missing: [...verdict.missing, ...enumerationMissing] };
+}
+
+function composeVerdictInner(
+  exitWindow: ExitWindow | null,
+  timeToExit: TimeToExit | null,
+  enumeration: EnumerationCompleteness,
+): Verdict {
   const inputs: VerdictInput[] = [];
   const missing: string[] = [];
 
   if (!exitWindow) missing.push("the exit-window stage did not run (see errors[])");
   if (!timeToExit) missing.push("the time-to-exit stage did not run (see errors[])");
+
+  inputs.push({
+    name: "enumeration.complete",
+    value: String(enumeration.complete),
+    confidence: enumeration.complete ? "high" : "low",
+    source: enumeration.complete
+      ? "every role enumeration behind these routes reported itself complete"
+      : `${enumeration.gaps.length} enumeration site(s) could not be shown complete — see enumeration.gaps`,
+  });
 
   if (exitWindow) {
     inputs.push({
@@ -149,15 +217,26 @@ export function composeVerdict(exitWindow: ExitWindow | null, timeToExit: TimeTo
     };
   }
 
-  if (exitWindow.assessment.status === "no_rule_change_route_found") {
+  if (exitWindow.assessment.status === "immutable_within_checks") {
+    // The sentence leads with the BOUND, not with reassurance. Day-5
+    // calibration showed why: the predecessor of this status opened with "No
+    // exit-window risk was identified," which a reader takes as a verdict about
+    // the contract when it is really a verdict about the search. The status is
+    // now only reachable on positive evidence (see the day-5 split on
+    // exitWindowAssessmentSchema), and even then the claim is stated as
+    // bounded — "within the checks Ripcord performs" — with the basis first and
+    // the caveats attached, never as a general clean bill.
     return {
-      status: "no_rule_change_route_found",
-      statement: `No exit-window risk was identified: no upgrade path, owner, role or attributed privileged capability was found, so no authority was found that could change the rules on a holder. ${exitWindow.assessment.caveats.join(" ")}${blockedSuffix}`,
+      status: "immutable_within_checks",
+      statement: `Within the checks Ripcord performs, no route exists to change the rules on a holder — established positively, not by failing to find one: ${exitWindow.assessment.basis.join("; ")}. This claim is bounded: ${exitWindow.assessment.caveats.join(" · ")}.${blockedSuffix}`,
       exitWindowSeconds: null,
       timeToExitSeconds: timeToExit.atLeastSeconds,
       marginSeconds: null,
       confidence: weakest([exitWindow.assessment.confidence, timeToExit.confidence]),
-      missing: [],
+      // Not empty, unlike every other reachable verdict: what is missing here
+      // is exactly the coverage this status is bounded by, and leaving it blank
+      // would let a bounded claim read as an unbounded one.
+      missing: exitWindow.assessment.caveats,
       inputs,
     };
   }

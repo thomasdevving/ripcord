@@ -43,12 +43,32 @@ export async function detectDependencies(chain: ChainReader, target: Hex): Promi
   for (const { address: tokenAddress } of candidates) {
     const balanceCall = encodeFunctionData({ abi: erc20Abi, functionName: "balanceOf", args: [target] });
     const { result, reverted, evidence: balanceEvidence } = await chain.call(tokenAddress, balanceCall);
-    if (reverted || !result) continue;
+
+    // `balanceOf` is not an optional method on this list. Every entry in
+    // MAJOR_TOKENS was individually verified live as a working ERC20 before it
+    // was committed, so a revert or an undecodable answer here is an ANOMALY,
+    // not the ordinary "this contract doesn't implement it" outcome that a
+    // reverting `owner()` is. Skipping silently would report the target as
+    // holding nothing — an absence manufactured from a failed read, and one
+    // that also removes the token's own privileged capabilities from the
+    // report and can flip the disclosure gate to publishable. So it is
+    // recorded and the token is skipped, never skipped quietly.
+    if (reverted || !result) {
+      unknowns.push({
+        field: `dependencies.tokens[${tokenAddress}].balance`,
+        reason: `balanceOf(target) did not return a value on a curated major token (reverted=${reverted}) — the holding is UNKNOWN, not zero; this token's authority and capabilities were not examined`,
+      });
+      continue;
+    }
 
     let balance: bigint;
     try {
       balance = decodeFunctionResult({ abi: erc20Abi, functionName: "balanceOf", data: result }) as bigint;
     } catch {
+      unknowns.push({
+        field: `dependencies.tokens[${tokenAddress}].balance`,
+        reason: "balanceOf(target) returned data that does not decode as uint256 — the holding is UNKNOWN, not zero",
+      });
       continue;
     }
     if (!isMeaningfulBalance(balance)) continue;
@@ -114,8 +134,18 @@ async function detectOracles(chain: ChainReader, target: Hex, unknowns: UnknownE
 
     let addr: Hex;
     try {
+      // Unlike the balance read above, this one is genuinely expected to fail
+      // often: `oracle()` is probed speculatively on every target, and a
+      // same-named function with a different return type is a normal thing to
+      // meet. It is still recorded rather than dropped, because "we asked and
+      // could not interpret the answer" is not the same as "there is no
+      // oracle" — and this file's own oracle list is already narrow (edge #6).
       addr = decodeFunctionResult({ abi: oracleGetterAbi, functionName: fnName, data: result }) as Hex;
     } catch {
+      unknowns.push({
+        field: `dependencies.oracles.${fnName}`,
+        reason: `${fnName}() resolved but its return value does not decode as an address — not followed as an oracle dependency, and NOT established as absent`,
+      });
       continue;
     }
     if (addr.toLowerCase() === zeroAddress) continue;

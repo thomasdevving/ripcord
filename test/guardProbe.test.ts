@@ -81,10 +81,13 @@ describe("parseAuthShape", () => {
     expect(parseAuthShape(revertData)).toEqual({ kind: "accessControlRole", role });
   });
 
-  it("does NOT treat a real mainnet-observed unrelated revert string as auth-shaped", () => {
+  it("stays strictly the OZ-only layer: a non-OZ guard string is not an OZ auth shape", () => {
     // Captured live: eth_call mint(address,uint256) against USDC's FiatTokenV2_2
     // implementation, zero-valued args, from an unrelated address — a real
-    // custom (non-OZ) guard message.
+    // custom (non-OZ) guard message. parseAuthShape must still return null:
+    // recognising this string is the day-5 DIALECT layer's job, and keeping the
+    // two separate is what stops the OZ role-hash extraction from being asked to
+    // interpret a message that carries no role hash.
     const revertData = encodeErrorString("FiatToken: caller is not a minter");
     expect(parseAuthShape(revertData)).toBeNull();
   });
@@ -229,5 +232,74 @@ describe("probeGuard", () => {
     });
 
     expect(result.status).toBe("inconclusive");
+  });
+});
+
+// --- day-5 dialect integration: what the probe DOES with a recognised dialect ---
+
+describe("probeGuard × the day-5 dialect dictionary", () => {
+  it("reports guarded_unknown_holder — never attributed — for a recognised non-OZ auth dialect", async () => {
+    // The live USDC/cbETH shape. A guard demonstrably fired, so this is no
+    // longer routed to manual verification; but the dialect names no holder,
+    // so no holder may be claimed. That distinction is the whole point.
+    const revertData = encodeErrorString("Blacklistable: caller is not the blacklister");
+    const responses = new Map(PROBE_ADDRESSES.map((a) => [a.toLowerCase(), { revertData, reverted: true }]));
+    const result = await probeGuard(fakeChain(responses), ("0x" + "aa".repeat(20)) as Hex, "blacklist(address)", {
+      // An owner IS known here — the probe must still refuse to attribute to it,
+      // because this dialect is not evidence that THIS owner holds THIS guard.
+      authorityOwner: ("0x" + "11".repeat(20)) as Hex,
+      accessControlRoles: [],
+    });
+    expect(result.status).toBe("guarded_unknown_holder");
+    if (result.status === "guarded_unknown_holder") {
+      expect(result.note).toContain("circle-fiattoken");
+      expect(result.note).toContain("names no holder");
+    }
+  });
+
+  it("separates 'the probe never reached an auth check' from 'no guard was observed'", async () => {
+    // Ripcord's own zero-valued argument coming back at it. Day 2 called this
+    // no_auth_revert_observed and blocked publication on it as a possible
+    // vulnerability; it is neither evidence of a guard nor of its absence.
+    const revertData = encodeErrorString("ERC20: approve from the zero address");
+    const responses = new Map(PROBE_ADDRESSES.map((a) => [a.toLowerCase(), { revertData, reverted: true }]));
+    const result = await probeGuard(fakeChain(responses), ("0x" + "aa".repeat(20)) as Hex, "burnFrom(address,uint256)", {
+      authorityOwner: null,
+      accessControlRoles: [],
+    });
+    expect(result.status).toBe("reverted_before_auth_check");
+    if (result.status === "reverted_before_auth_check") {
+      expect(result.note).toContain("never reached an authorisation check");
+      expect(result.note).toContain("NOT evidence of a missing guard");
+    }
+  });
+
+  it("lets an observed auth check outrank a state revert seen on another probe", async () => {
+    // If ANY probe reached a guard, the function is guarded — whatever the
+    // others hit first.
+    const responses = new Map([
+      [PROBE_ADDRESSES[0]!.toLowerCase(), { revertData: encodeErrorString("Pausable: not paused"), reverted: true }],
+      [PROBE_ADDRESSES[1]!.toLowerCase(), { revertData: encodeErrorString("Dai/not-authorized"), reverted: true }],
+      [PROBE_ADDRESSES[2]!.toLowerCase(), { revertData: encodeErrorString("Pausable: not paused"), reverted: true }],
+    ]);
+    const result = await probeGuard(fakeChain(responses), ("0x" + "aa".repeat(20)) as Hex, "mint(address,uint256)", {
+      authorityOwner: null,
+      accessControlRoles: [],
+    });
+    expect(result.status).toBe("guarded_unknown_holder");
+  });
+
+  it("leaves an UNRECOGNISED revert exactly where day 2 left it — blocking", async () => {
+    // Wasabi's real revert (0xf07e038f, carrying the caller). Auth-SHAPED to a
+    // human, unrecognised to the dictionary. The dictionary must not close the
+    // gap by inference: unrecognised stays unrecognised and keeps blocking.
+    const responses = new Map(
+      PROBE_ADDRESSES.map((a) => [a.toLowerCase(), { revertData: "0xf07e038f" as Hex, reverted: true }]),
+    );
+    const result = await probeGuard(fakeChain(responses), ("0x" + "aa".repeat(20)) as Hex, "upgradeToAndCall(address,bytes)", {
+      authorityOwner: ("0x" + "11".repeat(20)) as Hex,
+      accessControlRoles: [],
+    });
+    expect(result.status).toBe("no_auth_revert_observed");
   });
 });

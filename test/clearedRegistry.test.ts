@@ -19,13 +19,13 @@ const emptyCaps = (): CapabilitiesResult => ({
   evidence: [],
 });
 
-const mv = (signature: string): ManualVerificationEntry => ({
+const mv = (signature: string, reason: ManualVerificationEntry["reason"] = "no_auth_revert_observed"): ManualVerificationEntry => ({
   selector: "0x12345678",
   signature,
   category: "ACCESS_RESTRICTION",
   scannedAddress: ("0x" + "22".repeat(20)) as Hex,
   probedAddress: ("0x" + "22".repeat(20)) as Hex,
-  reason: "no_auth_revert_observed",
+  reason,
   note: "n/a",
   probes: [],
 });
@@ -87,5 +87,63 @@ describe("disclosure gate honours the cleared registry (both directions)", () =>
     const d = assessDisclosure(1, targetCaps, deps([]));
     expect(d.publishable).toBe(false);
     expect(d.blockedBy).toHaveLength(1);
+  });
+});
+
+// --- day 5: which manual-verification reasons the gate actually blocks on ---
+
+describe("disclosure gate × the day-5 manual-verification reasons", () => {
+  const emptyDeps = (): DependencyGraph => ({ tokens: [], oracles: [] });
+
+  it("still blocks on an UNRECOGNISED probe result — the gate's whole purpose", () => {
+    const d = assessDisclosure(
+      1,
+      { ...emptyCaps(), needsManualVerification: [mv("pause()", "no_auth_revert_observed")] },
+      emptyDeps(),
+    );
+    expect(d.publishable).toBe(false);
+    expect(d.blockedBy.map((b) => b.signature)).toEqual(["pause()"]);
+  });
+
+  it("does NOT block when the contract demonstrably rejected the probe before any auth check", () => {
+    // "ERC20: approve from the zero address" is Ripcord's own zero-valued
+    // argument coming back. There is no unguarded reading to protect against,
+    // so there is nothing to withhold from publication.
+    const d = assessDisclosure(
+      1,
+      { ...emptyCaps(), needsManualVerification: [mv("burnFrom(address,uint256)", "reverted_before_auth_check")] },
+      emptyDeps(),
+    );
+    expect(d.publishable).toBe(true);
+    expect(d.blockedBy).toEqual([]);
+  });
+
+  it("keeps the non-blocking entry VISIBLE rather than dropping it from the report", () => {
+    // Not blocking is not the same as not reporting: an untested capability
+    // must never vanish into a clean-looking report.
+    const caps = { ...emptyCaps(), needsManualVerification: [mv("burnFrom(address,uint256)", "reverted_before_auth_check")] };
+    expect(assessDisclosure(1, caps, emptyDeps()).publishable).toBe(true);
+    expect(caps.needsManualVerification).toHaveLength(1);
+  });
+
+  it("blocks on the unrecognised entry even when a non-blocking one sits beside it", () => {
+    const d = assessDisclosure(
+      1,
+      {
+        ...emptyCaps(),
+        needsManualVerification: [
+          mv("burnFrom(address,uint256)", "reverted_before_auth_check"),
+          mv("mint(address,uint256)", "no_auth_revert_observed"),
+        ],
+      },
+      emptyDeps(),
+    );
+    expect(d.publishable).toBe(false);
+    expect(d.blockedBy.map((b) => b.signature)).toEqual(["mint(address,uint256)"]);
+  });
+
+  it("applies the same rule inside the dependency graph", () => {
+    const deps: DependencyGraph = { tokens: [tokenDep(RANDOM_TOKEN, [mv("sweep()", "reverted_before_auth_check")])], oracles: [] };
+    expect(assessDisclosure(1, emptyCaps(), deps).publishable).toBe(true);
   });
 });

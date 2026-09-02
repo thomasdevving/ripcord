@@ -3,7 +3,13 @@ title = "ripcord gitleaks config"
 [extend]
 useDefault = true
 
-[allowlist]
+# The guiding rule for every entry below: never widen an allowlist to a SHAPE,
+# only to a CONTEXT. Allowlisting "all 40-hex-character strings" or "all 64-hex
+# strings" would mask a real credential of the same shape, so each exception is
+# either an individually-named public constant or a pattern anchored on
+# surrounding text that only Ripcord itself generates.
+
+[[allowlists]]
 description = "Placeholders and non-secret fixtures"
 regexes = [
   '''your-mainnet-rpc-provider\.example''',
@@ -28,3 +34,24 @@ paths = [
   '''\.env\.example$''',
   '''test/fixtures/.*''',
 ]
+
+# A second allowlist, targeting the whole LINE rather than the extracted secret.
+# Needed because gitleaks matches `regexes` against the secret it pulled out, so
+# an exception anchored on surrounding context has to say so explicitly.
+#
+# What this covers: AccessControl ROLE HASHES as they appear in Ripcord's own
+# relation labels — `"relation": "accessControl:0x…"`, the matching `"label"`
+# entries, and the `viaCapabilities` strings built from them. A role hash is a
+# public, derivable identifier: keccak256 of the role's name. The one that trips
+# this rule is keccak256("FULL_RESTRICTED_STAKER_ROLE") = 0x0a4af4bc… on
+# Ethena's sUSDe — a value the report exists to publish, and one independently
+# re-derivable with `npx tsx scripts/rolehash.ts FULL_RESTRICTED_STAKER_ROLE`.
+# The `key: "value"` shape is what trips the generic-api-key heuristic.
+#
+# Anchored on the literal `accessControl:` prefix ON PURPOSE: only a label
+# Ripcord itself generated can match, so a real secret of the same shape
+# appearing anywhere else in the repository is still caught.
+[[allowlists]]
+description = "Public AccessControl role hashes in Ripcord's own relation labels"
+regexTarget = "line"
+regexes = ['''accessControl:0x[0-9a-f]{64}''']

@@ -1,0 +1,137 @@
+{
+  "_note": "The exact 26-target calibration run, as data. Every entry is (label, address, mode); `mode: prove` additionally runs the fork proof engine. `node scripts/run-calibration.mjs` regenerates calibration/reports/ from this file, which is what makes the published set reproducible by someone who has never seen the project. Block and chain are pinned below.",
+  "chainId": 1,
+  "block": "25800000",
+  "targets": [
+    {
+      "label": "aave-pool-addresses-provider",
+      "address": "0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e",
+      "mode": "scan"
+    },
+    {
+      "label": "aave-v3-acl-manager",
+      "address": "0xc2aaCf6553D20d1e9d78E365AAba8032af9c85b0",
+      "mode": "scan"
+    },
+    {
+      "label": "balancer-vault",
+      "address": "0xBA12222222228d8Ba445958a75a0704d566BF2C8",
+      "mode": "scan"
+    },
+    {
+      "label": "cbeth",
+      "address": "0xBe9895146f7AF43049ca1c1AE358B0541Ea49704",
+      "mode": "scan"
+    },
+    {
+      "label": "compound-cdai",
+      "address": "0x5d3a536E4D6DbD6114cc1Ead35777bAB948E3643",
+      "mode": "scan"
+    },
+    {
+      "label": "compound-comet-cusdcv3",
+      "address": "0xc3d688B66703497DAA19211EEdff47f25384cdc3",
+      "mode": "prove"
+    },
+    {
+      "label": "compound-unitroller",
+      "address": "0x3d9819210A31b4961b30EF54bE2aeD79B9c9Cd3B",
+      "mode": "scan"
+    },
+    {
+      "label": "curve-3pool",
+      "address": "0xbEbc44782C7dB0a1A60Cb6fe97d0b483032FF1C7",
+      "mode": "scan"
+    },
+    {
+      "label": "dai",
+      "address": "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+      "mode": "scan"
+    },
+    {
+      "label": "ethena-minting",
+      "address": "0xe3490297a08d6fC8Da46Edb7B6142E4F461b62D3",
+      "mode": "scan"
+    },
+    {
+      "label": "ethena-susde",
+      "address": "0x9D39A5DE30e57443BfF2A8307A4256c8797A3497",
+      "mode": "scan"
+    },
+    {
+      "label": "ethena-usde",
+      "address": "0x4c9EDD5852cd905f086C759E8383e09bff1E68B3",
+      "mode": "scan"
+    },
+    {
+      "label": "frax-share-fxs",
+      "address": "0x3432B6A60D23Ca0dFCa7761B7ab56459D9C964D0",
+      "mode": "scan"
+    },
+    {
+      "label": "lido-withdrawal-queue",
+      "address": "0x889edC2eDab5f40e902b864aD4d7AdE8E412F9B1",
+      "mode": "scan"
+    },
+    {
+      "label": "mkr",
+      "address": "0x9f8F72aA9304c8B593d555F12eF6589cC3A579A2",
+      "mode": "scan"
+    },
+    {
+      "label": "morpho-blue",
+      "address": "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb",
+      "mode": "scan"
+    },
+    {
+      "label": "paid-network-token-proxy-1",
+      "address": "0x1614f18fc94f47967a3fbe5ffcd46d4e7da3d787",
+      "mode": "prove"
+    },
+    {
+      "label": "paid-network-token-proxy-2",
+      "address": "0x8c8687fc965593dfb2f0b4eaefd55e9d8df348df",
+      "mode": "scan"
+    },
+    {
+      "label": "reth",
+      "address": "0xae78736Cd615f374D3085123A210448E74Fc6393",
+      "mode": "scan"
+    },
+    {
+      "label": "steth",
+      "address": "0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84",
+      "mode": "scan"
+    },
+    {
+      "label": "uniswap-v3-factory",
+      "address": "0x1F98431c8aD98523631AE4a59f267346ea31F984",
+      "mode": "scan"
+    },
+    {
+      "label": "usdc",
+      "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "mode": "scan"
+    },
+    {
+      "label": "usdt",
+      "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+      "mode": "scan"
+    },
+    {
+      "label": "wasabi-perp-manager",
+      "address": "0xc0b01a4f4a4459d5a7e13c2e8566cde93a010e7d",
+      "mode": "scan"
+    },
+    {
+      "label": "weth9",
+      "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "mode": "scan"
+    },
+    {
+      "label": "wsteth",
+      "address": "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0",
+      "mode": "scan"
+    }
+  ]
+}

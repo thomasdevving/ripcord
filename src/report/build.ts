@@ -14,6 +14,8 @@ import { resolveAuthorityGraph, type AuthoritySeed } from "../detect/authority.j
 import { detectCapabilities } from "../detect/capabilities.js";
 import { detectDependencies } from "../detect/dependencies.js";
 import { analyseExitWindow } from "../detect/exitWindow.js";
+import { detectAuthorityIndirection } from "../detect/authorityIndirection.js";
+import { deriveEnumerationCompleteness } from "./enumeration.js";
 import { analyseTimeToExit } from "../detect/timeToExit.js";
 import { composeVerdict } from "./verdict.js";
 import { taxonomyVersion } from "../detect/taxonomy.js";
@@ -22,25 +24,48 @@ import {
   reportSchema,
   schemaVersion,
   rulesetVersion,
+  type AuthorityIndirection,
   type AuthorityResolution,
   type CapabilitiesResult,
   type DependencyGraph,
   type Disclosure,
   type ErrorEntry,
   type ExitWindow,
+  type ManualVerificationReason,
   type TimeToExit,
   type Report,
   type UnknownEntry,
 } from "./schema.js";
 
 /**
- * Applies the publication gate described on `disclosureSchema`: any
- * `needsManualVerification` entry, at the target or anywhere in the
- * dependency graph, makes the report non-publishable. Deliberately
- * conservative — it gates on the presence of the uncertainty itself, never
- * on how serious the entry happens to look, so calibration day is a
- * mechanical check rather than a per-protocol ethics call under time
- * pressure.
+ * Whether a manual-verification entry is one the publication gate must block
+ * on. See the reason vocabulary on `manualVerificationReasonSchema`: only an
+ * unrecognised probe result carries a reading ("this might be unguarded") that
+ * must not be published unverified.
+ */
+function blocksPublication(entry: { reason: ManualVerificationReason }): boolean {
+  return entry.reason === "no_auth_revert_observed";
+}
+
+/**
+ * Applies the publication gate described on `disclosureSchema`: a BLOCKING
+ * `needsManualVerification` entry, at the target or anywhere in the dependency
+ * graph, makes the report non-publishable. Deliberately conservative — it gates
+ * on the presence of the uncertainty itself, never on how serious the entry
+ * happens to look, so calibration day is a mechanical check rather than a
+ * per-protocol ethics call under time pressure.
+ *
+ * DAY 5: only `reason: "no_auth_revert_observed"` blocks. The day-5 sibling
+ * reason `reverted_before_auth_check` does not, and the distinction is a
+ * correctness fix rather than a relaxation. The gate exists because "no
+ * recognised auth revert" cannot be told apart from "no guard at all," and
+ * publishing the second reading would be a vulnerability claim about a live
+ * contract. When the contract demonstrably rejected the probe on a state or
+ * argument precondition — Ripcord's own zero-valued argument coming back as
+ * "ERC20: approve from the zero address" — no auth check ran, so there is no
+ * unguarded reading to protect against and nothing to disclose to anyone. It is
+ * still reported in needsManualVerification, because an untested capability must
+ * stay visible; it simply no longer pretends to be a possible vulnerability.
  */
 export function assessDisclosure(chainId: number, capabilities: CapabilitiesResult, dependencies: DependencyGraph): Disclosure {
   // SURFACE COVERAGE. This gate must see every needsManualVerification entry
@@ -60,17 +85,20 @@ export function assessDisclosure(chainId: number, capabilities: CapabilitiesResu
   // The TARGET's own needsManualVerification ALWAYS blocks — the cleared
   // registry only ever clears DEPENDENCIES (a blessed token a protocol holds),
   // never a protocol's own privileged functions, which are the point of the scan.
-  const blockedBy: Disclosure["blockedBy"] = capabilities.needsManualVerification.map((e) => ({
-    location: `capabilities (${e.probedAddress})`,
-    signature: e.signature,
-    category: e.category,
-  }));
+  const blockedBy: Disclosure["blockedBy"] = capabilities.needsManualVerification
+    .filter(blocksPublication)
+    .map((e) => ({
+      location: `capabilities (${e.probedAddress})`,
+      signature: e.signature,
+      category: e.category,
+    }));
 
   // Dependency-token entries are split: a capability documented as design on
   // THIS specific token (clearedRegistry.ts) is recorded in `cleared` and does
   // not block; anything else still blocks.
   for (const t of dependencies.tokens) {
     for (const e of t.capabilities.needsManualVerification) {
+      if (!blocksPublication(e)) continue;
       const clearedEntry = clearedCapability(chainId, t.token, e.signature);
       if (clearedEntry) {
         cleared.push({
@@ -261,6 +289,43 @@ export async function buildReport(chain: ChainReader, target: Hex): Promise<Repo
   // A null result here means the STAGE FAILED (and said so in errors[]). It
   // never means the window is fine: the verdict below degrades to
   // "undetermined" on a null, it does not skip the question.
+  // Day-5 authority-indirection markers. Runs BEFORE the exit window because
+  // the window's "clean" status is conditional on it: a null here (stage
+  // failure) is treated as "a delegated-authorisation handle cannot be ruled
+  // out," not as "there is none" — see the inverted default in exitWindow.ts.
+  const authorityIndirection = await runStage<AuthorityIndirection | null>(
+    "authorityIndirection",
+    () => detectAuthorityIndirection(chain, target),
+    errors,
+    () => null,
+  );
+
+  // Dependencies run BEFORE the exit window, which they did not used to. The
+  // enumeration witness below aggregates over every site the verdict could rest
+  // on — including each dependency token's own role scan — and it has to exist
+  // before the window is assessed, because the window's reassuring variants
+  // cannot be constructed without it. Stage order is otherwise immaterial here:
+  // every read is pinned and cached by key, so moving a stage changes no value.
+  const dependencyDetection = await runStage(
+    "dependencies",
+    () => detectDependencies(chain, target),
+    errors,
+    () => ({ result: { tokens: [], oracles: [] } as DependencyGraph, unknowns: [] }),
+  );
+  unknowns.push(...dependencyDetection.unknowns);
+
+  // THE ENUMERATION WITNESS. Derived fail-closed (see report/enumeration.ts):
+  // complete only where every enumeration site positively said so, with a failed
+  // stage read from errors[] rather than from the fallback value it was replaced
+  // by. This is what stops the minimum-notice arithmetic being computed over a
+  // route set that was never fully seen.
+  const enumeration = deriveEnumerationCompleteness({
+    accessControl: accessControlDetection.result,
+    authorityResolution,
+    dependencies: dependencyDetection.result,
+    errors,
+  });
+
   const exitWindowDetection = await runStage<{ result: ExitWindow | null; unknowns: UnknownEntry[] }>(
     "exitWindow",
     () =>
@@ -269,6 +334,8 @@ export async function buildReport(chain: ChainReader, target: Hex): Promise<Repo
         authorityResolution,
         capabilities: capabilityDetection.result,
         accessControlRoles: accessControlDetection.result.roles,
+        authorityIndirection,
+        enumeration,
       }),
     errors,
     () => ({ result: null, unknowns: [] }),
@@ -283,18 +350,11 @@ export async function buildReport(chain: ChainReader, target: Hex): Promise<Repo
   );
   unknowns.push(...timeToExitDetection.unknowns);
 
-  // The verdict is a pure composition of the two above — no chain access, no
-  // new facts. If it ever needs a read of its own, that read belongs in one of
-  // the two stages so it carries evidence.
-  const verdict = composeVerdict(exitWindowDetection.result, timeToExitDetection.result);
-
-  const dependencyDetection = await runStage(
-    "dependencies",
-    () => detectDependencies(chain, target),
-    errors,
-    () => ({ result: { tokens: [], oracles: [] } as DependencyGraph, unknowns: [] }),
-  );
-  unknowns.push(...dependencyDetection.unknowns);
+  // The verdict is a pure composition of the above — no chain access, no new
+  // facts. The enumeration witness goes in so that no report can ever again say
+  // `missing: []` while one of its own reconstruction blocks says the role set
+  // may be incomplete: an internally self-contradicting report.
+  const verdict = composeVerdict(exitWindowDetection.result, timeToExitDetection.result, enumeration);
 
   if (!code) {
     unknowns.push({ field: "target", reason: "address has no code at the pinned block (EOA or not yet deployed)" });
@@ -349,6 +409,8 @@ export async function buildReport(chain: ChainReader, target: Hex): Promise<Repo
     capabilities: capabilityDetection.result,
     dependencies: dependencyDetection.result,
     proof: null,
+    authorityIndirection,
+    enumeration,
     exitWindow: exitWindowDetection.result,
     timeToExit: timeToExitDetection.result,
     verdict,

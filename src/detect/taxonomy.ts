@@ -36,7 +36,7 @@
 import { toFunctionSelector, type Hex } from "viem";
 import type { CapabilityCategory } from "../report/schema.js";
 
-export const taxonomyVersion = "0.1.0";
+export const taxonomyVersion = "0.2.0";
 
 export interface TaxonomyEntry {
   signature: string;
@@ -71,6 +71,24 @@ const RAW_TAXONOMY: TaxonomyEntry[] = [
 
   // --- SUPPLY ---
   { signature: "mint(address,uint256)", category: "SUPPLY", specificity: "standard" },
+  // Argument-swapped mint. A different selector, so it needs its own entry —
+  // added day 5 after calibration found it live on Rocket Pool's rETH
+  // (0xae78736C…, selector 0x94bf804d), where its absence was the sole reason a
+  // contract with a real privileged minter came back as having no rule-change
+  // route at all. Probing it there returns "Invalid or outdated contract",
+  // Rocket Pool's onlyLatestNetworkContract guard.
+  //
+  // `generic`, and this is the clearest example in the table of why that field
+  // exists. This exact selector is ALSO ERC-4626's `mint(uint256 shares,
+  // address receiver)` — the public deposit function every vault exposes to
+  // everybody. Ripcord matched it on Ethena's sUSDe in the same calibration run
+  // and got InvalidAmount() back, a zero-amount precondition, because there is
+  // no privilege there to find. Selectors are not names: one signature, two
+  // unrelated meanings, and the report must not imply the privileged reading.
+  // The probe still tells the two apart on evidence — rETH's guard fires,
+  // sUSDe's amount check fires — which is the point of probing rather than
+  // reasoning from the name.
+  { signature: "mint(uint256,address)", category: "SUPPLY", specificity: "generic" },
   { signature: "mint(uint256)", category: "SUPPLY", specificity: "standard" },
   { signature: "mint(address,uint256,bytes)", category: "SUPPLY", specificity: "standard" },
   { signature: "burnFrom(address,uint256)", category: "SUPPLY", specificity: "standard" },

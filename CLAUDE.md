@@ -195,6 +195,40 @@ src/detect/
                    timelock's own bytecode (the delay is not immutable); WHO can
                    reach it under WHAT constraint is day-4 Exit Window work.
 
+  guardDialects.ts (day 5) Versioned (`guardDialectsVersion`) dictionary of guard
+                   revert DIALECTS, built from calibration. Day 2 recognised four
+                   shapes (OZ v4/v5 Ownable+AccessControl); across 26 real reports
+                   that produced 30 "no auth revert observed" results of which ZERO
+                   were genuinely unguarded and 22 were contracts stating plainly,
+                   in their own revert string, that a guard had fired (Circle
+                   FiatToken "caller is not the blacklister", Maker ds-auth
+                   "Dai/not-authorized", OZ v3 "sender must be an admin to grant",
+                   Morpho "not owner", Rocket Pool "Invalid or outdated contract",
+                   Ethena OnlyMinter()). 13 entries: 9 auth families → `guarded_
+                   unknown_holder` (NEVER `attributed` — these dialects name no
+                   holder), 4 pre-auth families → the new `reverted_before_auth_
+                   check`. THE HARD BOUNDARY: it may only ever move a RECOGNISED
+                   revert toward "guarded"; there is deliberately no rule reading
+                   "we didn't recognise it, so assume guarded" — that inference is
+                   how false-clean gets built. Unrecognised stays unrecognised and
+                   keeps blocking. Every pattern is ANCHORED (^…$), never a
+                   substring, so an unrelated message cannot embed a guard phrase;
+                   every entry records where it was read live. In-sample by
+                   construction, and the docs say so.
+  authorityIndirection.ts (day 5) Detects the EXISTENCE of an authority
+                   indirection without resolving it: 14 zero-arg getters
+                   (getAuthorizer/authority/acl/admin/governor/…), each counting
+                   only when it returns a NON-ZERO ADDRESS. Ripcord never calls
+                   into what it finds. Its only effect is subtractive — a marker
+                   prevents the exit window from claiming `immutable_within_checks`
+                   — so a false positive costs a lost clean claim and nothing else.
+                   `gettersProbed` is recorded so an empty `markers` means "checked,
+                   found none". Fired on 7 of 26: Balancer's getAuthorizer() (the
+                   false-clean that forced this module), MKR's authority() (owner()
+                   reads 0x0 — the shape of "renounced" — while DSChief holds real
+                   power), Compound cDAI/Unitroller/Comet's admin()/governor()
+                   naming the Timelock, Aave's getACLManager().
+
   exitWindow.ts   (day 4, THE METRIC) The exit window = notice before a rule
                    change takes effect, MINUS every way it can be cut. Models it
                    per ROUTE (each depth-1 authority is its own path to changing
@@ -401,6 +435,45 @@ only via delegatecall and is usually uninitialized.
   `verdict.missing[]` names exactly what is absent whenever the verdict
   degrades. `marginSeconds` is published so a dead heat reads as a dead heat.
   `trapped` uses `timeToExit >= window`, not `>`.
+- **The exit window's DEFAULT IS INVERTED, and "clean" must be earned (day 5).**
+  The old `no_rule_change_route_found` treated the ABSENCE OF A FOUND ROUTE as
+  the ABSENCE OF A ROUTE — two different claims — and let "unknown is never safe"
+  leak back in at the last layer, where it is hardest to see. Calibration caught
+  it: the status fired on three mainnet contracts and was substantively wrong on
+  two (Balancer Vault, rETH), both of which delegate authority through an
+  indirection Ripcord does not model, and a human read "No exit-window risk was
+  identified" about fully-controllable contracts. It is now split in two:
+  `immutable_within_checks` is a POSITIVE claim carrying the `basis[]` that
+  earned it (no DELEGATECALL in the bytecode; dispatcher decoded; no indirection
+  marker; no capability finding or manual-verification entry; owner/roles empty)
+  plus `caveats[]` naming its bound; everything else falls through to
+  `undetermined`. The verdict statement leads with the BASIS, never with
+  reassurance, and its caveats populate `verdict.missing[]`. Result: 0 false-clean
+  results across 26 protocols; the true negative (wstETH, all 21 selectors derived
+  and checked) survived.
+- **Two manual-verification reasons, because day 2's one carried two meanings
+  (day 5).** `no_auth_revert_observed` (nothing recognisable came back — BLOCKS
+  publication, since the unguarded reading cannot be ruled out) is now separate
+  from `reverted_before_auth_check` (the contract demonstrably rejected the probe
+  on a state/argument precondition, so no auth check ran — does NOT block, because
+  a fact about OUR zero-valued probe supports no vulnerability reading). Neither
+  ever asserts a guard exists; that claim lives in `guard.status` and requires a
+  recognised auth revert. The entry stays visible either way — not blocking is not
+  the same as not reporting.
+- **`authorityIndirection` on every report (day 5).** Null means the check did not
+  run, which is treated as "cannot rule out delegated authority", never as "none".
+- **Enumeration completeness is a WITNESS the reassuring variants cannot exist
+  without (KNOWN EDGE #30).** `report.enumeration` aggregates, fail-closed, over
+  every site the verdict could rest on: the target's role scan, every authority
+  node at any depth, every dependency token, and the stages themselves. Only the
+  `binding` and `immutable_within_checks` variants carry
+  `enumeration: {complete: z.literal(true)}`, so a window computed over a route
+  set that may be missing entries is structurally unconstructable rather than
+  merely discouraged. The direction is caution-only: `no_notice` and `trapped`
+  are never softened by an incomplete enumeration, because unseen routes can only
+  lower the minimum notice. And `verdict.missing[]` carries every gap on every
+  branch, so no report can assert `missing: []` while one of its own
+  reconstruction blocks says the role set may be incomplete.
 - **Disclosure gate, enforced by the schema, not by discipline.** Every
   report carries a `disclosure` block: `publishable` is false whenever
   `needsManualVerification` is non-empty at the target OR anywhere in the
@@ -735,6 +808,153 @@ only via delegatecall and is usually uninitialized.
     INDISTINGUISHABLE — in type, in shape, and in meaning — and every place
     they are not is a bug waiting for a cold run.
 
+24. **[FOUND AND FIXED day 5, by calibration — the one optimism-direction bug]
+    `no_rule_change_route_found` conflated "no route was found" with "no route
+    exists."** It fired on 3 of 26 mainnet contracts and was substantively wrong
+    on 2: Balancer Vault (every permission lives in a separate TimelockAuthorizer
+    reached via `getAuthorizer()`) and rETH (callers checked against a
+    RocketStorage registry). Both read as "No exit-window risk was identified."
+    Fixed by SPLITTING the status (see the schema invariant) and inverting the
+    default so `undetermined` is what falling through produces. Recorded because
+    the LOCATION is the lesson: the data layer was honest — caveats present,
+    confidence `medium` — and the failure was in the composition layer, in one
+    sentence, which is the last place anyone thinks to audit. Every future status
+    that can be reached by NOT finding something should be read as a claim about
+    the search, not about the contract.
+
+25. **A bespoke authority registry that exposes NO getter is still invisible
+    (day 5, residual).** `authorityIndirection.ts` catches a delegated-authority
+    handle only when a zero-arg getter returns a non-zero address. Rocket Pool's
+    rETH exposes none — its RocketStorage check is entirely internal — so the
+    marker probe does not fire there. rETH was caught only because
+    `mint(uint256,address)` was added to the taxonomy, producing a capability
+    whose guard probe returned "Invalid or outdated contract". Had it lacked a
+    taxonomy-known privileged function, the INVERTED DEFAULT would still have held
+    it at `undetermined` (correct), but nothing would have explained why. This is
+    exactly what `immutable_within_checks` is bounded by, and the bound is stated
+    in the status name, in `caveats[]`, and on every rendered page.
+
+26. **The guard-dialect dictionary is IN-SAMPLE, and must always be described
+    that way (day 5).** Its 13 entries were found by reading the calibration set's
+    own reverts, so "26 of 30 blockers were false alarms" is a statement about
+    THIS set. A protocol using an unlisted dialect still blocks — Wasabi's
+    `0xf07e038f` (a custom error carrying the caller; auth-SHAPED to a human, and
+    a 210-candidate signature scan failed to name it) still does, correctly. The
+    coverage claim is "the dictionary knows these 13 entries", never "Ripcord
+    recognises guards in general." The safety property does not depend on
+    coverage: unrecognised is conservative by construction.
+
+27. **One selector, two unrelated meanings — `mint(uint256,address)` (day 5).**
+    Added to the taxonomy because it is Rocket Pool's PRIVILEGED minter; it is
+    ALSO ERC-4626's public `mint(uint256 shares, address receiver)`, which every
+    vault exposes to everybody. Ripcord matched it on Ethena's sUSDe in the same
+    run and got `InvalidAmount()` back — a zero-amount precondition, because there
+    is no privilege there to find. Marked `nameMatchSpecificity: "generic"`, which
+    is precisely what that field is for. The PROBE tells the two apart on evidence
+    (rETH's guard fires, sUSDe's amount check fires), which is the argument for
+    probing over reasoning from names. Any future taxonomy addition should be
+    checked for this: selectors are not names.
+
+28. **The role-privilege gate's false-negative rate rests on a denominator of 3,
+    because the provider starves the input (day 5).** All 3 `unverified` routes in
+    the set were hand-verified as genuinely non-privileged — behaviourally, not by
+    reading source: sUSDe's three `FULL_RESTRICTED_STAKER_ROLE` holders cannot
+    even `transfer` (all three revert `OperationNotAllowed()`) while an unrelated
+    address can, so the role REMOVES power rather than granting it. 0/3 false
+    negatives, 0 false positives. But the denominator is 3 because on a 9-block
+    `eth_getLogs` provider the role reconstruction returns almost nothing: all
+    three AccessControl targets added specifically to exercise the gate came back
+    with only `DEFAULT_ADMIN_ROLE`. Aave's ACLManager provably has more
+    (`POOL_ADMIN_ROLE()` and `FLASH_BORROWER_ROLE()` both resolve on-chain and
+    match their keccak preimages by derivation) — at least 2 known roles missed on
+    one contract. Correctly LABELLED every time (`complete:false`, lowered
+    confidence, exact covered window, rendered on the page), but it means a
+    large-range endpoint is now the single highest-value infrastructure change
+    available to this project — for COVERAGE, not just speed.
+
+29. **Under-determination is now the dominant error mode, and that is the
+    deliberate trade (day 5).** 13 of 26 protocols come back `undetermined`. The
+    named causes: custom authority schemes (5), Compound's delegator pattern
+    (`admin()`+`implementation()` as plain getters, 2 — the marker now NAMES the
+    Compound Timelock but the route is still not resolved), provider-starved role
+    reconstruction (2), an owner contract with no resolvable authority (USDT, 1),
+    Vyper's unrecognised dispatcher (Curve, 1), Aave's governance shape (edge 17,
+    1), a custom access-control error (Wasabi, 1). Each is a concrete addressable
+    gap, not a mystery. Against 0 false-clean results, this is the right way
+    round — an under-determination is visible and arguable in the report; a false
+    clean bill is invisible by construction — but it should be quoted honestly
+    whenever the tool's coverage is described.
+
+30. **[FOUND AND FIXED — the last plausible false-clean vector] Enumeration
+    completeness was recorded and then read by NOTHING, so a partial role scan
+    could not stop a reassuring verdict.** The exit window is the MINIMUM notice
+    across authority routes. That arithmetic is sound only over a route set that
+    was fully seen: an un-enumerated role holding a zero-notice power makes it a
+    minimum of the WRONG SET, and the verdict comes out reassuring about a
+    protocol nobody can leave in time. `reconstruction.complete` was written by
+    accessControl.ts and consumed by no downstream layer — build.ts forwarded
+    only `.roles` to capabilities, to authority resolution and to
+    analyseExitWindow, so the flag reached the report as a DISPLAY FIELD and
+    never as data the verdict could act on. The seam was one line.
+
+    TWO live instances out of 26 calibration protocols, and the pair is why the
+    witness had to be an AGGREGATE rather than a flag on the target:
+      - Ethena Minting: its own scan covered 6,750 of 5.66M blocks and recovered
+        only DEFAULT_ADMIN_ROLE (0 members). Report said `can_exit_in_time`,
+        window `binding` at confidence HIGH, `missing: []`.
+      - Ethena USDe: NOT an AccessControl contract at all, so a target-only check
+        calls it complete — but its single route terminates at a
+        TimelockController whose OWN roles were partially enumerated, and a
+        timelock's PROPOSER/EXECUTOR/TIMELOCK_ADMIN holders are exactly what
+        "this delay is binding" rests on. Same verdict, one hop deeper. A
+        target-only fix would have closed the shallow leak and left this open.
+
+    THE FIX, in four parts, none of which is a runtime check that can be
+    forgotten:
+      (a) `report/enumeration.ts` derives an aggregate witness FAIL-CLOSED.
+          `complete` is a POSITIVE claim: true only where every site positively
+          said so. A missing reconstruction, an `undefined` flag, a stage that
+          threw, a contract whose deployment block could not be found — all
+          incomplete. `=== true` throughout, never `!== false`, because reading
+          an absent flag as "complete" would launder a failed read into a fact,
+          i.e. rebuild this very bug inside its own fix.
+      (b) The witness aggregates over the TARGET, every authority node at any
+          depth (AuthorityNode gained `accessControlDetected` + `roleEnumeration`
+          — two fields, so "positively not AccessControl" is never confused with
+          "we failed to enumerate"), every dependency token, and the stages
+          themselves (a failed stage is read from errors[], never from the
+          fallback value that replaced it).
+      (c) STRUCTURAL enforcement: `binding` and `immutable_within_checks` now
+          carry `enumeration: { complete: z.literal(true) }`. They are
+          UNCONSTRUCTABLE without the witness — zod and tsc refuse, exactly as
+          GuardStatus refuses a holder without evidence. `binding` degrades to
+          `not_proven_binding` (keeping the observed figure, since that variant
+          already means "binding-ness OR ANOTHER ROUTE is unresolved"), and
+          `immutable_within_checks` to `undetermined`.
+      (d) CAUTION-ONLY, preserved: `no_notice` and `trapped` are untouched.
+          Unseen routes can only ADD ways to change the rules, and an extra route
+          can only LOWER the minimum — so an incomplete enumeration can never
+          make a bad finding safer, and `not_proven_binding` can still reach
+          `trapped` when the exit already exceeds the delay.
+
+    Also fixed: a report could say `verdict.missing: []` while its own
+    reconstruction block said the role set might be incomplete — an internally
+    self-contradicting report, a credibility problem quite apart from the
+    false-clean. `composeVerdict` now appends every gap to `missing[]` on EVERY
+    branch, including `no_notice`/`trapped`.
+
+    Guarded three ways so the CLASS cannot return: unit tests that simulate the
+    provider cap (no endpoint dependency), fail-closed derivation tests weighted
+    toward the non-answers, and a REPORT-LEVEL invariant in
+    `scripts/verify-pages.mjs` that walks every report and rejects a reassuring
+    verdict/window on any incomplete enumeration anywhere — deriving
+    incompleteness INDEPENDENTLY of enumeration.ts, so a bug in the derivation
+    cannot hide itself. That check is the report analogue of the byte-identity
+    determinism gate, and it runs in CI. Result: 2 verdicts changed
+    (`can_exit_in_time` → `undetermined`), 0 moved from a bad finding toward
+    reassurance, 20 of 26 enumerate completely, and the 4 remaining reassuring
+    verdicts all carry a complete witness. schema 0.9.0 / ruleset 0.8.0.
+
 22. **The cleared-dependency registry is small, manual, and mainnet-only
     (consolidation pass).** `clearedRegistry.ts` documents design-not-bug
     capabilities for the 6 curated majors (USDC/USDT/DAI/WBTC/stETH; WETH has
@@ -856,7 +1076,39 @@ which were genuinely privileged, report THAT percentage.
   as a revert (edge 14), the transient-retry deferral from edge 13, and the
   proof engine presenting a timelocked capability as if immediate (edge 21).
   149 tests green, all 8 fixtures schema-valid with errors=[].
-- **Day 5.** Calibration against 10-15 real protocols; README/report polish.
+- **Day 5 (DONE).** Calibration against 26 mainnet protocols (8 fixtures + 18 new,
+  `calibration/targets.json`), all pinned to block 25800000, 0 errors, full
+  write-up in `docs/CALIBRATION.md`. Determinism gate passed FIRST and three ways
+  (warm→cold→warm byte-identical), re-verified on the final ruleset (24/26
+  identical; the 2 differ only by `proof` present vs null) and on the proof engine
+  itself (two independent forks, identical to the cent).
+  HEADLINE: **0 false-clean results across 26 protocols**; the remaining error mode
+  is under-determination (13/26), which is the right way round.
+  Found and fixed the one optimism-direction bug (KNOWN EDGE #24) — the
+  `no_rule_change_route_found` conflation — by splitting the status and INVERTING
+  the default so "clean" must be earned. Added `authorityIndirection.ts` (the small
+  detection win: detect the EXISTENCE of a delegated-authority handle, never follow
+  it) and `guardDialects.ts` (13 dialect entries; manual-verification entries fell
+  30 → 9, publishable 13/26 → 22/26, with the boundary that unrecognised NEVER
+  moves toward "guarded"). rolePrivilege gate hand-verified in both directions:
+  0/3 false negatives, 0 false positives, denominator honestly caveated (edge 28).
+  schema 0.8.0 / ruleset 0.7.0 / taxonomy 0.2.0. 179 tests green.
+  THE RENDERER (`scripts/render.ts`): one pinned JSON report in, one static HTML
+  page out — no backend, no network at render OR view time, no JavaScript on the
+  page at all beyond native `<details>`. The honesty rule is ENFORCED, not
+  promised: every headline figure goes through `FigureLog`, which records the JSON
+  path it came from, and `scripts/verify-pages.mjs` re-checks all of them against
+  the source report plus 7 more properties (no network constructs; an undetermined
+  verdict never wears the healthy tone; an unproven delay always says "not proven
+  binding"; a partial reconstruction shows its label and covered window; a
+  positively-established no-route result is never rendered as "NOT ESTABLISHED";
+  a halted exit never renders as a duration; only publishable reports get a page).
+  The two-bar hero has FOUR states for a reason — known / unproven (hatched at
+  nominal) / unknown (full hatch, no length to read) / none (flat tint, nothing to
+  measure) — because drawing "we found nothing" the same as "there is nothing"
+  would put the day-5 conflation straight back in the stylesheet.
+  22 pages in `site/`, 78 figures machine-checked, 0 failures.
+- **Day 5 (original brief, for reference).** Calibration against 10-15 real protocols; README/report polish.
   Published set filtered on `disclosure.publishable`. Report the FALSE-NEGATIVE
   rate, not a classification percentage — see "Taxonomy strategy" below.
 
@@ -913,6 +1165,24 @@ which were genuinely privileged, report THAT percentage.
   KNOWN EDGE #17), never as "the tool does not work on large protocols." The
   distinction is the whole honest-tool argument and it is lost if the framing
   slips.
+- **Enumeration-completeness fix (DONE, before day 6).** No new detection: a
+  correctness + propagation fix and its tests, closing the last plausible
+  false-clean vector found in day-5 calibration (KNOWN EDGE #30). Role
+  enumeration goes partial on a capped provider, was correctly LABELLED partial,
+  and that label reached NOTHING downstream — so the exit window's
+  minimum-across-routes arithmetic ran over a route set that may have been
+  missing entries. Two live instances of the resulting false-clean, and the
+  second (Ethena USDe: not an AccessControl contract itself, partial scan on its
+  DEPTH-1 TIMELOCK) is why the witness had to aggregate over every route at every
+  depth rather than sit on the target. Fixed fail-closed, enforced structurally
+  via `z.literal(true)` witnesses on the two reassuring assessment variants,
+  caution-only in direction, plus a report-level invariant in verify-pages that
+  runs in CI and derives incompleteness independently. 2 verdicts changed
+  (`can_exit_in_time` → `undetermined`), 0 moved toward reassurance, 200 tests.
+  schema 0.9.0 / ruleset 0.8.0. **The pitch case:** Ripcord told a real, large
+  protocol "you can exit in time" while an un-enumerated minter could dilute a
+  holder with no notice — and corrected itself to `undetermined` on calibration
+  day, from its own recorded evidence. That is the whole thesis in one case.
 - **Day 6.** **FIRST: the cache-boundary audit pass.** FOUR separate defects
   have now entered through the same seam — the `authority.ts` `.catch(() => null)`
   that turned a network outage into "no roles found" (consolidation pass), the

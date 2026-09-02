@@ -1,0 +1,179 @@
+{
+  "_note": "The day-5 CALIBRATION set: 18 mainnet protocols beyond the 8 verification fixtures in test/fixtures/targets.json. Chosen to span the whole outcome space (healthy / no-notice / trapped / undetermined) AND, deliberately, to hunt the dangerous direction: four entries (dai, mkr, balancer-vault, steth) were picked BECAUSE their authority is exposed through a non-standard scheme Ripcord does not model, so a wrong answer there would be FALSE-CLEAN rather than a visible false alarm. Every address below was verified live at the pinned block before it entered this file — `identity` records the exact read that established it (see scripts/identify.ts and scripts/identify2.ts). Nothing here is from memory. `expected` is what a human auditor reading the on-chain reality says the answer should be, written BEFORE the scan was run; `docs/CALIBRATION.md` records what Ripcord actually said and scores it. THREE TARGETS WERE ADDED AFTER THE FIRST RUN (aave-v3-acl-manager, lido-withdrawal-queue, ethena-minting): the original 15 turned out to contain ZERO OpenZeppelin AccessControl contracts, so the day-4 rolePrivilege gate was never exercised by them and its false-negative rate could not have been measured. Adding them is a coverage fix, not a result-shopping one — they were chosen for having many roles, before their reports were generated.",
+  "chainId": 1,
+  "block": 25800000,
+  "verifiedAt": "2026-09-01",
+  "targets": [
+    {
+      "label": "usdc",
+      "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "identity": "name()=\"USD Coin\", symbol()=\"USDC\"; admin() and implementation() both REVERT for a non-admin caller — the transparent-proxy signature",
+      "expected": "no_notice / trapped. FiatTokenProxy is an upgradeable transparent proxy with no timelock anywhere, and the token itself can blacklist a holder, so the exit can be shut with no notice."
+    },
+    {
+      "label": "usdt",
+      "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+      "identity": "name()=\"Tether USD\", symbol()=\"USDT\"; owner()=getOwner()=0xc6cde7c39eb2f0f0095f41570af89efc2c1ea828",
+      "expected": "no_notice. Not a proxy; a plain Ownable with pause and addBlackList. The owner has zero-notice power over transfers."
+    },
+    {
+      "label": "dai",
+      "address": "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+      "identity": "name()=\"Dai Stablecoin\", symbol()=\"DAI\"; wards(address) resolves — the MakerDAO DSAuth `wards` pattern, not Ownable and not AccessControl",
+      "expected": "FALSE-CLEAN HUNT. Authority is the `wards` mapping (MCD_PAUSE_PROXY can mint DAI arbitrarily), which Ripcord models nowhere. The honest output is no_rule_change_route_found WITH the caveat that this is not a claim of immutability; anything that reads as a clean bill is the failure."
+    },
+    {
+      "label": "mkr",
+      "address": "0x9f8F72aA9304c8B593d555F12eF6589cC3A579A2",
+      "identity": "symbol()=\"MKR\"; owner()=0x0000000000000000000000000000000000000000 — a DSAuth contract whose live authority is the separate `authority` slot, not owner",
+      "expected": "FALSE-CLEAN HUNT. owner() reads the zero address, which is exactly the shape of 'ownership renounced'. It is not: DSChief/DSPause hold power through `authority`. Ripcord must not present owner()==0 as safety."
+    },
+    {
+      "label": "wsteth",
+      "address": "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0",
+      "identity": "name()=\"Wrapped liquid staked Ether 2.0\", symbol()=\"wstETH\"; stETH()=0xae7ab96520de3a18e5e111b5eaab095312d7fe84",
+      "expected": "no_rule_change_route_found — and CORRECT this time. wstETH is a non-upgradeable wrapper with no owner and no roles; the honest control case for the previous two entries."
+    },
+    {
+      "label": "steth",
+      "address": "0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84",
+      "identity": "name()=\"Liquid staked Ether 2.0\", symbol()=\"stETH\"; getTotalPooledEther() resolves, isStopped()=false",
+      "expected": "FALSE-CLEAN HUNT. An Aragon AppProxyUpgradeable behind Lido's Aragon Kernel/ACL — real upgrade power exists but is exposed through neither EIP-1967 nor Ownable nor AccessControl. undetermined is the honest answer."
+    },
+    {
+      "label": "reth",
+      "address": "0xae78736Cd615f374D3085123A210448E74Fc6393",
+      "identity": "name()=\"Rocket Pool ETH\", symbol()=\"rETH\"; getExchangeRate() resolves",
+      "expected": "undetermined or no_rule_change_route_found. Authority is RocketStorage's guardian/role registry held in a separate contract — another custom scheme."
+    },
+    {
+      "label": "uniswap-v3-factory",
+      "address": "0x1F98431c8aD98523631AE4a59f267346ea31F984",
+      "identity": "feeAmountTickSpacing(3000)=60 (the Uniswap V3 fee tier table); owner()=0xf2371551fe3937db7c750f4dfabe5c2fffdcbf5a",
+      "expected": "Non-upgradeable factory, so the only power is owner-level fee-tier administration. The interesting question is what the owner resolves to."
+    },
+    {
+      "label": "compound-cdai",
+      "address": "0x5d3a536E4D6DbD6114cc1Ead35777bAB948E3643",
+      "identity": "name()=\"Compound Dai\", symbol()=\"cDAI\"; underlying()=DAI; admin()=0x6d903f6003cca6255d85cca4d3b5e5146dc33925 (the Compound Timelock)",
+      "expected": "A real 2-day Compound timelock on the admin path — the healthy shape, and an independent second instance of the Comet result."
+    },
+    {
+      "label": "compound-unitroller",
+      "address": "0x3d9819210A31b4961b30EF54bE2aeD79B9c9Cd3B",
+      "identity": "comptrollerImplementation()=0xbafe01ff935c7305907c33bf824352ee5979b526; admin()=0x6d903f6003cca6255d85cca4d3b5e5146dc33925 (the Compound Timelock)",
+      "expected": "Same timelock, but reached through Compound's own delegator pattern rather than EIP-1967 — a test of whether the proxy detector still finds the upgrade route."
+    },
+    {
+      "label": "curve-3pool",
+      "address": "0xbEbc44782C7dB0a1A60Cb6fe97d0b483032FF1C7",
+      "identity": "A()=4000 and owner()=0xecb456ea5365865ebab8a2661b0c503410e9b347 — the Curve StableSwap shape",
+      "expected": "Vyper bytecode, so the dispatcher shape may not be recognised at all. An owner exists and Curve's admin actions are themselves time-delayed inside the pool, which Ripcord does not model."
+    },
+    {
+      "label": "balancer-vault",
+      "address": "0xBA12222222228d8Ba445958a75a0704d566BF2C8",
+      "identity": "WETH()=0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2; getAuthorizer()=0x6048a8c631fb7e77eca533cf9c29784e482391e7",
+      "expected": "FALSE-CLEAN HUNT. Power is delegated to a separate TimelockAuthorizer contract reached via getAuthorizer(), a getter Ripcord does not probe. No owner, no roles on the Vault itself."
+    },
+    {
+      "label": "morpho-blue",
+      "address": "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb",
+      "identity": "owner()=0xcba28b38103307ec8da98377fff9816c164f9afa; feeRecipient()=0x0",
+      "expected": "Immutable code with a live owner — the owner cannot upgrade but can set fees and enable IRMs/LLTVs. Zero notice on those, so no_notice is right; the interesting part is whether the categories reflect the narrower power."
+    },
+    {
+      "label": "ethena-usde",
+      "address": "0x4c9EDD5852cd905f086C759E8383e09bff1E68B3",
+      "identity": "name()=\"USDe\", symbol()=\"USDe\"; owner()=0xe8dc0fab349ea169283c48ccfd09d797e6db7c94, minter()=0xe3490297a08d6fc8da46edb7b6142e4f461b62d3",
+      "expected": "The companion to the sUSDe fixture: the underlying token rather than the staking wrapper. Owner-level minter control with no cooldown on the token itself."
+    },
+    {
+      "label": "cbeth",
+      "address": "0xBe9895146f7AF43049ca1c1AE358B0541Ea49704",
+      "identity": "name()=\"Coinbase Wrapped Staked ETH\", symbol()=\"cbETH\"; implementation()=0x31724ca0c982a31fbb5c57f4217ab585271fc9a5 (publicly readable), masterMinter()=0x7dd4aa646b2e2850f9d809f9299e8e87ac97b77a",
+      "expected": "no_notice. An upgradeable FiatToken-style proxy under a single custodian with no timelock, and a pause/blacklist surface on the token."
+    },
+    {
+      "label": "aave-v3-acl-manager",
+      "address": "0xc2aaCf6553D20d1e9d78E365AAba8032af9c85b0",
+      "identity": "ADDRESSES_PROVIDER()=0x2f39d218133afab8f2b819b1066c7e434ad94e9e (the Aave v3 fixture); POOL_ADMIN_ROLE()=0x12ad05bd… and FLASH_BORROWER_ROLE()=0x939b8dfb… both equal keccak256(\"POOL_ADMIN\") / keccak256(\"FLASH_BORROWER\") by derivation",
+      "expected": "An OpenZeppelin AccessControl contract whose ONLY job is to hold roles — added specifically to exercise the day-4 rolePrivilege gate, which no other calibration target reaches. Several roles here are genuinely privileged (POOL_ADMIN, RISK_ADMIN, EMERGENCY_ADMIN); the gate must not drop them."
+    },
+    {
+      "label": "lido-withdrawal-queue",
+      "address": "0x889edC2eDab5f40e902b864aD4d7AdE8E412F9B1",
+      "identity": "name()=\"Lido: stETH Withdrawal NFT\", symbol()=\"unstETH\"; FINALIZE_ROLE()=0x485191a2… and ORACLE_ROLE()=0x68e79a7b… match keccak256 of their names by derivation",
+      "expected": "On-thesis: this contract IS the exit path for stETH, and it is AccessControl-governed with a pause role. A second rolePrivilege exercise, and the case where 'can you leave' and 'who holds power' are the same contract."
+    },
+    {
+      "label": "ethena-minting",
+      "address": "0xe3490297a08d6fC8Da46Edb7B6142E4F461b62D3",
+      "identity": "usde()=0x4c9edd5852cd905f086c759e8383e09bff1e68b3 (USDe), and USDe.minter() returns this address — mutual confirmation",
+      "expected": "AccessControl with minter/redeemer/gatekeeper roles; the contract that can actually mint the USDe in the calibration set. Third rolePrivilege exercise."
+    }
+  ],
+  "results": {
+    "_note": "Recorded after the day-5 run on schema 0.8.0 / ruleset 0.7.0, on a cache deleted and rebuilt cold that morning. Full per-protocol accounting, including which layer erred and in which direction, is in docs/CALIBRATION.md. The reports themselves are committed under calibration/reports/. UPDATED after the enumeration-completeness fix (schema 0.9.0 / ruleset 0.8.0, KNOWN EDGE #30): two verdicts moved from can_exit_in_time to undetermined because their role enumeration was partial and the exit window's minimum-across-routes arithmetic is only sound over a route set that was fully seen. See docs/CALIBRATION.md §9.",
+    "protocolsScanned": 26,
+    "infrastructureErrors": 0,
+    "falseCleanResults": 0,
+    "falseAlarms": 0,
+    "undetermined": 15,
+    "publishable": 22,
+    "blockedFromPublication": [
+      "ethena-minting",
+      "ethena-susde",
+      "paid-network-token-proxy-2",
+      "wasabi-perp-manager"
+    ],
+    "rolePrivilegeGate": {
+      "unverifiedRoutesHandChecked": 3,
+      "turnedOutPrivileged": 0,
+      "falseNegativeRate": "0/3",
+      "verifiedRoutes": 1,
+      "falsePositives": 0,
+      "caveat": "The denominator is 3 because the provider's 9-block eth_getLogs cap starves role reconstruction: all three AccessControl targets added to exercise this gate returned only DEFAULT_ADMIN_ROLE. Aave's ACLManager provably has POOL_ADMIN and FLASH_BORROWER (both resolve on-chain and match their keccak preimages by derivation) and neither was recovered — labelled complete:false every time, but a real coverage hole."
+    },
+    "disclosureGate": {
+      "blockersBeforeDialectDictionary": 30,
+      "genuinelyUnguarded": 0,
+      "demonstrablyGuardedInAnUnreadDialect": 22,
+      "revertedBeforeAuthCheck": 4,
+      "unrecognisedOrNoRevertData": 4,
+      "entriesAfter": 9,
+      "blockingAfter": 4,
+      "inSample": "The dialects were found by reading THIS set's reverts. A protocol using an unlisted dialect still blocks, as Wasabi's 0xf07e038f still does."
+    },
+    "determinism": {
+      "coldVsWarmFixtures": "8/8 byte-identical",
+      "finalRulesetRerun": "24/26 byte-identical; the 2 differ only by proof present vs null (prove vs scan)",
+      "proofEngine": "two independent anvil forks produced identical reports, including totalUsd to the cent",
+      "coldAfterEnumerationFix": "all 26 re-scanned from a wiped cache on the post-fix ruleset: 24/26 byte-identical to warm (the 2 being the same prove-vs-scan pair). A later gap-dedup changed exactly 2 reports and only in verdict.missing[]; the diff was taken rather than assumed, so the cold-verified build and the final build differ by one pure-composition string change."
+    },
+    "enumerationCompleteness": {
+      "complete": 20,
+      "incomplete": 6,
+      "incompleteTargets": [
+        "aave-v3-acl-manager",
+        "ethena-minting",
+        "ethena-susde",
+        "ethena-usde",
+        "frax-share-fxs",
+        "lido-withdrawal-queue"
+      ],
+      "verdictsChangedByTheFix": {
+        "ethena-minting": "can_exit_in_time -> undetermined; 2 gaps (its own scan covering 6,750 of 5.66M blocks, and its depth-1 timelock's)",
+        "ethena-usde": "can_exit_in_time -> undetermined; 1 gap on the DEPTH-1 TIMELOCK — the target itself is not an AccessControl contract, so a target-only completeness check would have missed this entirely"
+      },
+      "movedTowardReassurance": 0,
+      "reassuringVerdictsRemaining": [
+        "compound-comet-cusdcv3",
+        "uniswap-v3-factory",
+        "weth9",
+        "wsteth"
+      ],
+      "note": "Every remaining reassuring verdict carries a positively-complete enumeration witness, so none was over-capped and none rests on an unseen route set."
+    }
+  }
+}

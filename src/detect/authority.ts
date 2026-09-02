@@ -66,6 +66,15 @@ const timelockAbi = [
 async function readUint(chain: ChainReader, address: Hex, functionName: "getMinDelay" | "delay" | "MINIMUM_DELAY" | "GRACE_PERIOD"): Promise<{ value: bigint | null; evidence: Evidence }> {
   const data = encodeFunctionData({ abi: timelockAbi, functionName });
   const { result, reverted, evidence } = await chain.call(address, data);
+  // A `null` delay never becomes a shorter-looking window. Both the revert and
+  // the decode-failure paths lead to the same place: either the contract is not
+  // classified as a timelock at all (so its route is modelled as IMMEDIATE,
+  // zero notice) or it is classified with `delaySeconds: null`, which
+  // analyseTimelockBinding turns into `cannot_determine` — never a credited
+  // delay. Both are the caution direction, so a failed read here can only make
+  // the verdict harsher, never more reassuring. Infrastructure failures cannot
+  // reach this line at all: since day 6 they throw from client.ts rather than
+  // arriving as `reverted: true`.
   if (reverted || !result) return { value: null, evidence };
   try {
     return { value: decodeFunctionResult({ abi: timelockAbi, functionName, data: result }) as bigint, evidence };
@@ -214,6 +223,14 @@ async function resolveNode(
     timelock: null,
     terminal: true,
     terminationReason,
+    // Fail-closed default: a node records "AccessControl not detected" only
+    // where detectAccessControl actually ran and said so. Every node that
+    // returns BEFORE that call (cycle, EOA, Safe, not-a-contract) genuinely has
+    // no role enumeration to be incomplete about, and each of those is a
+    // positively-established terminal, so `false`/`null` here is a fact rather
+    // than an absence. Nodes that DO run the scan overwrite both fields below.
+    accessControlDetected: false,
+    roleEnumeration: null,
     children: [],
     evidence: [],
     ...extra,
@@ -264,14 +281,26 @@ async function resolveNode(
   // Before recursing, check whether it is a timelock — a terminal authority we
   // record but do not recurse past into its signers/proposers.
   const timelock = await detectTimelock(chain, address, accessControl.result.roles);
+
+  // From here on this node HAS run a role scan, so it must carry the result —
+  // including on the timelock branch, which is exactly where it matters most.
+  // A TimelockController's own PROPOSER/EXECUTOR/TIMELOCK_ADMIN holders are what
+  // "this delay is binding" rests on; found live on Ethena USDe, whose single
+  // route terminates at a timelock whose roles were only partially enumerated
+  // while the report still said `can_exit_in_time`.
+  const enumerationFields = {
+    accessControlDetected: accessControl.result.detected,
+    roleEnumeration: accessControl.result.reconstruction,
+  };
+
   if (timelock) {
     evidence.push(...timelock.evidence);
-    return base("timelock", "timelock", { type: "timelock", timelock, evidence });
+    return base("timelock", "timelock", { type: "timelock", timelock, evidence, ...enumerationFields });
   }
 
   // A plain contract at the depth cap: stop, but say so explicitly.
   if (depth >= MAX_AUTHORITY_DEPTH) {
-    return base("contract", "max_depth", { type: "contract", evidence });
+    return base("contract", "max_depth", { type: "contract", evidence, ...enumerationFields });
   }
 
   // Resolve this contract's OWN ownership/proxy authorities and recurse.
@@ -290,7 +319,7 @@ async function resolveNode(
   if (seeds.length === 0) {
     // A contract we could not resolve any authority for (custom scheme, or an
     // authority mechanism Ripcord doesn't recognise). Not "clean" — unresolved.
-    return base("contract", "no_authority_found", { type: "contract", evidence });
+    return base("contract", "no_authority_found", { type: "contract", evidence, ...enumerationFields });
   }
 
   const nextVisited = [...pathVisited, lower];
@@ -309,6 +338,7 @@ async function resolveNode(
     timelock: null,
     terminal: false,
     terminationReason: "not_a_contract_holder",
+    ...enumerationFields,
     children,
     evidence,
   };

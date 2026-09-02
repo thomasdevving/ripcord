@@ -43,6 +43,7 @@ import {
   type Hex,
 } from "viem";
 import type { ChainReader, Evidence } from "../chain/client.js";
+import { guardDialectsVersion, matchGuardDialect, type DialectMatch } from "./guardDialects.js";
 import { slotToAddress } from "./bytecode.js";
 import type { RoleEntry } from "../report/schema.js";
 
@@ -66,20 +67,34 @@ export type AuthShape =
   | { kind: "accessControlRole"; role: Hex }
   | null;
 
+/**
+ * Decodes an `Error(string)` revert payload, or returns undefined when the
+ * revert is not a string revert (a custom error) or is undecodable. Kept
+ * separate from `parseAuthShape` because the day-5 dialect dictionary needs the
+ * message itself, not just whether it matched one of the four OZ shapes.
+ */
+export function decodeErrorString(revertData: Hex | undefined): string | undefined {
+  if (!revertData || revertData.length < 10) return undefined;
+  if (revertData.slice(0, 10).toLowerCase() !== ERROR_STRING_SELECTOR.toLowerCase()) return undefined;
+  try {
+    const [message] = decodeAbiParameters([{ type: "string" }], `0x${revertData.slice(10)}` as Hex);
+    return message as string;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Parses one probe's revert bytes for a recognized OZ Ownable/AccessControl auth shape. Returns null if unparseable or not auth-shaped. */
 export function parseAuthShape(revertData: Hex | undefined): AuthShape {
   if (!revertData || revertData.length < 10) return null;
   const selector = revertData.slice(0, 10).toLowerCase();
 
   if (selector === ERROR_STRING_SELECTOR.toLowerCase()) {
-    try {
-      const [message] = decodeAbiParameters([{ type: "string" }], `0x${revertData.slice(10)}` as Hex);
-      if (message === OWNABLE_V4_MESSAGE) return { kind: "ownable" };
-      const match = ACCESS_CONTROL_V4_PATTERN.exec(message as string);
-      if (match) return { kind: "accessControlRole", role: match[1] as Hex };
-    } catch {
-      return null;
-    }
+    const message = decodeErrorString(revertData);
+    if (message === undefined) return null;
+    if (message === OWNABLE_V4_MESSAGE) return { kind: "ownable" };
+    const match = ACCESS_CONTROL_V4_PATTERN.exec(message);
+    if (match) return { kind: "accessControlRole", role: match[1] as Hex };
     return null;
   }
 
@@ -126,6 +141,15 @@ export type GuardProbeResult =
   | { status: "attributed"; holders: Hex[]; authSource: "owner" | "accessControlRole"; role: Hex | null; evidence: Evidence[] }
   | { status: "guarded_unknown_holder"; note: string; evidence: Evidence[] }
   | { status: "inconclusive"; note: string; evidence: Evidence[] }
+  /**
+   * A probe was rejected on a state or argument precondition before any auth
+   * check could run (day 5). This is NOT a guard finding — nothing was proven
+   * about authorisation — and it is NOT a possible-vulnerability observation
+   * either, because the question was never asked. It is separated from
+   * `no_auth_revert_observed` so the disclosure gate stops treating "our own
+   * zero-valued argument was rejected" as "this function might be unguarded."
+   */
+  | { status: "reverted_before_auth_check"; note: string; evidence: Evidence[] }
   | { status: "no_auth_revert_observed"; note: string; evidence: Evidence[] };
 
 export async function probeGuard(
@@ -147,6 +171,7 @@ export async function probeGuard(
 
   const evidence: Evidence[] = [];
   const interpretable: { shape: AuthShape }[] = [];
+  const dialectHits: DialectMatch[] = [];
 
   for (const probeAddress of PROBE_ADDRESSES) {
     const { revertData, reverted, evidence: probeEvidence } = await chain.probeCall(scannedAddress, calldata, probeAddress);
@@ -158,6 +183,13 @@ export async function probeGuard(
     if (revertData === undefined) continue; // provider gave us nothing to interpret at all — not counted either way
     const shape = parseAuthShape(revertData);
     interpretable.push({ shape });
+    // Day-5 dialect dictionary. Consulted only to RECOGNISE a revert; a miss
+    // adds nothing and can never argue that a function is guarded.
+    const dialect = matchGuardDialect({
+      message: decodeErrorString(revertData),
+      selector: revertData.length >= 10 ? (revertData.slice(0, 10) as Hex) : undefined,
+    });
+    if (dialect) dialectHits.push(dialect);
     if (shape) break; // one recognized auth-shaped revert is sufficient evidence
   }
 
@@ -194,6 +226,28 @@ export async function probeGuard(
     return {
       status: "guarded_unknown_holder",
       note: `AccessControl-shaped auth revert observed for role ${role}, but that role was not found (or has no members) in Ripcord's day-1 role reconstruction`,
+      evidence,
+    };
+  }
+
+  // --- day-5 dialect dictionary, in strict evidence order ---
+  // An observed auth check outranks everything: if ANY probe reached a guard,
+  // the function is guarded, whatever the other probes hit first.
+  const authDialect = dialectHits.find((d) => d.kind === "auth");
+  if (authDialect) {
+    return {
+      status: "guarded_unknown_holder",
+      note: `an authorisation check fired: the contract reverted with ${JSON.stringify(authDialect.matched)}, recognised as the "${authDialect.dialect}" guard dialect (dictionary ${guardDialectsVersion}). This establishes a guard EXISTS; it names no holder, because this dialect does not identify one. Dialect provenance: ${authDialect.provenance}`,
+      evidence,
+    };
+  }
+  // No auth check was observed, but a probe was demonstrably turned away before
+  // one could run. That is a statement about our probe, not about the contract.
+  const preAuthDialect = dialectHits.find((d) => d.kind === "reverted_before_auth_check");
+  if (preAuthDialect) {
+    return {
+      status: "reverted_before_auth_check",
+      note: `the probe never reached an authorisation check: the contract reverted with ${JSON.stringify(preAuthDialect.matched)}, recognised as the "${preAuthDialect.dialect}" state/argument precondition (dictionary ${guardDialectsVersion}). Probing uses zero-valued arguments, so a precondition on those arguments — or on the contract's current state — can reject the call first. This is NOT evidence of a missing guard and NOT evidence of one; the question was not asked. Dialect provenance: ${preAuthDialect.provenance}`,
       evidence,
     };
   }
