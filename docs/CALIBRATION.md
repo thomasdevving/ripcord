@@ -176,7 +176,7 @@ The headline number for a security audience is this one:
 
 > **False-clean results after day 5: 0 of 26.**
 > Ripcord's remaining error mode is *under-determination* — it says "I could not
-> establish this" on 17 of 26 protocols — not false confidence.
+> establish this" on 16 of 26 protocols — not false confidence.
 
 That trade is deliberate and it is the right way round. An under-determination is
 visible, arguable, and appears in the report where someone can dispute it. A
@@ -547,7 +547,7 @@ that an undecodable dispatcher cannot support an immutability claim.
 - **Liquidity depth is still not modelled at all**, so every time-to-exit is a
   floor. For a position large relative to available liquidity the real figure is
   longer, never shorter.
-- **17 of 26 are `undetermined`.** That is honest, and it is also a lot. The
+- **16 of 26 are `undetermined`.** That is honest, and it is also a lot. The
   named causes are: custom authority schemes (5), Compound's delegator pattern
   (2), provider-starved role reconstruction (2), an unresolvable contract owner
   (1), Vyper (1), Aave's governance shape (1), a custom access-control error (1).
@@ -1036,3 +1036,97 @@ to *"2 days of notice on rule changes, but a 5-of-N guardian can close the exit
 with none."* That is a sharper finding than the green box was, and Ripcord's
 distinction between *notice on a rule change* and *the exit itself being
 closable* is the thing no checklist makes.
+
+---
+
+## 14. Day 7: the fork differential
+
+Every layer up to day 6 REASONS about whether a privileged party can close a
+holder's exit. Day 7 TESTS it. On a sandbox anvil fork pinned to the report
+block the engine identifies the exit action, establishes a real baseline exit,
+then — one guarded function at a time — impersonates that function's guarding
+party, calls it with an exit-restricting argument, and re-runs the exit. If the
+exit then fails, the function is a DIRECT exit-restrictor, demonstrated rather
+than inferred.
+
+### The epistemic ceiling, stated before anything was built
+
+You cannot prove a protocol is safe to exit. The absence of ANY restriction path
+over an open space — arguments, call sequences, oracle/liquidity manipulation —
+is not provable by testing, for anyone. So the engine's positive outcome is NOT
+the retired `can_exit_in_time` and never claims safety. It is the deliberately
+weaker `no_direct_restriction_found`, and its report copy always carries the
+scope: *evaluated N guarded functions on a fork; none directly blocked a baseline
+withdrawal; not a guarantee — argument space and indirect/economic restrictions
+were not exhausted.* Three ceiling items ship verbatim on every evaluation:
+exit-action mis-identification, un-exhausted argument space, and indirect/
+economic restrictions (oracle, liquidity, fee/rate, sequences).
+
+The riskiest new false-clean is testing against the wrong exit function, so
+identification is weakest-link: `no_direct_restriction_found` is unreachable
+unless the exit action was confidently identified AND a baseline established.
+Anything less is `exit_action_unconfident` / `baseline_unestablished`, both of
+which keep the verdict `undetermined` — the differential is refused, not guessed.
+
+### Predictions registered before the code (outcome-neutrality), and the result
+
+| Prediction | Result |
+|---|---|
+| Comet → a fork-confirmed DECIDED restriction, non-reassuring | ✅ `undetermined` → `no_notice`, `exitRestriction.outcome=restrictor_found`, `confirmationMethod=fork_confirmed` |
+| The true negatives (WETH9, wstETH) survive unchanged | ✅ both remain `immutable_within_checks` |
+| No protocol currently `no_notice`/`trapped` moves toward reassurance | ✅ 0 moved toward reassurance |
+| The new tier fires only on all-gates-green, possibly nowhere this pass | ✅ fires nowhere; not forced |
+
+**Exactly one verdict changed: Comet, `undetermined` → `no_notice` — a move
+toward caution, from the tool's own fork evidence.** The predictions are enforced
+in `scripts/verify-pages.mjs` (`DAY7_FLAGSHIP`, `DAY7_TRUE_NEGATIVES`, and
+structural invariants on every `exitRestriction` block), so they cannot be
+quietly tuned toward afterwards. Break-tested: flipping Comet's verdict, or
+stripping its `fork_confirmed`, each fails the build.
+
+### The flagship, transaction by transaction
+
+On the fork at block 25800000, for Comet cUSDCv3 (`0xc3d688B6…`):
+
+1. **Baseline (the control).** Fund a holder 100k USDC from a whale, `supply`
+   50k, then `withdraw(USDC, 10k)` → **succeeds**. The exit works.
+2. **Snapshot, then the mutation.** Impersonate `pauseGuardian()` =
+   `0xbbf3f142…` (a **5-of-9 Safe**), call `pause(false,false,true,false,false)`
+   → succeeds; `isWithdrawPaused()` reads **true**.
+3. **Re-run the exit.** The identical `withdraw(USDC, 10k)` → **reverts.**
+4. Revert the snapshot; the candidate is isolated.
+
+The auth is real, not a wildcard: an unrelated address's `pause` reverts
+`Unauthorized()` and a garbage selector reverts, so the guardian's call genuinely
+dispatches. The guardian is impersonated at its Safe address, so the finding is
+"this Safe CAN close the exit if its signers collude," not "one key can."
+
+Comet now carries TWO routes with two different notices, and the window is the
+MINIMUM: the upgrade path is timelocked (`ProxyAdmin → Compound Timelock`,
+172800s proven binding — the same route the day-3 proof drains **$540,604,938.71**
+through), while the withdraw-pause is instant. So the verdict is `no_notice`, and
+the statement reads *open now but closable — you can be trapped at any moment, not
+already trapped.* That distinction — notice on a rule change versus the exit
+itself being closable — is the thing no checklist makes, and day 7 demonstrates
+it rather than asserting it.
+
+### Scope of this pass: one archetype, validated end to end
+
+Like the proof engine (one upgrade archetype, done properly), the fork
+differential ships **one exit archetype — Compound III / Comet base-withdrawal —
+validated live end to end**, with the interface table
+(`src/fork/exitActions.ts`) built so a new interface is data, not a rewrite. The
+confirmation direction (finding a restrictor) is caution-only and safe to run
+broadly; the natural neighbours (ERC-4626 `redeem`/`withdraw`, a Lido
+withdrawal-queue claim behind `PAUSE_ROLE`, a pausable/blacklistable ERC20
+`transfer`) are the immediate next step, each requiring its own baseline
+mechanics and a live validation before it is trusted — deliberately not rushed
+under the timebox, because testing against a mis-identified exit is the one
+false-clean this layer exists to refuse.
+
+### Determinism
+
+The fork evaluation is deterministic at the pinned block: fixed sandbox holder,
+fixed whale, fixed amounts and arguments, deterministic nonces → deterministic
+results. Two independent `restrict` runs of Comet are byte-identical apart from
+`generatedAt`. schema 0.12.0 / ruleset 0.11.0.

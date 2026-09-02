@@ -204,9 +204,30 @@ for (const page of pages.sort()) {
 // derivation cannot hide itself here.
 // ---------------------------------------------------------------------------
 
-const REASSURING_VERDICT = new Set(["can_exit_in_time", "immutable_within_checks"]);
+// `no_direct_restriction_found` is a WEAK positive tier: it too is withheld on
+// an incomplete privileged surface, so it counts as reassuring for the
+// enumeration invariant. (It occurs nowhere in the set this pass — this keeps
+// the guard tight if a future run produces one.)
+const REASSURING_VERDICT = new Set(["can_exit_in_time", "immutable_within_checks", "no_direct_restriction_found"]);
 const REASSURING_WINDOW = new Set(["binding", "immutable_within_checks"]);
 const MUST_NOT_BE_REASSURING = new Set(["compound-comet-cusdcv3", "compound-cdai", "compound-unitroller"]);
+
+// ---------------------------------------------------------------------------
+// DAY-7 REGISTERED PREDICTIONS (the exit-restriction fork differential).
+// Committed BEFORE the engine was written and enforced here, so the outcome
+// could not be tuned toward afterwards. Two directions, asymmetric by risk:
+//   - The flagship confirmation (Comet) MUST resolve to a decided restriction.
+//   - The true negatives MUST survive; nothing may move toward reassurance.
+// ---------------------------------------------------------------------------
+// Comet: the anchor. The fork confirms the pause guardian can shut withdrawals
+// with zero notice, so the verdict must be no_notice and the evaluation must
+// carry a fork-confirmed restrictor. If Comet ever comes out reassuring, the
+// evaluation is broken (task's own words).
+const DAY7_FLAGSHIP = "compound-comet-cusdcv3";
+// These were the only reassuring verdicts before day 7 and must be untouched by
+// it — the fork engine has no reason to run on a contract with no privileged
+// party, and must never demote them either.
+const DAY7_TRUE_NEGATIVES = new Set(["weth9", "wsteth"]);
 
 /** Independently collects every site whose role enumeration is not positively complete. */
 function incompleteSites(report) {
@@ -287,6 +308,61 @@ for (const file of readdirSync(reportsDir).filter((f) => f.endsWith(".json")).so
   if (MUST_NOT_BE_REASSURING.has(label) && REASSURING_VERDICT.has(verdictStatus)) {
     console.log(`${label}`);
     fail(`verdict "${verdictStatus}" contradicts a REGISTERED PREDICTION that this report must not be reassuring — a privileged party exists over an unevaluated selector surface (see docs/CALIBRATION.md)`);
+  }
+
+  // --- DAY-7 flagship prediction: Comet is a fork-confirmed decided restriction. ---
+  if (label === DAY7_FLAGSHIP) {
+    const er = report.exitRestriction;
+    if (verdictStatus !== "no_notice") {
+      console.log(`${label}`);
+      fail(`DAY-7 PREDICTION: Comet verdict must be "no_notice" (fork-confirmed withdraw-pause guardian), got "${verdictStatus}"`);
+    }
+    if (!er || er.outcome !== "restrictor_found") {
+      console.log(`${label}`);
+      fail(`DAY-7 PREDICTION: Comet must carry exitRestriction.outcome="restrictor_found", got "${er?.outcome ?? "null"}"`);
+    }
+    if (er && er.confirmationMethod !== "fork_confirmed") {
+      console.log(`${label}`);
+      fail(`DAY-7 PREDICTION: Comet's restrictor must be fork_confirmed, got "${er.confirmationMethod}"`);
+    }
+    const forkRoute = (report.exitWindow?.routes ?? []).some((r) => r.confirmationMethod === "fork_confirmed");
+    if (!forkRoute) {
+      console.log(`${label}`);
+      fail(`DAY-7 PREDICTION: Comet's exit window must carry a fork_confirmed route`);
+    }
+  }
+
+  // --- DAY-7 caution-only: the true negatives must survive unchanged. ---
+  if (DAY7_TRUE_NEGATIVES.has(label) && verdictStatus !== "immutable_within_checks") {
+    console.log(`${label}`);
+    fail(`DAY-7 PREDICTION: true negative "${label}" must remain immutable_within_checks, got "${verdictStatus}"`);
+  }
+
+  // --- DAY-7 structural invariants on any exit-restriction block. ---
+  if (report.exitRestriction) {
+    const er = report.exitRestriction;
+    // restrictor_found ⟺ a restrictor is actually recorded, and it must be fork-confirmed.
+    const hasRestrictor = (er.restrictors ?? []).length > 0;
+    if ((er.outcome === "restrictor_found") !== hasRestrictor) {
+      console.log(`${label}`);
+      fail(`exitRestriction.outcome="${er.outcome}" disagrees with ${er.restrictors?.length ?? 0} restrictor(s) recorded`);
+    }
+    if (hasRestrictor && er.confirmationMethod !== "fork_confirmed") {
+      console.log(`${label}`);
+      fail(`a restrictor is recorded but confirmationMethod is "${er.confirmationMethod}", not fork_confirmed`);
+    }
+    // The weak positive tier is unreachable without a confidently identified
+    // exit action AND an established baseline — the riskiest-false-clean gate.
+    if (verdictStatus === "no_direct_restriction_found") {
+      if (er.exitAction?.status !== "identified" || er.baseline?.status !== "established") {
+        console.log(`${label}`);
+        fail(`verdict "no_direct_restriction_found" without an identified exit action (${er.exitAction?.status}) and an established baseline (${er.baseline?.status})`);
+      }
+      if (er.coverage.evaluated !== er.coverage.guardedTotal) {
+        console.log(`${label}`);
+        fail(`verdict "no_direct_restriction_found" while ${er.coverage.guardedTotal - er.coverage.evaluated} guarded function(s) were left unevaluated`);
+      }
+    }
   }
 
   // The derived witness must agree with the independent derivation above.

@@ -1,7 +1,7 @@
 {
-  "schemaVersion": "0.11.0",
-  "rulesetVersion": "0.10.0",
-  "generatedAt": "2026-09-02T13:38:10.645Z",
+  "schemaVersion": "0.12.0",
+  "rulesetVersion": "0.11.0",
+  "generatedAt": "2026-09-02T21:28:11.619Z",
   "chainId": 1,
   "block": {
     "number": "25800000",
@@ -1040,7 +1040,9 @@
         "timelock": null,
         "categories": [],
         "confidence": "high",
-        "note": "no delay on this route: it terminates at a 3-of-5 Safe."
+        "note": "no delay on this route: it terminates at a 3-of-5 Safe.",
+        "confirmationMethod": "static",
+        "restrictionState": null
       }
     ],
     "bypasses": [
@@ -1112,6 +1114,7 @@
     ],
     "evidence": []
   },
+  "exitRestriction": null,
   "timeToExit": {
     "rulesVersion": "0.1.0",
     "status": "no_mechanism_detected",

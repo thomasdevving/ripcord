@@ -15,6 +15,8 @@ import { describeProvider } from "./chain/rpcPreflight.js";
 import { buildReport } from "./report/build.js";
 import { reportSchema, type Report } from "./report/schema.js";
 import { runProofEngine } from "./fork/proofEngine.js";
+import { runExitRestrictionEngine } from "./fork/exitRestriction.js";
+import { applyExitRestriction } from "./report/applyExitRestriction.js";
 
 // .env is optional (RPC URLs may already be set in the shell environment);
 // its absence is not an error, but a malformed file should not be swallowed.
@@ -245,5 +247,91 @@ function printVerdict(report: Report): void {
     for (const m of v.missing) console.error(`     - ${m}`);
   }
 }
+
+program
+  .command("restrict")
+  .description(
+    "Build the power map, then FORK-EVALUATE whether a privileged party can close a holder's exit: identify the exit action, establish a baseline exit, and run each guarded function through a differential. Sandbox only — no mainnet tx is ever sent.",
+  )
+  .argument("<address>", "contract address to evaluate")
+  .requiredOption("--block <number>", "block number to pin the scan and fork to")
+  .option("--chain <id>", "chain ID", "1")
+  .option("--no-cache", "disable the on-disk RPC cache")
+  .option("--cache-dir <dir>", "cache directory", ".cache")
+  .action(async (addressArg: string, opts) => {
+    const common = resolveCommon(addressArg, opts);
+    if (!common) return;
+    const { chainId, blockNumber, rpcUrl } = common;
+
+    const chain = new PinnedChain({
+      chainId,
+      rpcUrl,
+      blockNumber,
+      cacheDir: resolve(opts.cacheDir),
+      cacheEnabled: opts.cache !== false,
+    });
+
+    const provider = describeProvider(rpcUrl);
+    console.error(`provider: ${provider.name} (${provider.host}), chain ${chainId}, block ${blockNumber}`);
+
+    try {
+      const baseReport = await buildReport(chain, addressArg as Hex);
+
+      // `restrict` is a superset of `prove`: it also runs the day-3 drain proof,
+      // so a target like Comet carries BOTH its $540M upgrade-drain (bound by a
+      // 172800s timelock) AND its fork-confirmed instant withdraw-pause in one
+      // report. They are two different routes with two different notices, and the
+      // window (the MINIMUM) is what makes Comet no_notice — the richer, more
+      // honest story than either alone. The proof gracefully returns
+      // produced:false for a non-transparent target, so running it is always safe.
+      const proof = await runProofEngine({
+        chainId,
+        rpcUrl,
+        blockNumber,
+        target: addressArg as Hex,
+        proxy: baseReport.proxy,
+        authorityResolution: baseReport.authorityResolution,
+        exitWindow: baseReport.exitWindow,
+        artifactDir: resolve(".ripcord/proofs"),
+      });
+      const withProof = reportSchema.parse({ ...baseReport, proof });
+
+      const result = await runExitRestrictionEngine({
+        chainId,
+        rpcUrl,
+        blockNumber,
+        target: addressArg as Hex,
+        capabilities: withProof.capabilities,
+        exitWindow: withProof.exitWindow,
+        authorityResolution: withProof.authorityResolution,
+      });
+
+      // Re-validate: merging the evaluation and re-composing the verdict must
+      // still produce a schema-valid report.
+      const report = reportSchema.parse(applyExitRestriction(withProof, result));
+      process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+      printVerdict(report);
+
+      const er = report.exitRestriction!;
+      console.error(`\n— exit-restriction fork evaluation (sandbox — no mainnet tx sent) —`);
+      console.error(`   exit action : ${er.exitAction.status} (${er.exitAction.interfaceName}${er.exitAction.signature ? ` · ${er.exitAction.signature}` : ""})`);
+      console.error(`   baseline    : ${er.baseline.status} — ${er.baseline.holderSource}`);
+      console.error(`   outcome     : ${er.outcome} · restrictionState=${er.restrictionState} · confirmation=${er.confirmationMethod}`);
+      for (const c of er.candidates) {
+        console.error(`     - ${c.signature ?? c.selector}: ${c.result}${c.guardingParty ? ` (party ${c.guardingParty}${c.guardingPartyType ? `/${c.guardingPartyType}` : ""})` : ""}`);
+      }
+      console.error(`   coverage    : ${er.coverage.evaluated}/${er.coverage.guardedTotal} guarded function(s) evaluated`);
+      console.error(`   ceiling     :`);
+      for (const c of er.ceiling) console.error(`     · ${c}`);
+
+      if (!report.disclosure.publishable) {
+        console.error("\n⚠  DO NOT PUBLISH THIS REPORT");
+        console.error(`   ${report.disclosure.reason}`);
+      }
+    } catch (err) {
+      console.error(`fatal: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
 
 program.parseAsync(process.argv);

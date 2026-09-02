@@ -422,6 +422,11 @@ export async function buildReport(chain: ChainReader, target: Hex): Promise<Repo
     authorityIndirection,
     enumeration,
     exitWindow: exitWindowDetection.result,
+    // The fork exit-restriction engine runs in a separate pass (like the proof
+    // engine) via `ripcord restrict`, which merges its result and re-composes
+    // the verdict. A plain `scan` never spawns anvil, so it is null here — never
+    // a claim that no restriction exists.
+    exitRestriction: null,
     timeToExit: timeToExitDetection.result,
     verdict,
     disclosure: assessDisclosure(chain.chainId, capabilityDetection.result, dependencyDetection.result),

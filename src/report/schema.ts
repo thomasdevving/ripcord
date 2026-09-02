@@ -7,8 +7,8 @@
  */
 import { z } from "zod";
 
-export const schemaVersion = "0.11.0";
-export const rulesetVersion = "0.10.0";
+export const schemaVersion = "0.12.0";
+export const rulesetVersion = "0.11.0";
 
 const hexString = z.string().regex(/^0x[0-9a-fA-F]*$/);
 const address = z.string().regex(/^0x[0-9a-fA-F]{40}$/);
@@ -820,6 +820,26 @@ export const exitWindowRouteSchema = z.object({
   categories: z.array(capabilityCategorySchema),
   confidence: depthConfidenceSchema,
   note: z.string(),
+  /**
+   * How this route's notice was established. "static" (the default, and every
+   * day-4 route) means it was inferred from the authority map and guard/timelock
+   * probes without executing anything. "fork_confirmed" means the day-7
+   * exit-restriction engine DEMONSTRATED it on a fork: it ran the baseline exit,
+   * had this route's party close it, and observed the exit then fail. A reader
+   * seeing `no_notice` must be able to tell a delay we could not verify apart
+   * from a kill switch we watched fire — this is that field.
+   */
+  confirmationMethod: z.enum(["fork_confirmed", "static"]).default("static"),
+  /**
+   * For a fork_confirmed exit-restrictor route only: whether the exit was
+   * OPEN at the pinned block and this party can shut it (`restrictable` — the
+   * live Comet case: `isWithdrawPaused()` is false now, the guardian can flip
+   * it with zero notice), or was ALREADY shut at the pinned block
+   * (`already_shut` — the baseline exit itself reverts before any mutation).
+   * Null on every static route. This is the "you can be trapped at any moment"
+   * versus "you are already trapped" distinction, carried as queryable data.
+   */
+  restrictionState: z.enum(["restrictable", "already_shut"]).nullable().default(null),
 });
 export type ExitWindowRoute = z.infer<typeof exitWindowRouteSchema>;
 
@@ -968,6 +988,138 @@ export const exitWindowSchema = z.object({
   evidence: z.array(evidenceSchema),
 });
 export type ExitWindow = z.infer<typeof exitWindowSchema>;
+
+// --- exit-restriction fork evaluation (day 7) ---
+
+/**
+ * THE EXIT-RESTRICTION ENGINE (day 7).
+ *
+ * Every layer before this REASONS about whether a privileged party could shut a
+ * holder's exit. This layer TESTS it: on a sandbox fork pinned to the report
+ * block it establishes a real baseline exit, then — one privileged function at
+ * a time — impersonates that function's guarding party, calls it with a
+ * bounded-adversarial argument, and re-runs the exit. If the exit then fails,
+ * the function is a DIRECT exit-restrictor, demonstrated rather than inferred.
+ *
+ * THE EPISTEMIC CEILING, honoured in the types, not just the copy. You cannot
+ * prove a protocol is safe to exit — the absence of ANY restriction path over
+ * an open space (arguments, call sequences, oracle/liquidity manipulation) is
+ * not provable by testing, for anyone. So a clean run is NEVER `can_exit_in_time`
+ * and never claims safety. Its positive outcome is the deliberately weaker
+ * `no_direct_restriction_found`, whose scope is stated on every rendering:
+ * "evaluated N privileged functions on a fork; none directly blocked a baseline
+ * withdrawal. Not a guarantee — argument space and indirect/economic
+ * restrictions were not exhausted." A FOUND restrictor, by contrast, is
+ * decisive: a party can close the exit, and if un-timelocked it is a zero-notice
+ * route that caps the verdict.
+ *
+ * THE RISKIEST NEW FALSE-CLEAN is misidentifying the exit action. Testing
+ * against the wrong exit function would clear a protocol that is actually
+ * trappable. So exit-action identification is weakest-link: `no_direct_
+ * restriction_found` is unreachable unless the exit action was confidently
+ * identified AND a baseline exit was established. Anything less is
+ * `exit_action_unconfident` / `baseline_unestablished`, both of which keep the
+ * verdict `undetermined`.
+ */
+export const exitActionStatusSchema = z.enum(["identified", "unconfident", "none"]);
+
+/** How a holder actually leaves — identified by interface/signature pattern, never guessed. */
+export const exitActionSchema = z.object({
+  status: exitActionStatusSchema,
+  /** The interface family matched, e.g. "compound-comet-base", "erc4626", "erc20-transfer". */
+  interfaceName: z.string(),
+  /** The exact exit function, when identified. */
+  signature: z.string().nullable(),
+  selector: hexString.nullable(),
+  confidence: depthConfidenceSchema,
+  note: z.string(),
+  evidence: z.array(evidenceSchema),
+});
+export type ExitAction = z.infer<typeof exitActionSchema>;
+
+/** The control: a holder position on the fork for whom the exit action succeeds BEFORE any mutation. */
+export const exitBaselineSchema = z.object({
+  status: z.enum(["established", "unestablished", "not_attempted"]),
+  /** The fork account whose exit was exercised. */
+  holder: address.nullable(),
+  /** How the position was obtained: an on-chain holder impersonated, or funded+supplied on the fork. */
+  holderSource: z.string(),
+  note: z.string(),
+  evidence: z.array(evidenceSchema),
+});
+export type ExitBaseline = z.infer<typeof exitBaselineSchema>;
+
+/**
+ * One privileged function put through the differential.
+ *
+ * `result` is the whole point and is POSITIVELY established: `restrictor` only
+ * when the baseline exit succeeded before and reverted after this party's
+ * mutation; `no_effect` when the exit still succeeded after; `inconclusive`
+ * when the mutation itself could not be executed (so nothing about the exit was
+ * learned — never read as `no_effect`); `not_evaluated` when the candidate was
+ * outside the bounded budget and is reported, not silently dropped.
+ */
+export const restrictionCandidateSchema = z.object({
+  selector: hexString,
+  signature: z.string().nullable(),
+  category: capabilityCategorySchema.nullable(),
+  /** The party impersonated to call this function, from the resolved authority/guard map. */
+  guardingParty: address.nullable(),
+  guardingPartyType: authorityNodeTypeSchema.nullable(),
+  /** Human description of the bounded-adversarial argument used, e.g. "withdraw-pause = true". */
+  args: z.string(),
+  result: z.enum(["restrictor", "no_effect", "inconclusive", "not_evaluated"]),
+  /** The notice this party's route imposes — 0 for an un-timelocked guardian, sourced from the exit-window route. */
+  noticeSeconds: z.string().nullable(),
+  detail: z.string(),
+  evidence: z.array(evidenceSchema),
+});
+export type RestrictionCandidate = z.infer<typeof restrictionCandidateSchema>;
+
+export const exitRestrictionOutcomeSchema = z.enum([
+  "restrictor_found", // at least one candidate closed the baseline exit — decisive
+  "no_direct_restriction_found", // exit ID'd, baseline established, all guarded candidates evaluated, none closed it — the weak positive tier
+  "exit_action_unconfident", // could not confidently identify the exit action → undetermined
+  "baseline_unestablished", // could not establish a baseline exit on the fork → undetermined
+  "no_candidates", // no guarded/restriction-family function to test
+  "not_run", // engine did not run (no anvil, non-fork mode)
+]);
+export type ExitRestrictionOutcome = z.infer<typeof exitRestrictionOutcomeSchema>;
+
+export const exitRestrictionSchema = z.object({
+  rulesVersion: z.string(),
+  attempted: z.boolean(),
+  archetype: z.string(),
+  outcome: exitRestrictionOutcomeSchema,
+  exitAction: exitActionSchema,
+  baseline: exitBaselineSchema,
+  /** Every candidate the differential considered, with its result. */
+  candidates: z.array(restrictionCandidateSchema),
+  /** The subset with result === "restrictor". Redundant with candidates, surfaced for the reader. */
+  restrictors: z.array(restrictionCandidateSchema),
+  coverage: z.object({
+    /** Guarded / restriction-family candidates identified. */
+    guardedTotal: z.number().int().nonnegative(),
+    /** How many were actually put through the differential (the rest are `not_evaluated`). */
+    evaluated: z.number().int().nonnegative(),
+  }),
+  /**
+   * `restrictable` — the exit is open now and a party can shut it (Comet).
+   * `already_shut` — the baseline exit itself fails at the pinned block.
+   * `none_found` — evaluated, nothing closed the exit. `undetermined` — not run
+   * or exit/baseline not established. This is the "already trapped" vs "can be
+   * trapped at any moment" distinction as data.
+   */
+  restrictionState: z.enum(["restrictable", "already_shut", "none_found", "undetermined"]),
+  confirmationMethod: z.enum(["fork_confirmed", "not_confirmed"]),
+  forkBlock: z.string(),
+  sandboxNote: z.string(),
+  /** The three named ceiling items — rendered verbatim so the scope is never hidden. */
+  ceiling: z.array(z.string()),
+  reproduceCommand: z.string().nullable(),
+  evidence: z.array(evidenceSchema),
+});
+export type ExitRestriction = z.infer<typeof exitRestrictionSchema>;
 
 // --- time to exit (day 4) ---
 
@@ -1127,10 +1279,26 @@ export type AuthorityIndirection = z.infer<typeof authorityIndirectionSchema>;
  *                                  exit speed can beat it — the comparison
  *                                  collapses rather than being computed.
  *  - `can_exit_in_time`            both sides determined and tight, timeToExit < window.
+ *                                  RETIRED since the enumeration-completeness /
+ *                                  capability-surface fixes: not establishable
+ *                                  for any contract with both a privileged party
+ *                                  and an unevaluated surface, and it occurs
+ *                                  nowhere in the calibration set.
  *  - `immutable_within_checks`     POSITIVE evidence of no rule-change route, so
  *                                  there is nothing to compare against. Earned,
  *                                  never reached by falling through — see the
  *                                  day-5 split on `exitWindowAssessmentSchema`.
+ *  - `no_direct_restriction_found` (day 7) The fork exit-restriction engine
+ *                                  established a baseline exit and evaluated every
+ *                                  guarded function without any of them closing
+ *                                  it. DELIBERATELY WEAKER than can_exit_in_time
+ *                                  and never a safety guarantee: it is scoped to
+ *                                  the N functions actually evaluated and states
+ *                                  so, because argument space and indirect/
+ *                                  economic restrictions are not exhausted by
+ *                                  testing. Unreachable unless the exit action was
+ *                                  confidently identified and a baseline
+ *                                  established.
  *  - `undetermined`                either side is unresolved; `missing` names exactly what.
  */
 export const verdictStatusSchema = z.enum([
@@ -1138,6 +1306,7 @@ export const verdictStatusSchema = z.enum([
   "no_notice",
   "can_exit_in_time",
   "immutable_within_checks",
+  "no_direct_restriction_found",
   "undetermined",
 ]);
 export type VerdictStatus = z.infer<typeof verdictStatusSchema>;
@@ -1202,6 +1371,14 @@ export const reportSchema = z.object({
    * the stage FAILED (see errors[]), never that the window is fine.
    */
   exitWindow: exitWindowSchema.nullable(),
+  /**
+   * Day-7 fork exit-restriction evaluation. Null when the engine did not run
+   * for this scan (plain `scan` mode, or no anvil) — never a statement that no
+   * restriction exists. When present it carries the baseline, the differential
+   * over every guarded function, and the outcome; a `restrictor_found` here is
+   * what turns Comet's `undetermined` into a fork-confirmed `no_notice`.
+   */
+  exitRestriction: exitRestrictionSchema.nullable(),
   /** Day-4 time-to-exit model: cooldowns, queues, and what is explicitly not modelled. */
   timeToExit: timeToExitSchema.nullable(),
   /** Day-4 composed judgement. Null only when both sides failed to run. */

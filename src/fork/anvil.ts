@@ -20,6 +20,10 @@ export interface ForkHandle {
   port: number;
   /** Sends a transaction from an (impersonated) account via eth_sendTransaction and waits for the receipt. */
   sendFrom(from: Hex, tx: { to?: Hex; data?: Hex; value?: bigint; gas?: bigint }): Promise<{ hash: Hex; status: "success" | "reverted" }>;
+  /** Take a fork state snapshot (evm_snapshot). Returns the snapshot id. */
+  snapshot(): Promise<Hex>;
+  /** Restore the fork to a previous snapshot (evm_revert). The differential engine reverts BETWEEN candidates so each is isolated. */
+  revert(id: Hex): Promise<void>;
   stop(): Promise<void>;
 }
 
@@ -116,5 +120,16 @@ export async function startAnvilFork(opts: StartForkOptions): Promise<ForkHandle
     return { hash, status: receipt.status };
   };
 
-  return { client, rpcUrl, port, sendFrom, stop };
+  const snapshot: ForkHandle["snapshot"] = async () => {
+    return (await client.request({ method: "evm_snapshot" as never, params: [] as never })) as Hex;
+  };
+
+  const revert: ForkHandle["revert"] = async (id) => {
+    // anvil returns true on success; a false here means the id was already
+    // consumed, which is a bug in the caller's snapshot discipline — fail loud.
+    const ok = (await client.request({ method: "evm_revert" as never, params: [id] as never })) as boolean;
+    if (!ok) throw new Error(`evm_revert(${id}) returned false — snapshot already consumed or invalid`);
+  };
+
+  return { client, rpcUrl, port, sendFrom, snapshot, revert, stop };
 }

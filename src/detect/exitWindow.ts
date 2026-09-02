@@ -514,6 +514,11 @@ async function buildRoute(
     terminationReason: terminal.terminationReason,
     categories,
     confidence,
+    // Every day-4 route is inferred statically, never executed. Only the day-7
+    // fork engine produces `fork_confirmed`. restrictionState is null for a
+    // route that is not an exit-restrictor.
+    confirmationMethod: "static" as const,
+    restrictionState: null,
   };
 
   // A role whose privilege could not be established is recorded as a route but

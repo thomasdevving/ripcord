@@ -1,7 +1,7 @@
 {
-  "schemaVersion": "0.11.0",
-  "rulesetVersion": "0.10.0",
-  "generatedAt": "2026-09-02T13:38:04.000Z",
+  "schemaVersion": "0.12.0",
+  "rulesetVersion": "0.11.0",
+  "generatedAt": "2026-09-02T21:28:07.114Z",
   "chainId": 1,
   "block": {
     "number": "25800000",
@@ -34029,7 +34029,9 @@
         },
         "categories": [],
         "confidence": "high",
-        "note": "updateDelay(uint256) reverts with a \"caller must be the timelock itself\" gate, so the delay can only be changed by an operation the timelock schedules against itself — which is subject to the current 86400s delay"
+        "note": "updateDelay(uint256) reverts with a \"caller must be the timelock itself\" gate, so the delay can only be changed by an operation the timelock schedules against itself — which is subject to the current 86400s delay",
+        "confirmationMethod": "static",
+        "restrictionState": null
       },
       {
         "label": "accessControl:0x0a4af4bcc1942295207d9f047442ebdae6170a6e324850f758b14cf99b65c3bd",
@@ -34045,7 +34047,9 @@
         "timelock": null,
         "categories": [],
         "confidence": "high",
-        "note": "role privilege unverified — no evidence that this role confers privilege: it is not DEFAULT_ADMIN_ROLE, it administers no other role, and no capability guard was attributed to it. OpenZeppelin roles are widely used as MARKERS as well as permissions (restricted-staker, KYC and whitelist patterns), so membership alone is not authority — this route is recorded but contributes \"undetermined\", not a proven zero notice. Holder: eoa 0x8ED543D09406d749327E5cbC64B259F9f1283a60."
+        "note": "role privilege unverified — no evidence that this role confers privilege: it is not DEFAULT_ADMIN_ROLE, it administers no other role, and no capability guard was attributed to it. OpenZeppelin roles are widely used as MARKERS as well as permissions (restricted-staker, KYC and whitelist patterns), so membership alone is not authority — this route is recorded but contributes \"undetermined\", not a proven zero notice. Holder: eoa 0x8ED543D09406d749327E5cbC64B259F9f1283a60.",
+        "confirmationMethod": "static",
+        "restrictionState": null
       },
       {
         "label": "accessControl:0x0a4af4bcc1942295207d9f047442ebdae6170a6e324850f758b14cf99b65c3bd",
@@ -34061,7 +34065,9 @@
         "timelock": null,
         "categories": [],
         "confidence": "high",
-        "note": "role privilege unverified — no evidence that this role confers privilege: it is not DEFAULT_ADMIN_ROLE, it administers no other role, and no capability guard was attributed to it. OpenZeppelin roles are widely used as MARKERS as well as permissions (restricted-staker, KYC and whitelist patterns), so membership alone is not authority — this route is recorded but contributes \"undetermined\", not a proven zero notice. Holder: eoa 0x8188af46d82826A431a2180657d2eeA5120489c8."
+        "note": "role privilege unverified — no evidence that this role confers privilege: it is not DEFAULT_ADMIN_ROLE, it administers no other role, and no capability guard was attributed to it. OpenZeppelin roles are widely used as MARKERS as well as permissions (restricted-staker, KYC and whitelist patterns), so membership alone is not authority — this route is recorded but contributes \"undetermined\", not a proven zero notice. Holder: eoa 0x8188af46d82826A431a2180657d2eeA5120489c8.",
+        "confirmationMethod": "static",
+        "restrictionState": null
       },
       {
         "label": "accessControl:0x0a4af4bcc1942295207d9f047442ebdae6170a6e324850f758b14cf99b65c3bd",
@@ -34077,7 +34083,9 @@
         "timelock": null,
         "categories": [],
         "confidence": "high",
-        "note": "role privilege unverified — no evidence that this role confers privilege: it is not DEFAULT_ADMIN_ROLE, it administers no other role, and no capability guard was attributed to it. OpenZeppelin roles are widely used as MARKERS as well as permissions (restricted-staker, KYC and whitelist patterns), so membership alone is not authority — this route is recorded but contributes \"undetermined\", not a proven zero notice. Holder: eoa 0x1AdF6f82f2c2Ec82f88B0a815e2A4e26edd32BEe."
+        "note": "role privilege unverified — no evidence that this role confers privilege: it is not DEFAULT_ADMIN_ROLE, it administers no other role, and no capability guard was attributed to it. OpenZeppelin roles are widely used as MARKERS as well as permissions (restricted-staker, KYC and whitelist patterns), so membership alone is not authority — this route is recorded but contributes \"undetermined\", not a proven zero notice. Holder: eoa 0x1AdF6f82f2c2Ec82f88B0a815e2A4e26edd32BEe.",
+        "confirmationMethod": "static",
+        "restrictionState": null
       }
     ],
     "bypasses": [],
@@ -34222,6 +34230,7 @@
       }
     ]
   },
+  "exitRestriction": null,
   "timeToExit": {
     "rulesVersion": "0.1.0",
     "status": "measured",

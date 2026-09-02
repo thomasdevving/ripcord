@@ -49,6 +49,7 @@ import type {
   DepthConfidence,
   EnumerationCompleteness,
   EnumerationGap,
+  ExitRestriction,
   ExitWindow,
   TimeToExit,
   Verdict,
@@ -88,8 +89,9 @@ export function composeVerdict(
   exitWindow: ExitWindow | null,
   timeToExit: TimeToExit | null,
   enumeration: EnumerationCompleteness,
+  exitRestriction: ExitRestriction | null = null,
 ): Verdict {
-  const verdict = composeVerdictInner(exitWindow, timeToExit, enumeration);
+  const verdict = composeVerdictInner(exitWindow, timeToExit, enumeration, exitRestriction);
   if (enumeration.complete) return verdict;
 
   // Dedupe by SITE IDENTITY. When the exit-window assessment already degraded
@@ -123,9 +125,22 @@ function composeVerdictInner(
   exitWindow: ExitWindow | null,
   timeToExit: TimeToExit | null,
   enumeration: EnumerationCompleteness,
+  exitRestriction: ExitRestriction | null,
 ): Verdict {
   const inputs: VerdictInput[] = [];
   const missing: string[] = [];
+
+  // A fork-confirmed restrictor, when present, is the strongest fact available
+  // about the exit and enriches the no_notice statement below. Computed once.
+  const forkRestrictor =
+    exitRestriction && exitRestriction.confirmationMethod === "fork_confirmed" && exitRestriction.restrictors.length > 0
+      ? exitRestriction.restrictors[0]
+      : null;
+  const forkClause = forkRestrictor
+    ? exitRestriction!.restrictionState === "already_shut"
+      ? ` This exit is ALREADY shut at the pinned block — the baseline withdrawal reverts now, fork-confirmed.`
+      : ` The exit is OPEN at the pinned block but CLOSABLE with zero notice: Ripcord ran the baseline exit on a fork, had ${forkRestrictor.guardingParty} call ${forkRestrictor.signature} with ${forkRestrictor.args}, and the identical exit then reverted. This is "you can be trapped at any moment," not "you are already trapped."`
+    : "";
 
   if (!exitWindow) missing.push("the exit-window stage did not run (see errors[])");
   if (!timeToExit) missing.push("the time-to-exit stage did not run (see errors[])");
@@ -176,6 +191,14 @@ function composeVerdictInner(
       source: "liquidity depth is explicitly not modelled — see timeToExit.liquidity.reason",
     });
   }
+  if (exitRestriction) {
+    inputs.push({
+      name: "exitRestriction.outcome",
+      value: exitRestriction.outcome,
+      confidence: exitRestriction.exitAction.confidence,
+      source: `fork differential (rules ${exitRestriction.rulesVersion}), exit action ${exitRestriction.exitAction.status}, baseline ${exitRestriction.baseline.status}, ${exitRestriction.coverage.evaluated}/${exitRestriction.coverage.guardedTotal} guarded function(s) evaluated, ${exitRestriction.restrictors.length} restrictor(s)`,
+    });
+  }
 
   const undetermined = (reasons: string[], confidence: DepthConfidence, statement: string): Verdict => ({
     status: "undetermined",
@@ -207,12 +230,48 @@ function composeVerdictInner(
   if (exitWindow.assessment.status === "no_notice") {
     return {
       status: "no_notice",
-      statement: `You cannot exit ahead of a rule change here: at least one authority route can change the rules with ZERO notice, so there is no interval to move inside — however fast the exit is. ${exitWindow.assessment.statement}${blockedSuffix}`,
+      statement: `You cannot exit ahead of a rule change here: at least one authority route can change the rules with ZERO notice, so there is no interval to move inside — however fast the exit is. ${exitWindow.assessment.statement}${forkClause}${blockedSuffix}`,
       exitWindowSeconds: "0",
       timeToExitSeconds: timeToExit.atLeastSeconds,
       marginSeconds: null,
       confidence: weakest([exitWindow.assessment.confidence, timeToExit.confidence]),
       missing: [],
+      inputs,
+    };
+  }
+
+  // --- THE GRADED POSITIVE TIER (day 7). ---
+  //
+  // A fork-clean run resolves an otherwise-undetermined window into the
+  // deliberately WEAK positive `no_direct_restriction_found`. It is reachable
+  // ONLY on the strict gates the engine already enforces (exit action
+  // confidently identified, baseline established, EVERY guarded candidate
+  // evaluated) and ONLY when the static window did not itself find something
+  // worse — a static no_notice above already returned. It NEVER reuses
+  // `can_exit_in_time` and always carries its scope sentence and the count N,
+  // because the absence of a restrictor among the evaluated functions is not a
+  // proof that none exists over the un-swept argument space or the indirect and
+  // economic paths the engine cannot reach.
+  if (
+    exitRestriction &&
+    exitRestriction.outcome === "no_direct_restriction_found" &&
+    exitRestriction.exitAction.status === "identified" &&
+    exitRestriction.baseline.status === "established" &&
+    exitRestriction.coverage.evaluated === exitRestriction.coverage.guardedTotal &&
+    (exitWindow.assessment.status === "undetermined" || exitWindow.assessment.status === "not_proven_binding")
+  ) {
+    const n = exitRestriction.coverage.evaluated;
+    return {
+      status: "no_direct_restriction_found",
+      statement: `No DIRECT exit restriction was found on a fork: Ripcord established a baseline ${exitRestriction.exitAction.signature} exit and evaluated ${n} guarded function(s); none of them, called by its guarding party with an exit-restricting argument, closed the exit. This is NOT a guarantee of safe exit — it is scoped to the ${n} function(s) evaluated. Argument space was not exhausted, and indirect or economic restrictions (oracle, liquidity, fee/rate, call sequences) were not tested.${blockedSuffix}`,
+      exitWindowSeconds: null,
+      timeToExitSeconds: timeToExit.atLeastSeconds,
+      marginSeconds: null,
+      confidence: weakest([exitRestriction.exitAction.confidence, timeToExit.confidence]),
+      // Not empty: the ceiling this tier is bounded by is exactly what is missing
+      // from a true safety claim, and hiding it would let a scoped result read as
+      // an unbounded one — the same discipline as immutable_within_checks.
+      missing: exitRestriction.ceiling,
       inputs,
     };
   }

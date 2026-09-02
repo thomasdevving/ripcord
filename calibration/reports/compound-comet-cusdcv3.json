@@ -1,7 +1,7 @@
 {
-  "schemaVersion": "0.11.0",
-  "rulesetVersion": "0.10.0",
-  "generatedAt": "2026-09-02T13:37:49.161Z",
+  "schemaVersion": "0.12.0",
+  "rulesetVersion": "0.11.0",
+  "generatedAt": "2026-09-02T21:27:53.182Z",
   "chainId": 1,
   "block": {
     "number": "25800000",
@@ -1794,16 +1794,9 @@
   "exitWindow": {
     "rulesVersion": "0.1.0",
     "assessment": {
-      "status": "not_proven_binding",
-      "nominalDelaySeconds": "172800",
-      "missing": [
-        "the privileged-surface evaluation at capabilitySurface could not be shown complete, so a route with less notice may exist and not have been seen: 67 of 67 selector(s) are not in Ripcord's taxonomy and were never evaluated for privilege, while 2 privileged party/parties exist over this contract (proxy admin, governor()). An unevaluated selector is \"unclassified\", never \"not privileged\" — so a capability that restricts or halts the exit cannot be ruled out, and no reassuring assessment can rest on this surface. Evaluating those selectors requires their signatures, which Ripcord does not retrieve from any external source — see the README on why a block-explorer lookup would break the pinned-and-cached determinism model."
-      ],
-      "citedGapSites": [
-        "capabilitySurface"
-      ],
-      "confidence": "low",
-      "statement": "A 172800s delay was proven binding on every one of the 1 authority route(s) FOUND — but the authority picture behind those routes was not shown complete, so the route set itself is not established. The exit window is the MINIMUM notice across all routes, and a minimum taken over an incomplete set can only be too generous. The 172800s figure is reported as a nominal delay, not as a window."
+      "status": "no_notice",
+      "confidence": "high",
+      "statement": "Exit window is zero: a FORK-CONFIRMED exit restrictor (exit-restrictor:pauseGuardian → safe 0xbbf3f1421D886E9b2c5D716B5192aC998af2012c) can close the exit with no notice at all. This was demonstrated, not inferred: the baseline exit succeeded, that party closed it, and the identical exit then reverted on the fork."
     },
     "routes": [
       {
@@ -1912,7 +1905,29 @@
           "CODE_CHANGE"
         ],
         "confidence": "medium",
-        "note": "setDelay(uint256) reverts with a \"caller must be the timelock itself\" gate, so the delay can only be changed by an operation the timelock schedules against itself — which is subject to the current 172800s delay"
+        "note": "setDelay(uint256) reverts with a \"caller must be the timelock itself\" gate, so the delay can only be changed by an operation the timelock schedules against itself — which is subject to the current 172800s delay",
+        "confirmationMethod": "static",
+        "restrictionState": null
+      },
+      {
+        "label": "exit-restrictor:pauseGuardian",
+        "rolePrivilege": "not_a_role",
+        "rolePrivilegeNote": "fork-confirmed exit restrictor — privilege DEMONSTRATED by the differential, not inferred from a role or a guard-probe revert",
+        "root": "0xbbf3f1421D886E9b2c5D716B5192aC998af2012c",
+        "effectiveController": "0xbbf3f1421D886E9b2c5D716B5192aC998af2012c",
+        "effectiveControllerType": "safe",
+        "terminationReason": "safe",
+        "noticeStatus": "immediate",
+        "noticeSeconds": "0",
+        "nominalDelaySeconds": "0",
+        "timelock": null,
+        "categories": [
+          "ACCESS_RESTRICTION"
+        ],
+        "confidence": "high",
+        "note": "DIFFERENTIAL CONFIRMED: baseline withdraw succeeded; after the guardian set isWithdrawPaused()=true, the identical withdraw reverts. The pause guardian can close the exit. The guardian is a 5-of-9 Safe, impersonated at its address — this demonstrates the Safe CAN close the exit if its signers collude, not that a single key can.",
+        "confirmationMethod": "fork_confirmed",
+        "restrictionState": "restrictable"
       }
     ],
     "bypasses": [],
@@ -2057,6 +2072,197 @@
       }
     ]
   },
+  "exitRestriction": {
+    "rulesVersion": "0.1.0",
+    "attempted": true,
+    "archetype": "baseline exit vs. guarded restriction-family functions (Compound III / Comet base-withdrawal archetype)",
+    "outcome": "restrictor_found",
+    "exitAction": {
+      "status": "identified",
+      "interfaceName": "compound-comet-base",
+      "signature": "withdraw(address,uint256)",
+      "selector": "0xf3fef3a3",
+      "confidence": "high",
+      "note": "Compound III (Comet) base-asset supplier: a holder leaves by calling withdraw(address,uint256). Identified by the fingerprint 0xf2b9fdb8, 0xc55dae63, 0x67800b5f in the decoded selector set.",
+      "evidence": [
+        {
+          "kind": "call",
+          "params": {
+            "fingerprint": [
+              "0xf2b9fdb8",
+              "0xc55dae63",
+              "0x67800b5f"
+            ],
+            "matchedFrom": "capabilities.selectorsExtracted"
+          },
+          "rawValue": "compound-comet-base",
+          "block": "25800000"
+        }
+      ]
+    },
+    "baseline": {
+      "status": "established",
+      "holder": "0x000000000000000000000000000000000000abc1",
+      "holderSource": "funded 100k USDC from whale 0x37305B1cD40574E4C5Ce33f8e8306Be057fD7341, supplied 50k, baseline withdraw of 10k succeeded",
+      "note": "control established: the exit action succeeds before any privileged mutation",
+      "evidence": [
+        {
+          "kind": "call",
+          "params": {
+            "read": "baseToken()"
+          },
+          "rawValue": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          "block": "25800000"
+        },
+        {
+          "kind": "call",
+          "params": {
+            "read": "pauseGuardian()"
+          },
+          "rawValue": "0xbbf3f1421D886E9b2c5D716B5192aC998af2012c",
+          "block": "25800000"
+        },
+        {
+          "kind": "call",
+          "params": {
+            "action": "fund+approve+supply",
+            "holder": "0x000000000000000000000000000000000000abc1",
+            "amount": "50000000000"
+          },
+          "rawValue": "position established",
+          "block": "25800000"
+        },
+        {
+          "kind": "call",
+          "params": {
+            "action": "baseline withdraw",
+            "holder": "0x000000000000000000000000000000000000abc1",
+            "amount": "10000000000"
+          },
+          "rawValue": "success",
+          "block": "25800000"
+        }
+      ]
+    },
+    "candidates": [
+      {
+        "selector": "0x44c35d07",
+        "signature": "pause(bool,bool,bool,bool,bool)",
+        "category": "ACCESS_RESTRICTION",
+        "guardingParty": "0xbbf3f1421D886E9b2c5D716B5192aC998af2012c",
+        "guardingPartyType": "safe",
+        "args": "withdraw-pause = true",
+        "result": "restrictor",
+        "noticeSeconds": "0",
+        "detail": "DIFFERENTIAL CONFIRMED: baseline withdraw succeeded; after the guardian set isWithdrawPaused()=true, the identical withdraw reverts. The pause guardian can close the exit. The guardian is a 5-of-9 Safe, impersonated at its address — this demonstrates the Safe CAN close the exit if its signers collude, not that a single key can.",
+        "evidence": [
+          {
+            "kind": "call",
+            "params": {
+              "action": "guardian pause(withdraw=true)",
+              "from": "0xbbf3f1421D886E9b2c5D716B5192aC998af2012c"
+            },
+            "rawValue": "success",
+            "block": "25800000"
+          },
+          {
+            "kind": "call",
+            "params": {
+              "action": "holder withdraw after pause",
+              "from": "0x000000000000000000000000000000000000abc1"
+            },
+            "rawValue": "reverted",
+            "block": "25800000"
+          }
+        ]
+      }
+    ],
+    "restrictors": [
+      {
+        "selector": "0x44c35d07",
+        "signature": "pause(bool,bool,bool,bool,bool)",
+        "category": "ACCESS_RESTRICTION",
+        "guardingParty": "0xbbf3f1421D886E9b2c5D716B5192aC998af2012c",
+        "guardingPartyType": "safe",
+        "args": "withdraw-pause = true",
+        "result": "restrictor",
+        "noticeSeconds": "0",
+        "detail": "DIFFERENTIAL CONFIRMED: baseline withdraw succeeded; after the guardian set isWithdrawPaused()=true, the identical withdraw reverts. The pause guardian can close the exit. The guardian is a 5-of-9 Safe, impersonated at its address — this demonstrates the Safe CAN close the exit if its signers collude, not that a single key can.",
+        "evidence": [
+          {
+            "kind": "call",
+            "params": {
+              "action": "guardian pause(withdraw=true)",
+              "from": "0xbbf3f1421D886E9b2c5D716B5192aC998af2012c"
+            },
+            "rawValue": "success",
+            "block": "25800000"
+          },
+          {
+            "kind": "call",
+            "params": {
+              "action": "holder withdraw after pause",
+              "from": "0x000000000000000000000000000000000000abc1"
+            },
+            "rawValue": "reverted",
+            "block": "25800000"
+          }
+        ]
+      }
+    ],
+    "coverage": {
+      "guardedTotal": 1,
+      "evaluated": 1
+    },
+    "restrictionState": "restrictable",
+    "confirmationMethod": "fork_confirmed",
+    "forkBlock": "25800000",
+    "sandboxNote": "Executed only on an ephemeral anvil mainnet fork pinned to the report block. No mainnet transaction was sent, no private key was used or held, no approval was requested. The differential shows what a privileged party CAN do to a holder's exit in simulation — a capability, not a prediction of intent.",
+    "ceiling": [
+      "Exit-action identification: the differential tests the exit function Ripcord identified from the contract's interface. If a holder's real exit path differs from the one tested, this evaluation does not cover it — testing the wrong exit function would be a false-clean, which is why an unidentified exit action keeps the verdict undetermined instead.",
+      "Argument space is NOT exhausted: each restriction candidate was tried with one bounded, documented exit-restricting argument (e.g. withdraw-pause = true). Other argument combinations, and any privileged function outside the evaluated guarded set, were not swept — absence of a restrictor here is not proof none exists.",
+      "Indirect and economic restrictions are OUT OF SCOPE: oracle manipulation, collateral/liquidity configuration, fee or rate changes, and multi-call sequences can restrict an exit without any single function reverting it, and none of those were tested."
+    ],
+    "reproduceCommand": "ripcord restrict 0xc3d688B66703497DAA19211EEdff47f25384cdc3 --block 25800000 --chain 1",
+    "evidence": [
+      {
+        "kind": "call",
+        "params": {
+          "read": "baseToken()"
+        },
+        "rawValue": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "block": "25800000"
+      },
+      {
+        "kind": "call",
+        "params": {
+          "read": "pauseGuardian()"
+        },
+        "rawValue": "0xbbf3f1421D886E9b2c5D716B5192aC998af2012c",
+        "block": "25800000"
+      },
+      {
+        "kind": "call",
+        "params": {
+          "action": "fund+approve+supply",
+          "holder": "0x000000000000000000000000000000000000abc1",
+          "amount": "50000000000"
+        },
+        "rawValue": "position established",
+        "block": "25800000"
+      },
+      {
+        "kind": "call",
+        "params": {
+          "action": "baseline withdraw",
+          "holder": "0x000000000000000000000000000000000000abc1",
+          "amount": "10000000000"
+        },
+        "rawValue": "success",
+        "block": "25800000"
+      }
+    ]
+  },
   "timeToExit": {
     "rulesVersion": "0.1.0",
     "status": "no_mechanism_detected",
@@ -2097,14 +2303,14 @@
     ]
   },
   "verdict": {
-    "status": "undetermined",
-    "statement": "Verdict undetermined on the exit-window side: A 172800s delay was proven binding on every one of the 1 authority route(s) FOUND — but the authority picture behind those routes was not shown complete, so the route set itself is not established. The exit window is the MINIMUM notice across all routes, and a minimum taken over an incomplete set can only be too generous. The 172800s figure is reported as a nominal delay, not as a window. Time to exit is at least 0s, but the comparison cannot be made against a window that was not established.",
-    "exitWindowSeconds": null,
+    "status": "no_notice",
+    "statement": "You cannot exit ahead of a rule change here: at least one authority route can change the rules with ZERO notice, so there is no interval to move inside — however fast the exit is. Exit window is zero: a FORK-CONFIRMED exit restrictor (exit-restrictor:pauseGuardian → safe 0xbbf3f1421D886E9b2c5D716B5192aC998af2012c) can close the exit with no notice at all. This was demonstrated, not inferred: the baseline exit succeeded, that party closed it, and the identical exit then reverted on the fork. The exit is OPEN at the pinned block but CLOSABLE with zero notice: Ripcord ran the baseline exit on a fork, had 0xbbf3f1421D886E9b2c5D716B5192aC998af2012c call pause(bool,bool,bool,bool,bool) with withdraw-pause = true, and the identical exit then reverted. This is \"you can be trapped at any moment,\" not \"you are already trapped.\"",
+    "exitWindowSeconds": "0",
     "timeToExitSeconds": "0",
     "marginSeconds": null,
-    "confidence": "low",
+    "confidence": "medium",
     "missing": [
-      "the privileged-surface evaluation at capabilitySurface could not be shown complete, so a route with less notice may exist and not have been seen: 67 of 67 selector(s) are not in Ripcord's taxonomy and were never evaluated for privilege, while 2 privileged party/parties exist over this contract (proxy admin, governor()). An unevaluated selector is \"unclassified\", never \"not privileged\" — so a capability that restricts or halts the exit cannot be ruled out, and no reassuring assessment can rest on this surface. Evaluating those selectors requires their signatures, which Ripcord does not retrieve from any external source — see the README on why a block-explorer lookup would break the pinned-and-cached determinism model."
+      "the privileged-surface evaluation at capabilitySurface could not be shown complete, so an authority route may exist that was never seen: 67 of 67 selector(s) are not in Ripcord's taxonomy and were never evaluated for privilege, while 2 privileged party/parties exist over this contract (proxy admin, governor()). An unevaluated selector is \"unclassified\", never \"not privileged\" — so a capability that restricts or halts the exit cannot be ruled out, and no reassuring assessment can rest on this surface. Evaluating those selectors requires their signatures, which Ripcord does not retrieve from any external source — see the README on why a block-explorer lookup would break the pinned-and-cached determinism model."
     ],
     "inputs": [
       {
@@ -2115,15 +2321,15 @@
       },
       {
         "name": "exitWindow.assessment.status",
-        "value": "not_proven_binding",
-        "confidence": "low",
-        "source": "exitWindow (rules 0.1.0), 1 authority route(s), 0 bypass(es), 6/8 checks performed"
+        "value": "no_notice",
+        "confidence": "high",
+        "source": "exitWindow (rules 0.1.0), 2 authority route(s), 0 bypass(es), 6/8 checks performed"
       },
       {
         "name": "exitWindow.windowSeconds",
         "value": null,
-        "confidence": "low",
-        "source": "no window value is available in status \"not_proven_binding\" — by design, an unproven delay is never expressed as a window"
+        "confidence": "high",
+        "source": "no window value is available in status \"no_notice\" — by design, an unproven delay is never expressed as a window"
       },
       {
         "name": "timeToExit.atLeastSeconds",
@@ -2142,6 +2348,12 @@
         "value": "false",
         "confidence": "low",
         "source": "liquidity depth is explicitly not modelled — see timeToExit.liquidity.reason"
+      },
+      {
+        "name": "exitRestriction.outcome",
+        "value": "restrictor_found",
+        "confidence": "high",
+        "source": "fork differential (rules 0.1.0), exit action identified, baseline established, 1/1 guarded function(s) evaluated, 1 restrictor(s)"
       }
     ]
   },

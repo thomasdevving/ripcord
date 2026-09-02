@@ -315,6 +315,33 @@ src/fork/
                    pattern, unresolved authority, or no holdings — never a
                    fabricated trace. Emits a reproduce command + a `cast run`
                    call-trace artifact. `ripcord prove <addr> --block` runs it.
+  exitActions.ts  (day 7) Versioned (`exitActionsVersion`) exit-action
+                   identification table + base-token whales for fork funding.
+                   The riskiest new false-clean is testing against the wrong exit
+                   function, so an interface is matched only when a FINGERPRINT of
+                   characteristic selectors is ALL present (partial ≠ match), and
+                   the positive verdict inherits the match's confidence. Selectors
+                   are viem-derived, asserted in tests. ONE interface this pass:
+                   compound-comet-base (supply+baseToken+isWithdrawPaused ⇒ exit is
+                   withdraw(address,uint256)) — built so a neighbour is data.
+  exitRestriction.ts (day 7, THE FORK DIFFERENTIAL) Stops REASONING about exit
+                   restriction and TESTS it. On a fork: identify the exit action,
+                   establish a BASELINE exit (fund a holder from a whale, supply,
+                   withdraw — must succeed), then per guarded function snapshot →
+                   impersonate its guarding party → call with the exit-restricting
+                   argument → re-run the exit; exit now fails ⇒ a DIRECT restrictor,
+                   demonstrated. revert BETWEEN candidates so each is isolated. The
+                   epistemic ceiling is in the types: a clean run is NEVER
+                   can_exit_in_time and never claims safety — it is the weaker
+                   `no_direct_restriction_found`, unreachable unless the exit action
+                   was confidently identified AND a baseline established (else
+                   `exit_action_unconfident`/`baseline_unestablished` ⇒ undetermined).
+                   A Safe-guarded restrictor is impersonated AT THE SAFE (the KNOWN
+                   EDGE #9 collusion rail). Deterministic (fixed holder/whale/args/
+                   nonces) ⇒ cold==warm. `ripcord restrict <addr> --block` runs it
+                   (a SUPERSET of prove: it also runs the drain proof, so Comet
+                   carries both its $540M timelocked upgrade AND its zero-notice
+                   fork-confirmed pause in one report).
 
 src/live/          (Mobula bounty) THE LIVE LAYER — deliberately OUTSIDE the
                    pinned path, and the only module tree that is. Nothing under
@@ -349,7 +376,13 @@ src/live/          (Mobula bounty) THE LIVE LAYER — deliberately OUTSIDE the
                    view to the vendor.
 
 src/report/
-  verdict.ts      (day 4) PURE composition of the two sides — no chain access,
+  applyExitRestriction.ts (day 7) PURE merge: takes a base report + a fork
+                   exit-restriction result, injects a fork-confirmed restrictor as
+                   a zero-notice exit-window ROUTE (so the min-notice arithmetic
+                   collapses to no_notice), and RE-COMPOSES the verdict. Direction
+                   is add-only: it never removes a route or softens a finding.
+                   Unit-testable without a fork.
+  verdict.ts      (day 4; day-7 tier) PURE composition of the two sides — no chain access,
                    so the rules an auditor will argue with are exhaustively
                    unit-testable. `timeToExit >= exitWindow` → trapped, using >=
                    because finishing your exit at the instant a change lands is
@@ -373,7 +406,9 @@ src/report/
 src/cli.ts        `ripcord scan <address> --block <n> --chain <id>`. Prints
                    schema-valid JSON to stdout. Per-target failures live in
                    the report's errors[]; only usage errors / fatal setup
-                   failures (bad RPC, bad args) exit non-zero.
+                   failures (bad RPC, bad args) exit non-zero. Also `ripcord prove`
+                   (day 3 drain proof) and `ripcord restrict` (day 7 fork
+                   differential; a superset that also runs the proof).
 ```
 
 Data flow: `cli.ts` → `PinnedChain` (chain.ts+cache.ts) → `buildReport`
@@ -422,6 +457,19 @@ only via delegatecall and is usually uninitialized.
   partial event scan carries `reconstruction.complete=false` and a lowered
   `confidence`, on the shared certainty scale, with the exact covered window —
   weakest-link provenance for the getLogs path, never a silent truncation.
+- **`exitRestriction` block + `no_direct_restriction_found` verdict (day 7).**
+  The report gains a nullable `exitRestriction` block (null in `scan` mode, never
+  a claim that no restriction exists) carrying the fork differential: exit action,
+  baseline, per-candidate results, coverage, `restrictionState`
+  (`restrictable`/`already_shut`/`none_found`/`undetermined`) and
+  `confirmationMethod` (`fork_confirmed`/`not_confirmed`). Exit-window ROUTES gain
+  `confirmationMethod`(default `static`) + `restrictionState`(default null) so a
+  reader can tell a delay we could not verify from a kill switch we watched fire.
+  A new verdict status `no_direct_restriction_found` — the DELIBERATELY WEAKER
+  positive tier, never `can_exit_in_time`, always carrying its scope sentence and
+  the count N — is unconstructable unless the exit action was identified AND a
+  baseline established AND every guarded candidate evaluated. schema 0.12.0 /
+  ruleset 0.11.0.
 - **Authority PATH, not just a terminal holder (day 3).** `authorityResolution`
   carries a recursive `authorityNode` tree per depth-1 power holder plus a
   flattened `paths[]` projection ("upgrade -> ProxyAdmin -> EOA"). Confidence
@@ -905,7 +953,10 @@ only via delegatecall and is usually uninitialized.
     available to this project — for COVERAGE, not just speed.
 
 29. **Under-determination is now the dominant error mode, and that is the
-    deliberate trade (day 5).** 17 of 26 protocols come back `undetermined`. The
+    deliberate trade (day 5; count updated day 7).** 16 of 26 protocols come back
+    `undetermined` (17 until day 7, when Compound III / Comet's fork differential
+    turned its unevaluated `pause` into a fork-confirmed zero-notice restrictor and
+    moved it to `no_notice` — see edge #37). The
     named causes: custom authority schemes (5), Compound's delegator pattern
     (`admin()`+`implementation()` as plain getters, 2 — the marker now NAMES the
     Compound Timelock but the route is still not resolved), provider-starved role
@@ -1208,6 +1259,45 @@ only via delegatecall and is usually uninitialized.
     deferred work that breaks the pinned-and-cached determinism model. The $540M
     proof is untouched and still true; only the exit claim changed.
 
+37. **[DAY 7 — the fork differential, and the graded positive tier that must
+    never become a guarantee] Reasoning about exit restriction was replaced by
+    TESTING it, under an epistemic ceiling stated before the code.** `ripcord
+    restrict` establishes a baseline exit on a fork and has each guarded
+    function's party try to close it (src/fork/exitRestriction.ts). Comet is the
+    anchor and resolved EXACTLY as predicted: its `pauseGuardian()` (a 5-of-9
+    Safe) sets `isWithdrawPaused=true` and a baseline `withdraw` that succeeded
+    before then reverts — a fork-confirmed zero-notice restrictor, so Comet moved
+    `undetermined → no_notice` (the 17th undetermined became the 7th no_notice).
+    Its $540M upgrade path stays timelocked, so the report shows *notice on a rule
+    change* (2 days) and *the exit itself being closable* (0s) as two different
+    numbers, and the window is the minimum.
+
+    THE CEILING IS THE POINT, and it is in the types. You cannot prove safe exit —
+    the absence of any restriction path over arguments, sequences, and oracle/
+    liquidity manipulation is not testable, for anyone. So a clean run is the
+    weaker `no_direct_restriction_found`, NOT `can_exit_in_time`, scoped to the N
+    functions evaluated, and unconstructable unless the exit action was confidently
+    identified AND a baseline established. Three ceiling items ship verbatim on
+    every evaluation (exit-action mis-ID, un-swept argument space, indirect/economic
+    restrictions). The riskiest new false-clean — testing the WRONG exit action —
+    is refused: an unmatched interface fingerprint → `exit_action_unconfident` →
+    undetermined, never the reassuring tier.
+
+    OUTCOME-NEUTRALITY, enforced: predictions were committed as CI assertions in
+    verify-pages.mjs (`DAY7_FLAGSHIP`, `DAY7_TRUE_NEGATIVES`, structural invariants)
+    BEFORE the engine was written, and break-tested (flip Comet's verdict, or strip
+    its fork_confirmed → build fails). Result: exactly 1 verdict changed (Comet,
+    toward caution), the true negatives (WETH9/wstETH) survived, and 0 moved toward
+    reassurance. The tier fires nowhere this pass and was not forced to.
+
+    SCOPE / RESIDUAL: ONE exit archetype (compound-comet-base) is implemented and
+    validated live; the interface table (exitActions.ts) is built so neighbours are
+    data. The confirmation direction (finding a restrictor) is caution-only and safe
+    to run broadly; extending it to ERC-4626 redeem, a Lido withdrawal-queue claim
+    behind PAUSE_ROLE, and pausable/blacklistable ERC20 transfer is the next step,
+    each needing its own baseline mechanics + a live validation before it is trusted
+    — deliberately not rushed under the day-7 timebox. schema 0.12.0 / ruleset 0.11.0.
+
 22. **The cleared-dependency registry is small, manual, and mainnet-only
     (consolidation pass).** `clearedRegistry.ts` documents design-not-bug
     capabilities for the 6 curated majors (USDC/USDT/DAI/WBTC/stETH; WETH has
@@ -1484,3 +1574,22 @@ which were genuinely privileged, report THAT percentage.
   the project, and it is far better closed by us than opened by a judge.
   THEN (optional, if time remains): Watchtower — live monitoring of timelock
   queues, alerting when a rule change is actually queued.
+- **Day 7 (DONE — see KNOWN EDGE #37 and docs/CALIBRATION.md §14).** The fork
+  differential: `ripcord restrict` stops reasoning about exit restriction and
+  TESTS it on a fork — identify the exit action, establish a baseline exit, then
+  per guarded function impersonate its party, call it with the exit-restricting
+  argument, and re-run the exit. A found restrictor is decisive; a clean run earns
+  only the deliberately weaker `no_direct_restriction_found` (scoped, never a
+  safety guarantee, unreachable without exit-action ID + baseline). New modules:
+  src/fork/exitActions.ts (versioned interface fingerprints + whales),
+  src/fork/exitRestriction.ts (the engine, ONE archetype — Comet base-withdrawal —
+  validated live), src/report/applyExitRestriction.ts (pure merge + re-compose).
+  Schema gains `exitRestriction` + the verdict status + route confirmation fields;
+  schema 0.12.0 / ruleset 0.11.0. Predictions registered as CI assertions FIRST
+  (outcome-neutral, break-tested); exactly one verdict changed — Comet
+  `undetermined → no_notice`, fork-confirmed via the pauseGuardian Safe — the true
+  negatives survived, and nothing moved toward reassurance. 267 tests green; the
+  determinism gate (cold==warm) holds on the reproducible reports and on the
+  Comet restrict report (two independent forks, byte-identical). The confirmation
+  direction is architected to extend broadly to neighbour interfaces; that
+  extension is the next step, not rushed under the timebox.

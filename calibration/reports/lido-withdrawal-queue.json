@@ -1,7 +1,7 @@
 {
-  "schemaVersion": "0.11.0",
-  "rulesetVersion": "0.10.0",
-  "generatedAt": "2026-09-02T13:38:13.147Z",
+  "schemaVersion": "0.12.0",
+  "rulesetVersion": "0.11.0",
+  "generatedAt": "2026-09-02T21:28:13.956Z",
   "chainId": 1,
   "block": {
     "number": "25800000",
@@ -1227,7 +1227,9 @@
           "AUTHORITY_CHANGE"
         ],
         "confidence": "high",
-        "note": "authority resolution stopped at 0x3e40d73eb977dc6a537af587d48316fee66e9c8c (no_authority_found); the notice this route imposes is unknown, which is not the same as none."
+        "note": "authority resolution stopped at 0x3e40d73eb977dc6a537af587d48316fee66e9c8c (no_authority_found); the notice this route imposes is unknown, which is not the same as none.",
+        "confirmationMethod": "static",
+        "restrictionState": null
       }
     ],
     "bypasses": [
@@ -1299,6 +1301,7 @@
     ],
     "evidence": []
   },
+  "exitRestriction": null,
   "timeToExit": {
     "rulesVersion": "0.1.0",
     "status": "lower_bound",

@@ -1,7 +1,7 @@
 {
-  "schemaVersion": "0.11.0",
-  "rulesetVersion": "0.10.0",
-  "generatedAt": "2026-09-02T13:38:23.539Z",
+  "schemaVersion": "0.12.0",
+  "rulesetVersion": "0.11.0",
+  "generatedAt": "2026-09-02T21:28:23.156Z",
   "chainId": 1,
   "block": {
     "number": "25800000",
@@ -525,7 +525,9 @@
         },
         "categories": [],
         "confidence": "medium",
-        "note": "setDelay(uint256) reverts with a \"caller must be the timelock itself\" gate, so the delay can only be changed by an operation the timelock schedules against itself — which is subject to the current 172800s delay"
+        "note": "setDelay(uint256) reverts with a \"caller must be the timelock itself\" gate, so the delay can only be changed by an operation the timelock schedules against itself — which is subject to the current 172800s delay",
+        "confirmationMethod": "static",
+        "restrictionState": null
       }
     ],
     "bypasses": [],
@@ -670,6 +672,7 @@
       }
     ]
   },
+  "exitRestriction": null,
   "timeToExit": {
     "rulesVersion": "0.1.0",
     "status": "no_mechanism_detected",

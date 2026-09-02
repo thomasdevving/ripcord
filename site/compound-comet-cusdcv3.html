@@ -161,9 +161,9 @@ footer{margin-top:26px;font-size:12px;color:var(--text-secondary);}
 
   
 
-  <section class="hero unknown">
-    <div class="verdict-badge">? Undetermined</div>
-    <p class="verdict-statement">Verdict undetermined on the exit-window side: A 172800s delay was proven binding on every one of the 1 authority route(s) FOUND — but the authority picture behind those routes was not shown complete, so the route set itself is not established. The exit window is the MINIMUM notice across all routes, and a minimum taken over an incomplete set can only be too generous. The 172800s figure is reported as a nominal delay, not as a window. Time to exit is at least 0s, but the comparison cannot be made against a window that was not established.</p>
+  <section class="hero critical">
+    <div class="verdict-badge">✕ No notice at all</div>
+    <p class="verdict-statement">You cannot exit ahead of a rule change here: at least one authority route can change the rules with ZERO notice, so there is no interval to move inside — however fast the exit is. Exit window is zero: a FORK-CONFIRMED exit restrictor (exit-restrictor:pauseGuardian → safe 0xbbf3f1421D886E9b2c5D716B5192aC998af2012c) can close the exit with no notice at all. This was demonstrated, not inferred: the baseline exit succeeded, that party closed it, and the identical exit then reverted on the fork. The exit is OPEN at the pinned block but CLOSABLE with zero notice: Ripcord ran the baseline exit on a fork, had 0xbbf3f1421D886E9b2c5D716B5192aC998af2012c call pause(bool,bool,bool,bool,bool) with withdraw-pause = true, and the identical exit then reverted. This is &quot;you can be trapped at any moment,&quot; not &quot;you are already trapped.&quot;</p>
     <figure class="chart">
   <svg viewBox="0 0 720 162" role="img" aria-label="Notice before the rules can change, against the time needed to leave">
     <defs>
@@ -180,11 +180,10 @@ footer{margin-top:26px;font-size:12px;color:var(--text-secondary);}
     <line x1="4" y1="6" x2="4" y2="140" stroke="var(--baseline)" stroke-width="1" />
     <g>
       <text x="4" y="20" class="bar-label">Notice before the rules can change</text>
-      <title>Notice before the rules can change: 2 days nominal — not proven binding</title>
-      <rect x="4" y="28" width="506" height="22" rx="4"
-                 fill="url(#hatch-series-1)" stroke="var(--series-1)" stroke-width="1.5" stroke-dasharray="4 3" />
-      <text x="520" y="43" class="bar-value">2 days nominal — not proven binding</text>
-      <text x="4" y="65" class="bar-sub">delay present, NOT proven binding — an authority may be able to shorten it</text>
+      <title>Notice before the rules can change: 0 — none at all</title>
+      <rect x="4" y="28" width="3" height="22" fill="var(--series-1)" />
+      <text x="17" y="43" class="bar-value">0 — none at all</text>
+      <text x="4" y="65" class="bar-sub">zero, and proven — at least one route needs no waiting at all</text>
     </g>
 <g>
       <text x="4" y="84" class="bar-label">Time needed to leave</text>
@@ -216,21 +215,21 @@ footer{margin-top:26px;font-size:12px;color:var(--text-secondary);}
       </div>
       <p class="sandbox">Executed only on an ephemeral anvil mainnet fork pinned to the report block. No mainnet transaction was sent, no private key was used or held, no approval was requested. The figures describe what this authority CAN do in simulation — a capability, not a prediction of intent.</p>
     </div>
-    <div class="missing"><strong>What is missing, and why this verdict is not crisper</strong><ul><li>the privileged-surface evaluation at capabilitySurface could not be shown complete, so a route with less notice may exist and not have been seen: 67 of 67 selector(s) are not in Ripcord's taxonomy and were never evaluated for privilege, while 2 privileged party/parties exist over this contract (proxy admin, governor()). An unevaluated selector is &quot;unclassified&quot;, never &quot;not privileged&quot; — so a capability that restricts or halts the exit cannot be ruled out, and no reassuring assessment can rest on this surface. Evaluating those selectors requires their signatures, which Ripcord does not retrieve from any external source — see the README on why a block-explorer lookup would break the pinned-and-cached determinism model.</li></ul></div>
+    <div class="missing"><strong>What is missing, and why this verdict is not crisper</strong><ul><li>the privileged-surface evaluation at capabilitySurface could not be shown complete, so an authority route may exist that was never seen: 67 of 67 selector(s) are not in Ripcord's taxonomy and were never evaluated for privilege, while 2 privileged party/parties exist over this contract (proxy admin, governor()). An unevaluated selector is &quot;unclassified&quot;, never &quot;not privileged&quot; — so a capability that restricts or halts the exit cannot be ruled out, and no reassuring assessment can rest on this surface. Evaluating those selectors requires their signatures, which Ripcord does not retrieve from any external source — see the README on why a block-explorer lookup would break the pinned-and-cached determinism model.</li></ul></div>
     <details class="tabletwin"><summary>The same two figures as a table</summary>
       <div class="scroll"><table>
     <thead><tr><th>Measure</th><th>Value</th><th>Established?</th></tr></thead>
-    <tbody><tr><td>Notice before the rules can change</td><td>2 days nominal — not proven binding</td><td>no — nominal only</td></tr><tr><td>Time needed to leave</td><td>0 — none at all</td><td>yes</td></tr></tbody>
+    <tbody><tr><td>Notice before the rules can change</td><td>0 — none at all</td><td>yes</td></tr><tr><td>Time needed to leave</td><td>0 — none at all</td><td>yes</td></tr></tbody>
   </table></div>
     </details>
   </section>
 
-  <section><h2>Exit window</h2><p class="note">The exit window is the notice you get before a rule change takes effect, minus every way that notice can be cut. It is modelled per route and the protocol figure is the <strong>minimum</strong> across them: a timelock on one path is worth nothing beside an un-delayed one.</p><p class="statement">A 172800s delay was proven binding on every one of the 1 authority route(s) FOUND — but the authority picture behind those routes was not shown complete, so the route set itself is not established. The exit window is the MINIMUM notice across all routes, and a minimum taken over an incomplete set can only be too generous. The 172800s figure is reported as a nominal delay, not as a window.</p>
+  <section><h2>Exit window</h2><p class="note">The exit window is the notice you get before a rule change takes effect, minus every way that notice can be cut. It is modelled per route and the protocol figure is the <strong>minimum</strong> across them: a timelock on one path is worth nothing beside an un-delayed one.</p><p class="statement">Exit window is zero: a FORK-CONFIRMED exit restrictor (exit-restrictor:pauseGuardian → safe 0xbbf3f1421D886E9b2c5D716B5192aC998af2012c) can close the exit with no notice at all. This was demonstrated, not inferred: the baseline exit succeeded, that party closed it, and the identical exit then reverted on the fork.</p>
      
      <h3>Routes to changing the rules</h3>
      <div class="scroll"><table>
     <thead><tr><th>Route</th><th>Notice</th><th>Effective controller</th><th>Terminated because</th><th>Role privilege</th><th>Reaches</th><th>Confidence</th></tr></thead>
-    <tbody><tr><td><code>proxyAdmin</code></td><td><span class="chip good">✓ 2 days</span></td><td>timelock <code class="addr" title="0x6d903f6003cca6255D85CcA4D3B5E5146dC33925">0x6d903f60…C33925</code></td><td>timelock</td><td><span class='muted'>n/a</span></td><td><code>CODE_CHANGE</code></td><td>medium</td></tr></tbody>
+    <tbody><tr><td><code>proxyAdmin</code></td><td><span class="chip good">✓ 2 days</span></td><td>timelock <code class="addr" title="0x6d903f6003cca6255D85CcA4D3B5E5146dC33925">0x6d903f60…C33925</code></td><td>timelock</td><td><span class='muted'>n/a</span></td><td><code>CODE_CHANGE</code></td><td>medium</td></tr><tr><td><code>exit-restrictor:pauseGuardian</code></td><td><span class="chip critical">✕ no notice</span></td><td>safe <code class="addr" title="0xbbf3f1421D886E9b2c5D716B5192aC998af2012c">0xbbf3f142…f2012c</code></td><td>safe</td><td><span class='muted'>n/a</span></td><td><code>ACCESS_RESTRICTION</code></td><td>high</td></tr></tbody>
   </table></div>
      <h3>Ways the notice could be shorter than it looks</h3>
      <p class="muted">None found — and the table below is what makes that mean something.</p>
@@ -284,6 +283,21 @@ footer{margin-top:26px;font-size:12px;color:var(--text-secondary);}
   </table></div>
            <h3>Reproduce it</h3><pre class="repro">pnpm ripcord prove 0xc3d688B66703497DAA19211EEdff47f25384cdc3 --block 25800000 --chain 1</pre></section>
 
+  <section><h2>Exit-restriction fork evaluation</h2><p class="note">The differential: establish a baseline exit on a fork, then have each guarded function's party try to close it. A restrictor is DEMONSTRATED, never inferred. A clean run is scoped to the functions evaluated — it is never a proof of safe exit.</p><div class="banner warn"><strong>A privileged party can close this exit — demonstrated on a fork.</strong><p>OPEN now, but CLOSABLE — a party can shut the exit at any moment. Capability, not intent: this is what the party CAN do, watched happening in simulation, not a claim that it will.</p></div>
+             <dl class="meta">
+               <div class="kv"><dt>Exit action</dt><dd>identified — <code>withdraw(address,uint256)</code> (compound-comet-base)</dd></div>
+               <div class="kv"><dt>Baseline</dt><dd>established — funded 100k USDC from whale 0x37305B1cD40574E4C5Ce33f8e8306Be057fD7341, supplied 50k, baseline withdraw of 10k succeeded</dd></div>
+               <div class="kv"><dt>Outcome</dt><dd>restrictor_found · fork_confirmed</dd></div>
+               <div class="kv"><dt>Coverage</dt><dd>1 / 1 guarded function(s) evaluated</dd></div>
+             </dl>
+             <div class="scroll"><table>
+    <thead><tr><th>Function</th><th>Result</th><th>Guarding party</th><th>Argument</th><th>Detail</th></tr></thead>
+    <tbody><tr><td><code>pause(bool,bool,bool,bool,bool)</code></td><td>restrictor</td><td><code class="addr" title="0xbbf3f1421D886E9b2c5D716B5192aC998af2012c">0xbbf3f142…f2012c</code></td><td>withdraw-pause = true</td><td>DIFFERENTIAL CONFIRMED: baseline withdraw succeeded; after the guardian set isWithdrawPaused()=true, the identical withdraw reverts. The pause guardian can close the exit. The guardian is a 5-of-9 Safe, impersonated at its address — this demonstrates the Safe CAN close the exit if its signers collude, not that a single key can.</td></tr></tbody>
+  </table></div>
+             <h3>What this does NOT cover</h3>
+             <ul class="ceiling"><li>Exit-action identification: the differential tests the exit function Ripcord identified from the contract's interface. If a holder's real exit path differs from the one tested, this evaluation does not cover it — testing the wrong exit function would be a false-clean, which is why an unidentified exit action keeps the verdict undetermined instead.</li><li>Argument space is NOT exhausted: each restriction candidate was tried with one bounded, documented exit-restricting argument (e.g. withdraw-pause = true). Other argument combinations, and any privileged function outside the evaluated guarded set, were not swept — absence of a restrictor here is not proof none exists.</li><li>Indirect and economic restrictions are OUT OF SCOPE: oracle manipulation, collateral/liquidity configuration, fee or rate changes, and multi-call sequences can restrict an exit without any single function reverting it, and none of those were tested.</li></ul>
+             <p class="sandbox">Executed only on an ephemeral anvil mainnet fork pinned to the report block. No mainnet transaction was sent, no private key was used or held, no approval was requested. The differential shows what a privileged party CAN do to a holder's exit in simulation — a capability, not a prediction of intent.</p></section>
+
   <section><h2>Unknowns and errors</h2><p class="note">Always present, never suppressed to look clean. An empty list here is a claim that nothing went wrong.</p><div class="scroll"><table>
     <thead><tr><th>Field</th><th>Reason</th></tr></thead>
     <tbody><tr><td><code>exitWindow</code></td><td>the privileged-surface evaluation at capabilitySurface could not be shown complete, so a route with less notice may exist and not have been seen: 67 of 67 selector(s) are not in Ripcord's taxonomy and were never evaluated for privilege, while 2 privileged party/parties exist over this contract (proxy admin, governor()). An unevaluated selector is &quot;unclassified&quot;, never &quot;not privileged&quot; — so a capability that restricts or halts the exit cannot be ruled out, and no reassuring assessment can rest on this surface. Evaluating those selectors requires their signatures, which Ripcord does not retrieve from any external source — see the README on why a block-explorer lookup would break the pinned-and-cached determinism model.</td></tr></tbody>
@@ -295,8 +309,8 @@ footer{margin-top:26px;font-size:12px;color:var(--text-secondary);}
     <div class="kv"><dt>Chain</dt><dd>1</dd></div>
     <div class="kv"><dt>Pinned block</dt><dd><code>25800000</code></dd></div>
     <div class="kv"><dt>Block hash</dt><dd><code>0xeb4ccbdb418b083ebbf646b371092c7c02016194e3a90caba9a9492becba8a2d</code></dd></div>
-    <div class="kv"><dt>Schema version</dt><dd>0.11.0</dd></div>
-    <div class="kv"><dt>Ruleset version</dt><dd>0.10.0</dd></div>
+    <div class="kv"><dt>Schema version</dt><dd>0.12.0</dd></div>
+    <div class="kv"><dt>Ruleset version</dt><dd>0.11.0</dd></div>
     <div class="kv"><dt>Cleared-registry version</dt><dd>0.1.0</dd></div>
     <div class="kv"><dt>Exit-window rules</dt><dd>0.1.0</dd></div>
     <div class="kv"><dt>Time-to-exit rules</dt><dd>0.1.0</dd></div>
@@ -436,4 +450,4 @@ footer{margin-top:26px;font-size:12px;color:var(--text-secondary);}
     <p class="muted">Capability, not intent: nothing here claims anyone will do anything. It reports what a privileged address is technically able to do, and how much notice you would get.</p>
   </footer>
 </main>
-<script type="application/json" id="ripcord-figures">[{"jsonPath":"verdict.status","raw":"undetermined","rendered":"Undetermined","label":"verdict status"},{"jsonPath":"exitWindow.assessment.nominalDelaySeconds","raw":"172800","rendered":"2 days nominal — not proven binding","label":"nominal delay"},{"jsonPath":"verdict.timeToExitSeconds","raw":"0","rendered":"0 — none at all","label":"time to exit"},{"jsonPath":"proof.totalUsd","raw":540604938.7104856,"rendered":"$540,604,938.71","label":"proof total USD"},{"jsonPath":"proof.noticeSeconds","raw":"172800","rendered":"2 days","label":"proof notice seconds"},{"jsonPath":"block.number","raw":"25800000","rendered":"25800000","label":"pinned block"}]</script>
+<script type="application/json" id="ripcord-figures">[{"jsonPath":"verdict.status","raw":"no_notice","rendered":"No notice at all","label":"verdict status"},{"jsonPath":"verdict.exitWindowSeconds","raw":"0","rendered":"0 — none at all","label":"exit window"},{"jsonPath":"verdict.timeToExitSeconds","raw":"0","rendered":"0 — none at all","label":"time to exit"},{"jsonPath":"proof.totalUsd","raw":540604938.7104856,"rendered":"$540,604,938.71","label":"proof total USD"},{"jsonPath":"proof.noticeSeconds","raw":"172800","rendered":"2 days","label":"proof notice seconds"},{"jsonPath":"block.number","raw":"25800000","rendered":"25800000","label":"pinned block"}]</script>
