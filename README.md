@@ -756,6 +756,31 @@ pnpm determinism <a> <b> # byte-compare two report directories (generatedAt norm
 
 `pnpm test` runs in CI without any RPC access. It covers derived constants (asserted against the EIP-1967 reference values), bytecode pattern matching, the dispatcher's reachability-limited selector extraction (hand-built bytecode fixtures for every dispatch shape, plus real mainnet bytecode saved under `test/fixtures/bytecode/` for WETH9/USDC/WBTC/Aave's `PoolAddressesProvider`, each checked against an independently-sourced full ABI), guard-probe revert parsing (real captured mainnet revert bytes plus viem-encoded synthetic OZ v5 custom errors), the adaptive `getLogs` chunking / partial-reconstruction logic (a fake provider with a simulated range limit), the cleared-registry disclosure gate (both directions), the cache's provider-independent key, the exit-window binding determination (against the exact revert bytes read from mainnet) and its role-privilege gate, the time-to-exit leg composition, the verdict's comparison rules, and capability/proxy-resolution wiring — all against network-free fakes. End-to-end verification against the **eight** pinned fixtures in [`test/fixtures/targets.json`](test/fixtures/targets.json) (including FXS for the OpenZeppelin AccessControl path, Compound's Comet for a proven-binding timelock, and Ethena's sUSDe for a cooldown-versus-timelock dead heat) requires a real RPC URL and was run manually during development; every observed result is recorded in that file alongside each target. Each scan prints the active provider (`provider: <name> (<host>)`) to stderr — host only, never the key.
 
+## Deploying the report site
+
+The 22 rendered pages in `site/` are plain static files — no backend, no
+JavaScript beyond native `<details>`, and no network request at view time. They
+are generated ahead of time from the pinned JSON reports by `scripts/render.ts`,
+so a deployed page cannot show a result that differs from the committed report.
+
+```sh
+pnpm render          # regenerate site/ from calibration/reports/
+pnpm verify:pages    # re-check every figure against its source report
+pnpm verify:claims   # re-check the prose in README/CLAUDE.md/docs against them too
+```
+
+To publish on GitHub Pages: push `main`, then set **Settings → Pages → Source:
+GitHub Actions**. [`.github/workflows/pages.yml`](.github/workflows/pages.yml)
+runs both verifiers first and deploys `site/` only if they pass — so a page whose
+headline figure no longer matches its report, or a README that describes a
+different result than the pages it ships, blocks the deployment rather than
+shipping.
+
+Only reports with `disclosure.publishable === true` are rendered, so the
+[disclosure gate](#disclosure-policy) governs what gets deployed rather than a
+hand-maintained list. `verify-pages.mjs` additionally fails if an unpublishable
+report ever acquires a page.
+
 ## Security
 
 - `.env` and `.cache/` are gitignored from the first commit; `.env.example` ships placeholder values only.
