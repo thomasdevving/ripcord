@@ -86,7 +86,7 @@ import { ERROR_STRING_SELECTOR, PROBE_ADDRESSES, parseAuthShape } from "./guardP
 import { terminalNodeOf } from "./authority.js";
 import { detectProxy } from "./proxy.js";
 import { extractDispatcherSelectors } from "./dispatcher.js";
-import { enumerationSiteKey, witnessOf } from "../report/enumeration.js";
+import { enumerationSiteKey, gapSubject, witnessOf } from "../report/enumeration.js";
 import type {
   AuthorityIndirection,
   AuthorityNode,
@@ -874,7 +874,7 @@ function assess(
     const immutabilityWitness = witnessOf(args.enumeration);
     if (!immutabilityWitness) {
       const enumerationMissing = args.enumeration.gaps.map(
-        (g) => `no rule-change route was found, but role enumeration at ${g.where} was incomplete, so "no route exists" cannot be claimed: ${g.reason}`,
+        (g) => `no rule-change route was found, but ${gapSubject(g.site)} at ${g.where} was incomplete, so "no route exists" cannot be claimed: ${g.reason}`,
       );
       for (const m of enumerationMissing) unknowns.push({ field: "exitWindow", reason: m });
       return {
@@ -978,7 +978,7 @@ function assess(
   const witness = witnessOf(args.enumeration);
   if (!witness) {
     const enumerationMissing = args.enumeration.gaps.map(
-      (g) => `role enumeration at ${g.where} could not be shown complete, so a route with less notice may exist and not have been seen: ${g.reason}`,
+      (g) => `${gapSubject(g.site)} at ${g.where} could not be shown complete, so a route with less notice may exist and not have been seen: ${g.reason}`,
     );
     for (const m of enumerationMissing) unknowns.push({ field: "exitWindow", reason: m });
     return {
@@ -987,7 +987,7 @@ function assess(
       missing: enumerationMissing,
       citedGapSites: args.enumeration.gaps.map((g) => enumerationSiteKey(g.site)),
       confidence: "low",
-      statement: `A ${min}s delay was proven binding on every one of the ${routes.length} authority route(s) FOUND — but the role enumeration behind those routes was incomplete, so the route set itself is not established. The exit window is the MINIMUM notice across all routes, and a minimum taken over an incomplete set can only be too generous. The ${min}s figure is reported as a nominal delay, not as a window.`,
+      statement: `A ${min}s delay was proven binding on every one of the ${routes.length} authority route(s) FOUND — but the authority picture behind those routes was not shown complete, so the route set itself is not established. The exit window is the MINIMUM notice across all routes, and a minimum taken over an incomplete set can only be too generous. The ${min}s figure is reported as a nominal delay, not as a window.`,
     };
   }
 

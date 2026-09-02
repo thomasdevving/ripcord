@@ -324,6 +324,16 @@ export async function buildReport(chain: ChainReader, target: Hex): Promise<Repo
     authorityResolution,
     dependencies: dependencyDetection.result,
     errors,
+    // The target's own privileged SURFACE, plus who exists to hold it. Role
+    // enumeration was never the only way the picture could be incomplete:
+    // Compound III passed every role check with a fully-resolved implementation
+    // and still had a guarded, zero-notice `pause` sitting unevaluated among 67
+    // unmatched selectors. See judgeCapabilitySurface.
+    capabilities: capabilityDetection.result,
+    owner: ownership.owner,
+    pendingOwner: ownership.pendingOwner,
+    proxy,
+    indirection: authorityIndirection,
   });
 
   const exitWindowDetection = await runStage<{ result: ExitWindow | null; unknowns: UnknownEntry[] }>(

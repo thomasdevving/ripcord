@@ -177,7 +177,7 @@ footer{margin-top:26px;font-size:12px;color:var(--text-secondary);}
 </figure>
     
     
-    <div class="missing"><strong>What is missing, and why this verdict is not crisper</strong><ul><li>route &quot;owner&quot; terminates as no_authority_found at 0xeCb456EA5365865EbAb8a2661B0c503410e9B347 — its notice period is unknown</li></ul></div>
+    <div class="missing"><strong>What is missing, and why this verdict is not crisper</strong><ul><li>route &quot;owner&quot; terminates as no_authority_found at 0xeCb456EA5365865EbAb8a2661B0c503410e9B347 — its notice period is unknown</li><li>the privileged-surface evaluation at capabilitySurface could not be shown complete, so an authority route may exist that was never seen: the dispatcher could not be decoded, so the privileged surface was never enumerated at all, while 1 privileged party/parties exist over this contract (owner()). An unevaluated selector is &quot;unclassified&quot;, never &quot;not privileged&quot; — so a capability that restricts or halts the exit cannot be ruled out, and no reassuring assessment can rest on this surface. Evaluating those selectors requires their signatures, which Ripcord does not retrieve from any external source — see the README on why a block-explorer lookup would break the pinned-and-cached determinism model.</li></ul></div>
     <details class="tabletwin"><summary>The same two figures as a table</summary>
       <div class="scroll"><table>
     <thead><tr><th>Measure</th><th>Value</th><th>Established?</th></tr></thead>
@@ -247,8 +247,8 @@ footer{margin-top:26px;font-size:12px;color:var(--text-secondary);}
     <div class="kv"><dt>Chain</dt><dd>1</dd></div>
     <div class="kv"><dt>Pinned block</dt><dd><code>25800000</code></dd></div>
     <div class="kv"><dt>Block hash</dt><dd><code>0xeb4ccbdb418b083ebbf646b371092c7c02016194e3a90caba9a9492becba8a2d</code></dd></div>
-    <div class="kv"><dt>Schema version</dt><dd>0.10.0</dd></div>
-    <div class="kv"><dt>Ruleset version</dt><dd>0.9.0</dd></div>
+    <div class="kv"><dt>Schema version</dt><dd>0.11.0</dd></div>
+    <div class="kv"><dt>Ruleset version</dt><dd>0.10.0</dd></div>
     <div class="kv"><dt>Cleared-registry version</dt><dd>0.1.0</dd></div>
     <div class="kv"><dt>Exit-window rules</dt><dd>0.1.0</dd></div>
     <div class="kv"><dt>Time-to-exit rules</dt><dd>0.1.0</dd></div>

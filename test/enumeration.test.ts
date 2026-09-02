@@ -15,7 +15,10 @@ import type {
   AccessControlResult,
   AuthorityNode,
   AuthorityResolution,
+  CapabilitiesResult,
   DependencyGraph,
+  OwnerField,
+  ProxyResult,
   RoleReconstruction,
 } from "../src/report/schema.js";
 
@@ -70,12 +73,42 @@ const res = (roots: AuthorityNode[]): AuthorityResolution => ({
 
 const noDeps = (): DependencyGraph => ({ tokens: [], oracles: [] });
 
+/** A capability surface that was FULLY evaluated: dispatcher decoded, nothing unmatched. */
+const evaluatedSurface = (over: Partial<CapabilitiesResult> = {}): CapabilitiesResult => ({
+  taxonomyVersion: "test",
+  dispatcherRecognized: true,
+  scannedAddress: "0x00000000000000000000000000000000000000aa",
+  probedAddress: "0x00000000000000000000000000000000000000aa",
+  selectorsExtracted: 3,
+  unmatchedSelectors: [],
+  findings: [],
+  needsManualVerification: [],
+  evidence: [],
+  ...over,
+});
+
+const noOwner = (): OwnerField => ({ address: null, source: "owner() reverted", evidence: [] });
+const someOwner = (): OwnerField => ({
+  address: "0x00000000000000000000000000000000000000bb",
+  source: "owner()",
+  evidence: [],
+});
+const noProxy = (): ProxyResult =>
+  ({ pattern: "not_a_proxy", isProxy: false, implementation: null, beacon: null, admin: null, evidence: [] }) as ProxyResult;
+
 const derive = (over: Parameters<typeof deriveEnumerationCompleteness>[0] | Record<string, never> = {}) =>
   deriveEnumerationCompleteness({
     accessControl: ac(),
     authorityResolution: res([]),
     dependencies: noDeps(),
     errors: [],
+    // Default to a surface that was fully evaluated with nobody privileged over
+    // it, so these cases isolate the property each one is actually about.
+    capabilities: evaluatedSurface(),
+    owner: noOwner(),
+    pendingOwner: noOwner(),
+    proxy: noProxy(),
+    indirection: null,
     ...over,
   } as Parameters<typeof deriveEnumerationCompleteness>[0]);
 
@@ -214,5 +247,77 @@ describe("enumeration witness — FAIL-CLOSED on every non-answer", () => {
     ]) {
       expect(e.gaps.length === 0).toBe(e.complete);
     }
+  });
+});
+
+/**
+ * The capability-surface dimension, added after Compound III passed every ROLE
+ * check and was still wrong: fully-resolved implementation, decoded dispatcher,
+ * clean reconstruction — and a guarded `pause(bool,bool,bool,bool,bool)` sitting
+ * unevaluated among 67 unmatched selectors, callable by a guardian who can shut
+ * withdrawals with no notice. The verdict read "You can exit before the rules
+ * CAN change."
+ *
+ * These tests pin the DISCRIMINATOR, because the naive rule is wrong in a way
+ * that is easy to ship: every one of the 26 calibration reports has unmatched
+ * selectors, so "any unmatched selector withholds the witness" would delete
+ * every reassuring verdict in the set — including WETH9's, which was earned by
+ * deriving all 11 of its selectors and confirming none is privileged. What makes
+ * an unevaluated selector dangerous is that somebody holds privilege here.
+ */
+describe("enumeration witness — the capability SURFACE, not just the role set", () => {
+  const unevaluated = () => evaluatedSurface({ selectorsExtracted: 67, unmatchedSelectors: ["0x44c35d07", "0xdeadbeef"] });
+
+  it("withholds the witness when a privileged party exists AND selectors were never evaluated", () => {
+    // The Comet shape.
+    const e = derive({ capabilities: unevaluated(), owner: someOwner() } as never);
+    expect(e.complete).toBe(false);
+    expect(witnessOf(e)).toBeNull();
+    expect(e.gaps.some((g) => g.site.kind === "capabilitySurface")).toBe(true);
+    expect(e.gaps.find((g) => g.site.kind === "capabilitySurface")!.reason).toMatch(/never evaluated for privilege/);
+  });
+
+  it("KEEPS the witness when nobody is privileged, however many selectors are unevaluated", () => {
+    // The WETH9 shape, and the reason the rule is not "any unmatched selector".
+    // With no owner, no pendingOwner, no proxy admin, no role members and no
+    // indirection, there is nobody for an unevaluated selector to be privileged
+    // FOR — so it is inert, and a hard-earned true negative survives.
+    const e = derive({ capabilities: unevaluated() } as never);
+    expect(e.complete).toBe(true);
+    expect(witnessOf(e)).not.toBeNull();
+  });
+
+  it.each([
+    ["a proxy admin", { proxy: { pattern: "eip1967_transparent", isProxy: true, implementation: "0x00000000000000000000000000000000000000cc", beacon: null, admin: "0x00000000000000000000000000000000000000dd", evidence: [] } }],
+    ["a role with members", { accessControl: ac({ detected: true, reconstruction: complete(), roles: [{ role: "0x00", name: "ADMIN", members: ["0x00000000000000000000000000000000000000ee"], adminRole: null, evidence: [] }] }) }],
+    ["an authority-indirection marker", { indirection: { version: "t", gettersProbed: ["governor()"], markers: [{ signature: "governor()", selector: "0x0c340a24", target: "0x00000000000000000000000000000000000000ff", evidence: { kind: "call", params: {}, rawValue: "0x", block: "1" } }] } }],
+  ])("counts %s as a privileged party", (_label, over) => {
+    const e = derive({ capabilities: unevaluated(), ...over } as never);
+    expect(e.complete).toBe(false);
+    expect(e.gaps.some((g) => g.site.kind === "capabilitySurface")).toBe(true);
+  });
+
+  it("treats an UNDECODED dispatcher as unevaluated, not as 'no selectors'", () => {
+    // Zero unmatched selectors because zero were recovered is the worst case,
+    // not the best one. `!== true` throughout, never `!== false`.
+    const e = derive({
+      capabilities: evaluatedSurface({ dispatcherRecognized: false, selectorsExtracted: 0, unmatchedSelectors: [] }),
+      owner: someOwner(),
+    } as never);
+    expect(e.complete).toBe(false);
+    expect(e.gaps.find((g) => g.site.kind === "capabilitySurface")!.reason).toMatch(/dispatcher could not be decoded/);
+  });
+
+  it("is complete when the surface was fully evaluated even with a privileged party", () => {
+    // The rule must not fire on a contract whose every selector IS classified —
+    // otherwise it is a blanket veto rather than a discriminator.
+    const e = derive({ capabilities: evaluatedSurface(), owner: someOwner() } as never);
+    expect(e.complete).toBe(true);
+  });
+
+  it("fail-closes when there is no capability result at all", () => {
+    const e = derive({ capabilities: null } as never);
+    expect(e.complete).toBe(false);
+    expect(e.gaps.find((g) => g.site.kind === "capabilitySurface")!.reason).toMatch(/no capability result is present/);
   });
 });

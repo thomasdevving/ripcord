@@ -873,7 +873,7 @@ only via delegatecall and is usually uninitialized.
     available to this project — for COVERAGE, not just speed.
 
 29. **Under-determination is now the dominant error mode, and that is the
-    deliberate trade (day 5).** 15 of 26 protocols come back `undetermined`. The
+    deliberate trade (day 5).** 17 of 26 protocols come back `undetermined`. The
     named causes: custom authority schemes (5), Compound's delegator pattern
     (`admin()`+`implementation()` as plain getters, 2 — the marker now NAMES the
     Compound Timelock but the route is still not resolved), provider-starved role
@@ -1122,6 +1122,60 @@ only via delegatecall and is usually uninitialized.
     human looked -> harmless. Had it gone the other way, the gate would have held
     a live vulnerability claim off a public site. See docs/CALIBRATION.md §12.
 
+36. **[FOUND AND FIXED — the flagship green result was a false-clean] Role
+    enumeration was never the only way the authority picture could be
+    incomplete.** Edge #30 made `binding`/`immutable_within_checks`
+    unconstructable over a partial ROLE scan. Compound III passed that test — a
+    fully-resolved implementation, a decoded dispatcher, a clean
+    `reconstruction` — and was still wrong: `pause(bool,bool,bool,bool,bool)` sat
+    in its 67 `unmatchedSelectors`, guarded, and a 5-of-N Safe named by
+    `pauseGuardian()` can flip `isWithdrawPaused` to true with NO notice.
+    Verified as a real fork transaction: a stranger's `pause` reverts, the
+    guardian's succeeds. The report said "You can exit before the rules CAN
+    change… leaving takes 0s."
+
+    NO DETECTOR WAS AT FAULT, which is what makes it the same family as #24 and
+    #30. `capabilities` listed the selector; `timeToExit.blockable` said in its
+    own note that "unmatched selectors were not evaluated for privilege". But
+    `blockable` is computed from taxonomy-MATCHED findings, so an unmatched
+    selector is invisible to it BY CONSTRUCTION however privileged it is, and the
+    composition layer turned that silence into reassurance.
+
+    THE POINT-PATCH WAS TRACED AND REJECTED. Adding `pause` to the taxonomy does
+    not fix it: the probe returns `Unauthorized()` (0x82b42900), unrecognised →
+    `needsManualVerification` → Comet loses its page; and even with a dialect
+    entry it lands UNATTRIBUTED, so `blockable` becomes `undetermined`, which
+    yields no suffix and no status change. Green either way. It would also leave
+    the next kill switch under another name invisible.
+
+    THE RULE: a reassuring assessment may not stand while a PRIVILEGED PARTY
+    exists and the PRIVILEGED SURFACE was not fully evaluated (dispatcher decoded
+    AND every recovered selector classified — one resolved implementation address
+    is not enough). Subtractive and caution-only, like every other gap.
+
+    THE DISCRIMINATOR MATTERS AND WAS MEASURED FIRST. All 26 reports have
+    unmatched selectors, so "any unmatched selector withholds" would have deleted
+    every reassuring verdict in the set, including WETH9's — earned by deriving
+    all 11 of its selectors. What makes one dangerous is that somebody holds
+    privilege: WETH9/wstETH have no owner, pendingOwner, proxy admin, role
+    members or indirection marker, so theirs are inert and their true negatives
+    survive.
+
+    RESULT, against predictions registered before the code: exactly 2 verdicts
+    changed (Comet, Uniswap v3 Factory → `undetermined`), 0 moved toward
+    reassurance, WETH9/wstETH survived, 12 more reports flipped
+    `enumeration.complete` with no verdict change (caution-only holding). The
+    predictions are now a CI gate in verify-pages.mjs, whose independent
+    derivation grew the same dimension separately so a bug in one cannot hide in
+    the other. schema 0.11.0 / ruleset 0.10.0.
+
+    THE COST, stated: `can_exit_in_time` no longer occurs anywhere in the set,
+    and is not establishable for any contract with both a privileged party and an
+    unevaluated surface. Restoring it honestly needs the unmatched selectors
+    EVALUATED, i.e. their signatures from a block-explorer ABI source — the
+    deferred work that breaks the pinned-and-cached determinism model. The $540M
+    proof is untouched and still true; only the exit claim changed.
+
 22. **The cleared-dependency registry is small, manual, and mainnet-only
     (consolidation pass).** `clearedRegistry.ts` documents design-not-bug
     capabilities for the 6 curated majors (USDC/USDT/DAI/WBTC/stETH; WETH has
@@ -1279,7 +1333,7 @@ which were genuinely privileged, report THAT percentage.
   nominal) / unknown (full hatch, no length to read) / none (flat tint, nothing to
   measure) — because drawing "we found nothing" the same as "there is nothing"
   would put the day-5 conflation straight back in the stylesheet.
-  22 pages in `site/`, 77 figures machine-checked, 0 failures.
+  22 pages in `site/`, 75 figures machine-checked, 0 failures.
 - **Day 5 (original brief, for reference).** Calibration against 10-15 real protocols; README/report polish.
   Published set filtered on `disclosure.publishable`. Report the FALSE-NEGATIVE
   rate, not a classification percentage — see "Taxonomy strategy" below.

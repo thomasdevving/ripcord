@@ -1,7 +1,7 @@
 {
-  "schemaVersion": "0.10.0",
-  "rulesetVersion": "0.9.0",
-  "generatedAt": "2026-09-02T06:59:25.357Z",
+  "schemaVersion": "0.11.0",
+  "rulesetVersion": "0.10.0",
+  "generatedAt": "2026-09-02T13:38:13.147Z",
   "chainId": 1,
   "block": {
     "number": "25800000",
@@ -1368,14 +1368,15 @@
     "confidence": "medium",
     "missing": [
       "route \"proxyAdmin\" terminates as no_authority_found at 0x3e40d73eb977dc6a537af587d48316fee66e9c8c — its notice period is unknown",
-      "role enumeration at target could not be shown complete, so an authority route may exist that was never seen: Enumerable membership below is authoritative, but role-hash DISCOVERY was partial: the provider's eth_getLogs range (9 blocks) and the 1500-request budget covered only blocks 25793250–25800000 of 17172547–25800000; a role never granted/revoked within that window would be missed"
+      "role enumeration at target could not be shown complete, so an authority route may exist that was never seen: Enumerable membership below is authoritative, but role-hash DISCOVERY was partial: the provider's eth_getLogs range (9 blocks) and the 1500-request budget covered only blocks 25793250–25800000 of 17172547–25800000; a role never granted/revoked within that window would be missed",
+      "the privileged-surface evaluation at capabilitySurface could not be shown complete, so an authority route may exist that was never seen: 64 of 67 selector(s) are not in Ripcord's taxonomy and were never evaluated for privilege, while 2 privileged party/parties exist over this contract (proxy admin, role DEFAULT_ADMIN_ROLE). An unevaluated selector is \"unclassified\", never \"not privileged\" — so a capability that restricts or halts the exit cannot be ruled out, and no reassuring assessment can rest on this surface. Evaluating those selectors requires their signatures, which Ripcord does not retrieve from any external source — see the README on why a block-explorer lookup would break the pinned-and-cached determinism model."
     ],
     "inputs": [
       {
         "name": "enumeration.complete",
         "value": "false",
         "confidence": "low",
-        "source": "1 enumeration site(s) could not be shown complete — see enumeration.gaps"
+        "source": "2 enumeration site(s) could not be shown complete — see enumeration.gaps"
       },
       {
         "name": "exitWindow.assessment.status",
@@ -1439,9 +1440,17 @@
           "id": ""
         },
         "reason": "Enumerable membership below is authoritative, but role-hash DISCOVERY was partial: the provider's eth_getLogs range (9 blocks) and the 1500-request budget covered only blocks 25793250–25800000 of 17172547–25800000; a role never granted/revoked within that window would be missed"
+      },
+      {
+        "where": "capabilitySurface",
+        "site": {
+          "kind": "capabilitySurface",
+          "id": ""
+        },
+        "reason": "64 of 67 selector(s) are not in Ripcord's taxonomy and were never evaluated for privilege, while 2 privileged party/parties exist over this contract (proxy admin, role DEFAULT_ADMIN_ROLE). An unevaluated selector is \"unclassified\", never \"not privileged\" — so a capability that restricts or halts the exit cannot be ruled out, and no reassuring assessment can rest on this surface. Evaluating those selectors requires their signatures, which Ripcord does not retrieve from any external source — see the README on why a block-explorer lookup would break the pinned-and-cached determinism model."
       }
     ],
-    "note": "1 enumeration site(s) could not be shown complete, so the authority picture may be missing routes. The exit window is the MINIMUM notice across routes, and a minimum over an incomplete set can only be too generous — so no reassuring assessment is available here, whatever the routes that WERE found happen to say."
+    "note": "2 enumeration site(s) could not be shown complete, so the authority picture may be missing routes. The exit window is the MINIMUM notice across routes, and a minimum over an incomplete set can only be too generous — so no reassuring assessment is available here, whatever the routes that WERE found happen to say."
   },
   "disclosure": {
     "publishable": true,

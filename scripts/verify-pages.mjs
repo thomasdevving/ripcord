@@ -168,6 +168,7 @@ for (const page of pages.sort()) {
 
 const REASSURING_VERDICT = new Set(["can_exit_in_time", "immutable_within_checks"]);
 const REASSURING_WINDOW = new Set(["binding", "immutable_within_checks"]);
+const MUST_NOT_BE_REASSURING = new Set(["compound-comet-cusdcv3", "compound-cdai", "compound-unitroller"]);
 
 /** Independently collects every site whose role enumeration is not positively complete. */
 function incompleteSites(report) {
@@ -178,6 +179,25 @@ function incompleteSites(report) {
     else if (ac.reconstruction.complete !== true) out.push(`${where} (reconstruction.complete !== true)`);
   };
   judge("target", report.authority?.accessControl);
+
+  // The capability SURFACE, derived here independently of enumeration.ts for the
+  // same reason the role check is: if this file imported the derivation it was
+  // checking, a bug in that derivation would hide itself. Comet is why the
+  // dimension exists — it passed every role check above and still had a guarded,
+  // zero-notice `pause` sitting unevaluated among 67 unmatched selectors.
+  const caps = report.capabilities;
+  const fullyEvaluated = caps && caps.dispatcherRecognized === true && (caps.unmatchedSelectors ?? []).length === 0;
+  if (!fullyEvaluated) {
+    const parties =
+      (report.authority?.owner?.address ? 1 : 0) +
+      (report.authority?.pendingOwner?.address ? 1 : 0) +
+      (report.proxy?.admin ? 1 : 0) +
+      (report.authority?.accessControl?.roles ?? []).filter((r) => (r.members ?? []).length > 0).length +
+      (report.authorityIndirection?.markers ?? []).length +
+      ((report.authorityResolution?.roots ?? []).length > 0 ? 1 : 0);
+    if (parties > 0) out.push(`capabilitySurface (${(caps?.unmatchedSelectors ?? []).length} unevaluated selector(s), ${parties} privileged party/parties)`);
+  }
+
   const walk = (n) => {
     judge(`authority:${n.address}@depth${n.depth}`, {
       detected: n.accessControlDetected,
@@ -218,6 +238,17 @@ for (const file of readdirSync(reportsDir).filter((f) => f.endsWith(".json")).so
       console.log(`${label}`);
       fail(`verdict.missing is empty while ${sites.length} enumeration site(s) are incomplete — internally self-contradicting`);
     }
+  }
+
+  // REGISTERED PREDICTIONS, enforced. Before the capability-surface rule was
+  // written, these three were predicted to come out NON-reassuring, and the
+  // prediction was recorded so it could not be quietly tuned toward afterwards.
+  // If one goes green again the guard has a hole and the build must fail.
+  // Asserts the NEGATIVE rather than an exact status, so a later, better-
+  // evidenced bad verdict does not trip it.
+  if (MUST_NOT_BE_REASSURING.has(label) && REASSURING_VERDICT.has(verdictStatus)) {
+    console.log(`${label}`);
+    fail(`verdict "${verdictStatus}" contradicts a REGISTERED PREDICTION that this report must not be reassuring — a privileged party exists over an unevaluated selector surface (see docs/CALIBRATION.md)`);
   }
 
   // The derived witness must agree with the independent derivation above.

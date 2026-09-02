@@ -1,7 +1,7 @@
 {
-  "schemaVersion": "0.10.0",
-  "rulesetVersion": "0.9.0",
-  "generatedAt": "2026-09-02T06:39:49.947Z",
+  "schemaVersion": "0.11.0",
+  "rulesetVersion": "0.10.0",
+  "generatedAt": "2026-09-02T13:38:23.539Z",
   "chainId": 1,
   "block": {
     "number": "25800000",
@@ -409,14 +409,16 @@
   "exitWindow": {
     "rulesVersion": "0.1.0",
     "assessment": {
-      "status": "binding",
-      "windowSeconds": "172800",
-      "enumeration": {
-        "complete": true,
-        "basis": "Every role enumeration this verdict rests on reported itself complete: the target, every contract the authority recursion walked, and every dependency token. No stage failed."
-      },
-      "confidence": "medium",
-      "statement": "Exit window is 172800s: every one of the 1 authority route(s) found imposes a delay that was proven binding, and the shortest is 172800s. A rule change on any of them CAN begin at any time, but cannot take effect for at least that long."
+      "status": "not_proven_binding",
+      "nominalDelaySeconds": "172800",
+      "missing": [
+        "the privileged-surface evaluation at capabilitySurface could not be shown complete, so a route with less notice may exist and not have been seen: 7 of 7 selector(s) are not in Ripcord's taxonomy and were never evaluated for privilege, while 1 privileged party/parties exist over this contract (owner()). An unevaluated selector is \"unclassified\", never \"not privileged\" — so a capability that restricts or halts the exit cannot be ruled out, and no reassuring assessment can rest on this surface. Evaluating those selectors requires their signatures, which Ripcord does not retrieve from any external source — see the README on why a block-explorer lookup would break the pinned-and-cached determinism model."
+      ],
+      "citedGapSites": [
+        "capabilitySurface"
+      ],
+      "confidence": "low",
+      "statement": "A 172800s delay was proven binding on every one of the 1 authority route(s) FOUND — but the authority picture behind those routes was not shown complete, so the route set itself is not established. The exit window is the MINIMUM notice across all routes, and a minimum taken over an incomplete set can only be too generous. The 172800s figure is reported as a nominal delay, not as a window."
     },
     "routes": [
       {
@@ -699,31 +701,33 @@
     ]
   },
   "verdict": {
-    "status": "can_exit_in_time",
-    "statement": "You can exit before the rules CAN change: the notice period is 2 days, leaving takes 0s, leaving 2 days of slack. Liquidity depth is not modelled, so a position large relative to available liquidity could still take longer than the measured exit path.",
-    "exitWindowSeconds": "172800",
+    "status": "undetermined",
+    "statement": "Verdict undetermined on the exit-window side: A 172800s delay was proven binding on every one of the 1 authority route(s) FOUND — but the authority picture behind those routes was not shown complete, so the route set itself is not established. The exit window is the MINIMUM notice across all routes, and a minimum taken over an incomplete set can only be too generous. The 172800s figure is reported as a nominal delay, not as a window. Time to exit is at least 0s, but the comparison cannot be made against a window that was not established.",
+    "exitWindowSeconds": null,
     "timeToExitSeconds": "0",
-    "marginSeconds": "172800",
-    "confidence": "medium",
-    "missing": [],
+    "marginSeconds": null,
+    "confidence": "low",
+    "missing": [
+      "the privileged-surface evaluation at capabilitySurface could not be shown complete, so a route with less notice may exist and not have been seen: 7 of 7 selector(s) are not in Ripcord's taxonomy and were never evaluated for privilege, while 1 privileged party/parties exist over this contract (owner()). An unevaluated selector is \"unclassified\", never \"not privileged\" — so a capability that restricts or halts the exit cannot be ruled out, and no reassuring assessment can rest on this surface. Evaluating those selectors requires their signatures, which Ripcord does not retrieve from any external source — see the README on why a block-explorer lookup would break the pinned-and-cached determinism model."
+    ],
     "inputs": [
       {
         "name": "enumeration.complete",
-        "value": "true",
-        "confidence": "high",
-        "source": "every role enumeration behind these routes reported itself complete"
+        "value": "false",
+        "confidence": "low",
+        "source": "1 enumeration site(s) could not be shown complete — see enumeration.gaps"
       },
       {
         "name": "exitWindow.assessment.status",
-        "value": "binding",
-        "confidence": "medium",
+        "value": "not_proven_binding",
+        "confidence": "low",
         "source": "exitWindow (rules 0.1.0), 1 authority route(s), 0 bypass(es), 6/8 checks performed"
       },
       {
         "name": "exitWindow.windowSeconds",
-        "value": "172800",
-        "confidence": "medium",
-        "source": "minimum proven-binding delay across all resolved authority routes"
+        "value": null,
+        "confidence": "low",
+        "source": "no window value is available in status \"not_proven_binding\" — by design, an unproven delay is never expressed as a window"
       },
       {
         "name": "timeToExit.atLeastSeconds",
@@ -766,9 +770,18 @@
     "markers": []
   },
   "enumeration": {
-    "complete": true,
-    "gaps": [],
-    "note": "Every role enumeration this verdict rests on reported itself complete: the target, every contract the authority recursion walked, and every dependency token. No stage failed."
+    "complete": false,
+    "gaps": [
+      {
+        "where": "capabilitySurface",
+        "site": {
+          "kind": "capabilitySurface",
+          "id": ""
+        },
+        "reason": "7 of 7 selector(s) are not in Ripcord's taxonomy and were never evaluated for privilege, while 1 privileged party/parties exist over this contract (owner()). An unevaluated selector is \"unclassified\", never \"not privileged\" — so a capability that restricts or halts the exit cannot be ruled out, and no reassuring assessment can rest on this surface. Evaluating those selectors requires their signatures, which Ripcord does not retrieve from any external source — see the README on why a block-explorer lookup would break the pinned-and-cached determinism model."
+      }
+    ],
+    "note": "1 enumeration site(s) could not be shown complete, so the authority picture may be missing routes. The exit window is the MINIMUM notice across routes, and a minimum over an incomplete set can only be too generous — so no reassuring assessment is available here, whatever the routes that WERE found happen to say."
   },
   "disclosure": {
     "publishable": true,
@@ -777,6 +790,11 @@
     "clearedRegistryVersion": "0.1.0",
     "cleared": []
   },
-  "unknowns": [],
+  "unknowns": [
+    {
+      "field": "exitWindow",
+      "reason": "the privileged-surface evaluation at capabilitySurface could not be shown complete, so a route with less notice may exist and not have been seen: 7 of 7 selector(s) are not in Ripcord's taxonomy and were never evaluated for privilege, while 1 privileged party/parties exist over this contract (owner()). An unevaluated selector is \"unclassified\", never \"not privileged\" — so a capability that restricts or halts the exit cannot be ruled out, and no reassuring assessment can rest on this surface. Evaluating those selectors requires their signatures, which Ripcord does not retrieve from any external source — see the README on why a block-explorer lookup would break the pinned-and-cached determinism model."
+    }
+  ],
   "errors": []
 }

@@ -28,6 +28,7 @@ rebuilt cold. That is not a formality; see [Task 0](#0-the-determinism-gate).
 - [10. The semantic cache audit (day 6)](#10-the-semantic-cache-audit-day-6)
 - [11. Aave: a bounded answer, documented rather than bought](#11-aave-a-bounded-answer-documented-rather-than-bought)
 - [12. The one blocker that looked like a real finding](#12-the-one-blocker-that-looked-like-a-real-finding)
+- [13. The flagship green result that was wrong](#13-the-flagship-green-result-that-was-wrong)
 
 ---
 
@@ -162,10 +163,10 @@ their reports existed.
 | Verdict | Count | Protocols |
 |---|---|---|
 | `immutable_within_checks` | 2 | WETH9, wstETH |
-| `can_exit_in_time` | 2 | Compound Comet cUSDCv3, Uniswap v3 Factory |
+| `can_exit_in_time` | **0** | none — see [§13](#13-the-flagship-green-result-that-was-wrong) |
 | `no_notice` | 6 | USDC, cbETH, FXS, Morpho Blue, PAID ×2 |
 | `trapped` | 1 | Ethena sUSDe |
-| `undetermined` | 15 | DAI, MKR, Balancer, rETH, stETH, USDT, Curve 3pool, Compound cDAI, Compound Unitroller, Aave PoolAddressesProvider, Aave ACLManager, Lido Withdrawal Queue, Wasabi, **Ethena USDe, Ethena Minting** |
+| `undetermined` | 17 | DAI, MKR, Balancer, rETH, stETH, USDT, Curve 3pool, Compound cDAI, Compound Unitroller, Aave PoolAddressesProvider, Aave ACLManager, Lido Withdrawal Queue, Wasabi, **Ethena USDe, Ethena Minting** |
 
 The last two moved there after calibration, and they are the subject of [§9](#9-the-last-false-clean-vector-enumeration-completeness).
 
@@ -175,7 +176,7 @@ The headline number for a security audience is this one:
 
 > **False-clean results after day 5: 0 of 26.**
 > Ripcord's remaining error mode is *under-determination* — it says "I could not
-> establish this" on 15 of 26 protocols — not false confidence.
+> establish this" on 17 of 26 protocols — not false confidence.
 
 That trade is deliberate and it is the right way round. An under-determination is
 visible, arguable, and appears in the report where someone can dispute it. A
@@ -283,14 +284,12 @@ name and in every rendered page.
 Verdict correctness judged against the on-chain reality, not against what would
 be convenient. "Direction" says which way an error leans.
 
-### Correct, and confidently so — a determined verdict, and the right one (11)
+### Correct, and confidently so — a determined verdict, and the right one (9)
 
 | Protocol | Verdict | Why it is right |
 |---|---|---|
 | WETH9 | `immutable_within_checks` | No admin of any kind. The honest control case. |
 | wstETH | `immutable_within_checks` | All 21 selectors derived and checked; none privileged. |
-| Compound Comet cUSDCv3 | `can_exit_in_time` | Proven-binding 2-day timelock vs an instant exit. |
-| Uniswap v3 Factory | `can_exit_in_time` | Owner is a Compound-style timelock, delay proven binding. |
 | Ethena sUSDe | `trapped` | 1-day cooldown vs 1-day notice — an exact dead heat, margin 0. |
 | USDC | `no_notice` | Upgradeable proxy, admin is a plain EOA, no delay anywhere. |
 | cbETH | `no_notice` | Same shape, single custodian. |
@@ -308,7 +307,7 @@ be convenient. "Direction" says which way an error leans.
 | Balancer Vault | `undetermined` | Names `getAuthorizer()` and refuses to follow it. |
 | stETH | `undetermined` | Aragon proxy detected as `pattern: unknown`; the isProxy branch forces undetermined. |
 
-### Correct but under-determined — Ripcord knows less than an auditor would (11)
+### Correct but under-determined — Ripcord knows less than an auditor would (13)
 
 These are **false negatives in usefulness, not in safety**. Each says "I could
 not establish this" about something a human can establish.
@@ -326,8 +325,10 @@ not establish this" about something a human can establish.
 | Wasabi | Access control is a custom error Ripcord cannot identify; correctly blocked from publication. | conservative |
 | **Ethena USDe** | Its single route terminates at a `TimelockController` whose OWN roles were only partially enumerated, so the completeness witness is withheld and `binding` degrades to `not_proven_binding`. Before [§9](#9-the-last-false-clean-vector-enumeration-completeness) this read `can_exit_in_time`. | conservative |
 | **Ethena Minting** | Its own role scan covered 6,750 of 5.66M blocks. Same degradation, one layer shallower. Before §9 this read `can_exit_in_time`. | conservative |
+| **Compound Comet cUSDCv3** | Its 2-day timelock is real and proven binding, but 67 of 67 selectors were never evaluated for privilege while a governor, a proxy admin and a guardian pointer exist — and one of those selectors is a guarded `pause`. See [§13](#13-the-flagship-green-result-that-was-wrong). | conservative |
+| **Uniswap v3 Factory** | Same rule: 7 unevaluated selectors beside a timelock owner. No kill switch is known here; the point is that Ripcord cannot rule one out. | conservative |
 
-**The groups sum to 26**: 11 determined-and-correct + 4 deliberate traps + 11
+**The groups sum to 26**: 9 determined-and-correct + 4 deliberate traps + 13
 under-determined. All 15 `undetermined` verdicts are the 4 traps plus the 11
 above; every figure in this section is re-derivable with
 `node scripts/summarize.mjs calibration/reports`.
@@ -546,7 +547,7 @@ that an undecodable dispatcher cannot support an immutability claim.
 - **Liquidity depth is still not modelled at all**, so every time-to-exit is a
   floor. For a position large relative to available liquidity the real figure is
   longer, never shorter.
-- **15 of 26 are `undetermined`.** That is honest, and it is also a lot. The
+- **17 of 26 are `undetermined`.** That is honest, and it is also a lot. The
   named causes are: custom authority schemes (5), Compound's delegator pattern
   (2), provider-starved role reconstruction (2), an unresolvable contract owner
   (1), Vyper (1), Aave's governance shape (1), a custom access-control error (1).
@@ -923,3 +924,115 @@ it is recorded here as the next thing to build rather than slipped in on a
 lock-down day. `scripts/manual-verification-audit.mjs` now reports the two
 distinctly (`EXECUTED` vs a revert class), so the evidence is at least no longer
 mislabelled while the schema catches up.
+
+---
+
+## 13. The flagship green result that was wrong
+
+Ripcord's best demo result was `compound-comet-cusdcv3`: a proven-binding 2-day
+timelock against an instant exit, `can_exit_in_time`, and a $540M fork proof
+beside it. It was found to be a false-clean while scoping an unrelated feature,
+and it is now `undetermined`.
+
+### What was there
+
+```
+pauseGuardian()                        → 0xbbf3f142…   (a contract, getThreshold() = 5)
+stranger  pause(_,_,withdraw=true,_,_) → tx REVERTED    (it is guarded)
+GUARDIAN  pause(_,_,withdraw=true,_,_) → tx SUCCESS
+                                         isWithdrawPaused: false → TRUE
+```
+
+A 5-of-N Safe can shut Comet withdrawals **instantly, with no notice**, while the
+report said *"You can exit before the rules CAN change… leaving takes 0s."*
+Leaving takes 0s only while the door is open.
+
+### Why no detector was at fault
+
+Every layer was individually honest. `capabilities` extracted
+`pause(bool,bool,bool,bool,bool)` and listed it in `unmatchedSelectors`.
+`timeToExit.blockable` read `not_observed` and said so in its own note:
+*"unmatched selectors were not evaluated for privilege."*
+
+The defect was structural. **`blockable` is computed from taxonomy-MATCHED
+findings, so an unmatched selector is invisible to it by construction**, however
+privileged it is — and the composition layer turned that silence into
+reassurance. Same shape as [§3](#3-the-error-ripcord-was-making-and-the-fix): the
+data was right, the sentence a human reads first was wrong.
+
+### Why the obvious patch was rejected
+
+Adding `pause` to the taxonomy was traced through the shipped code path before
+being adopted, and it **does not fix this**: the probe returns `Unauthorized()`
+(`0x82b42900`), which — being an unrecognised dialect — routes the capability to
+`needsManualVerification` and would have removed Comet's page entirely. Even with
+a dialect entry it lands as *unattributed*, which makes `blockable`
+`undetermined`, which produces no suffix and **no status change**. Comet stays
+green. A point-patch on the name would also have left the next kill switch —
+`freeze`, `halt`, `setWithdrawalsEnabled` — invisible in exactly the same way.
+
+### The general rule
+
+> A reassuring assessment may not stand while a **privileged party exists** and
+> the **privileged surface was not fully evaluated**.
+
+"Fully evaluated" is a positive claim, like everything else in
+`report/enumeration.ts`: the dispatcher must have been decoded **and** every
+selector it recovered must have been classified. One resolved implementation
+address is not enough.
+
+**The discriminator is who could call one, and it was measured before it was
+written.** All 26 reports have unmatched selectors, so "any unmatched selector
+withholds the witness" would have deleted every reassuring verdict in the set —
+including WETH9's, earned by deriving all 11 of its selectors and confirming none
+is privileged. What makes an unevaluated selector dangerous is that somebody
+holds privilege over the contract. WETH9 and wstETH have no owner, no
+pendingOwner, no proxy admin, no role members and no indirection marker: there is
+nobody for an unevaluated selector to be privileged *for*, so theirs are inert
+and their true negatives survive.
+
+### Predictions registered before the code, and the result
+
+| | Predicted | Actual |
+|---|---|---|
+| Verdicts changed | Comet, Uniswap v3 Factory | **exactly those 2** |
+| Moved toward reassurance | 0 | **0** |
+| WETH9 / wstETH | survive | **survived** |
+| Final distribution | 2 / 0 / 6 / 1 / 17 | **immutable 2 · can_exit 0 · no_notice 6 · trapped 1 · undetermined 17** |
+
+Twelve further reports had `enumeration.complete` flip to `false` with **no
+verdict change** — the caution-only property holding: an incomplete enumeration
+can never make a bad finding safer.
+
+The predictions are now a CI gate. `scripts/verify-pages.mjs` fails the build if
+`compound-comet-cusdcv3`, `compound-cdai` or `compound-unitroller` is ever
+reassuring again, and the independent derivation in that script grew the same
+capability-surface dimension — derived separately from `enumeration.ts`, so a bug
+in one cannot hide in the other.
+
+### What the verdict may and may not say
+
+The fork test above is how the kill switch was **found**. It is not shipped
+machinery, so the report does not assert it. What the pipeline can establish is
+that a privileged party exists over 67 unevaluated selectors — so the honest
+output is `undetermined` naming that gap, not a decided bad verdict. Ripcord does
+not get to claim, in a report, something only a manual investigation showed.
+
+### The cost, stated plainly
+
+**`can_exit_in_time` no longer occurs anywhere in the set.** It is not currently
+establishable for any contract that has both a privileged party and an
+unevaluated surface, which is every contract here that has an owner at all. That
+is a real loss of expressiveness and the honest way to restore it is to evaluate
+the unmatched selectors — which needs their signatures, i.e. a block-explorer ABI
+source, deliberately not built during the event because it breaks the
+pinned-and-cached determinism model.
+
+What survives is worth being clear about too: **the $540M proof is untouched and
+still true.** The Compound timelock genuinely imposes 2 days of notice on rule
+changes, and the proof engine still demonstrates the scale of what that authority
+controls. What changed is only the exit claim — from *"you can get out in time"*
+to *"2 days of notice on rule changes, but a 5-of-N guardian can close the exit
+with none."* That is a sharper finding than the green box was, and Ripcord's
+distinction between *notice on a rule change* and *the exit itself being
+closable* is the thing no checklist makes.

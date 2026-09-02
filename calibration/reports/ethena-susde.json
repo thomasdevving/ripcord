@@ -1,7 +1,7 @@
 {
-  "schemaVersion": "0.10.0",
-  "rulesetVersion": "0.9.0",
-  "generatedAt": "2026-09-02T06:50:34.526Z",
+  "schemaVersion": "0.11.0",
+  "rulesetVersion": "0.10.0",
+  "generatedAt": "2026-09-02T13:38:04.000Z",
   "chainId": 1,
   "block": {
     "number": "25800000",
@@ -34318,6 +34318,7 @@
       "route \"accessControl:0x0a4af4bcc1942295207d9f047442ebdae6170a6e324850f758b14cf99b65c3bd\" (holder 0x8188af46d82826A431a2180657d2eeA5120489c8) could not be shown to confer privilege, and could not be ruled out either — it contributes no notice period either way",
       "route \"accessControl:0x0a4af4bcc1942295207d9f047442ebdae6170a6e324850f758b14cf99b65c3bd\" (holder 0x1AdF6f82f2c2Ec82f88B0a815e2A4e26edd32BEe) could not be shown to confer privilege, and could not be ruled out either — it contributes no notice period either way",
       "role enumeration at target could not be shown complete, so an authority route may exist that was never seen: partial event-reconstruction: the provider's eth_getLogs range (9 blocks) and the 1500-request budget covered only blocks 25793250–25800000 of 18571359–25800000; both the role set and its membership below may be incomplete",
+      "the privileged-surface evaluation at capabilitySurface could not be shown complete, so an authority route may exist that was never seen: 52 of 56 selector(s) are not in Ripcord's taxonomy and were never evaluated for privilege, while 2 privileged party/parties exist over this contract (owner(), role 0x0a4af4bcc1942295207d9f047442ebdae6170a6e324850f758b14cf99b65c3bd). An unevaluated selector is \"unclassified\", never \"not privileged\" — so a capability that restricts or halts the exit cannot be ruled out, and no reassuring assessment can rest on this surface. Evaluating those selectors requires their signatures, which Ripcord does not retrieve from any external source — see the README on why a block-explorer lookup would break the pinned-and-cached determinism model.",
       "role enumeration at authority:0xE8Dc0Fab349EA169283C48Ccfd09d797E6DB7c94 (depth 1, via owner) could not be shown complete, so an authority route may exist that was never seen: partial event-reconstruction: the provider's eth_getLogs range (9 blocks) and the 1500-request budget covered only blocks 25793250–25800000 of 25301829–25800000; both the role set and its membership below may be incomplete"
     ],
     "inputs": [
@@ -34325,7 +34326,7 @@
         "name": "enumeration.complete",
         "value": "false",
         "confidence": "low",
-        "source": "2 enumeration site(s) could not be shown complete — see enumeration.gaps"
+        "source": "3 enumeration site(s) could not be shown complete — see enumeration.gaps"
       },
       {
         "name": "exitWindow.assessment.status",
@@ -34391,6 +34392,14 @@
         "reason": "partial event-reconstruction: the provider's eth_getLogs range (9 blocks) and the 1500-request budget covered only blocks 25793250–25800000 of 18571359–25800000; both the role set and its membership below may be incomplete"
       },
       {
+        "where": "capabilitySurface",
+        "site": {
+          "kind": "capabilitySurface",
+          "id": ""
+        },
+        "reason": "52 of 56 selector(s) are not in Ripcord's taxonomy and were never evaluated for privilege, while 2 privileged party/parties exist over this contract (owner(), role 0x0a4af4bcc1942295207d9f047442ebdae6170a6e324850f758b14cf99b65c3bd). An unevaluated selector is \"unclassified\", never \"not privileged\" — so a capability that restricts or halts the exit cannot be ruled out, and no reassuring assessment can rest on this surface. Evaluating those selectors requires their signatures, which Ripcord does not retrieve from any external source — see the README on why a block-explorer lookup would break the pinned-and-cached determinism model."
+      },
+      {
         "where": "authority:0xE8Dc0Fab349EA169283C48Ccfd09d797E6DB7c94 (depth 1, via owner)",
         "site": {
           "kind": "authority",
@@ -34399,7 +34408,7 @@
         "reason": "partial event-reconstruction: the provider's eth_getLogs range (9 blocks) and the 1500-request budget covered only blocks 25793250–25800000 of 25301829–25800000; both the role set and its membership below may be incomplete"
       }
     ],
-    "note": "2 enumeration site(s) could not be shown complete, so the authority picture may be missing routes. The exit window is the MINIMUM notice across routes, and a minimum over an incomplete set can only be too generous — so no reassuring assessment is available here, whatever the routes that WERE found happen to say."
+    "note": "3 enumeration site(s) could not be shown complete, so the authority picture may be missing routes. The exit window is the MINIMUM notice across routes, and a minimum over an incomplete set can only be too generous — so no reassuring assessment is available here, whatever the routes that WERE found happen to say."
   },
   "disclosure": {
     "publishable": false,
