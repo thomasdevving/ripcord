@@ -25,7 +25,7 @@ const reportsDir = process.argv[3] ?? "calibration/reports";
 // test/fixtures/targets.json is included deliberately: it is the manual
 // verification LOG, i.e. prose asserting what was observed, and prose is exactly
 // what drifts. Its claims are as checkable as the README's and no more trusted.
-const docs = ["README.md", "CLAUDE.md", "docs/CALIBRATION.md", "docs/QUESTIONNAIRES.md", "test/fixtures/targets.json"].filter(existsSync);
+const docs = ["README.md", "CLAUDE.md", "docs/TECHNICAL.md", "docs/CALIBRATION.md", "docs/QUESTIONNAIRES.md", "test/fixtures/targets.json"].filter(existsSync);
 
 const reports = {};
 for (const f of readdirSync(reportsDir).filter((f) => f.endsWith(".json"))) {
