@@ -49,6 +49,12 @@ jobs:
       # incomplete enumeration, this fails and nothing ships.
       - run: pnpm verify:pages
 
+      # And the prose alongside it: verify:claims re-checks the documented
+      # figures, per-protocol verdicts and page references against the reports.
+      # A deployment whose own README describes a different result than the
+      # pages it ships is the day-6 drift failure, shipped.
+      - run: pnpm verify:claims
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
