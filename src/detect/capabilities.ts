@@ -144,14 +144,26 @@ export async function detectCapabilities(
     // Probe the TARGET, not scannedAddress — see the header comment.
     const probe = await probeGuard(chain, target, entry.signature, guardContext);
 
-    if (probe.status === "no_auth_revert_observed") {
+    // Two probe outcomes are not capability FINDINGS, for opposite reasons, and
+    // day 5 separated them because conflating them made the disclosure gate fire
+    // on the wrong thing (see guardDialects.ts):
+    //   no_auth_revert_observed    — nothing recognisable came back. Could be a
+    //                                custom guard, could be no guard. Blocks
+    //                                publication, because the second reading is
+    //                                a vulnerability claim we cannot rule out.
+    //   reverted_before_auth_check — the contract demonstrably rejected the probe
+    //                                on a state/argument precondition, so no auth
+    //                                check ran. That is a fact about OUR probe,
+    //                                not about the contract's guards, and it
+    //                                supports no vulnerability reading at all.
+    if (probe.status === "no_auth_revert_observed" || probe.status === "reverted_before_auth_check") {
       needsManualVerification.push({
         selector,
         signature: entry.signature,
         category: entry.category,
         scannedAddress,
         probedAddress: target,
-        reason: "no_auth_revert_observed",
+        reason: probe.status,
         note: probe.note,
         probes: probe.evidence,
       });

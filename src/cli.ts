@@ -209,7 +209,7 @@ function printVerdict(report: Report): void {
   const mark =
     v.status === "trapped" || v.status === "no_notice"
       ? "\u2716"
-      : v.status === "can_exit_in_time" || v.status === "no_rule_change_route_found"
+      : v.status === "can_exit_in_time" || v.status === "immutable_within_checks"
         ? "\u2713"
         : "\u25cb";
   console.error(`\n${mark} EXIT WINDOW VERDICT: ${v.status.toUpperCase().replace(/_/g, " ")} (confidence: ${v.confidence})`);

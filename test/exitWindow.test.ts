@@ -123,6 +123,24 @@ const timelockInfo = (delaySeconds: string | null, kind: TimelockInfo["kind"] = 
   evidence: [],
 });
 
+/** "Every enumeration site reported itself complete" — the precondition a reassuring assessment now requires. */
+const COMPLETE_ENUM = { complete: true, gaps: [], note: "complete" };
+/** One partial role scan is enough to make the whole authority picture incomplete. */
+const PARTIAL_ENUM = {
+  complete: false,
+  gaps: [
+    {
+      where: "authority:0x00000000000000000000000000000000000000ab (depth 1, via owner)",
+      site: { kind: "authority", id: "0x00000000000000000000000000000000000000ab" },
+      reason: "the provider's eth_getLogs range covered only a recent window",
+    },
+  ],
+  note: "partial",
+};
+
+/** "The indirection check ran and found nothing" — the day-5 positive precondition. */
+const NO_INDIRECTION = { version: "0.1.0", gettersProbed: ["getAuthorizer()", "authority()"], markers: [] };
+
 describe("delay-guard revert classification", () => {
   it("derives the OZ v5 custom error selector rather than hardcoding it", () => {
     expect(TIMELOCK_UNAUTHORIZED_CALLER_SELECTOR).toBe(
@@ -291,6 +309,8 @@ describe("exit-window composition", () => {
       proxy: EMPTY_PROXY,
       capabilities: EMPTY_CAPS,
       accessControlRoles: [],
+      authorityIndirection: NO_INDIRECTION,
+      enumeration: COMPLETE_ENUM,
       authorityResolution: resolution([
         leaf(SAFE, "owner", "safe", { safe: { threshold: 3, owners: [EOA, EOA, EOA], version: "1.3.0" } }),
       ]),
@@ -346,6 +366,8 @@ describe("exit-window composition", () => {
       proxy: EMPTY_PROXY,
       capabilities: EMPTY_CAPS,
       accessControlRoles: [],
+      authorityIndirection: NO_INDIRECTION,
+      enumeration: COMPLETE_ENUM,
       authorityResolution: resolution([leaf(TL, "proxyAdmin", "timelock", { timelock: timelockInfo("172800") })]),
     });
     expect(result.assessment.status).toBe("binding");
@@ -363,6 +385,8 @@ describe("exit-window composition", () => {
       proxy: EMPTY_PROXY,
       capabilities: EMPTY_CAPS,
       accessControlRoles: [],
+      authorityIndirection: NO_INDIRECTION,
+      enumeration: COMPLETE_ENUM,
       authorityResolution: resolution([leaf(TL, "proxyAdmin", "timelock", { timelock: timelockInfo("172800") })]),
     });
     expect(result.assessment.status).toBe("not_proven_binding");
@@ -379,6 +403,8 @@ describe("exit-window composition", () => {
       proxy: EMPTY_PROXY,
       capabilities: EMPTY_CAPS,
       accessControlRoles: [],
+      authorityIndirection: NO_INDIRECTION,
+      enumeration: COMPLETE_ENUM,
       authorityResolution: resolution([leaf(EOA, "pendingOwner", "eoa")]),
     });
     expect(result.routes).toEqual([]);
@@ -393,6 +419,8 @@ describe("exit-window composition", () => {
       proxy: EMPTY_PROXY,
       capabilities: EMPTY_CAPS,
       accessControlRoles: [],
+      authorityIndirection: NO_INDIRECTION,
+      enumeration: COMPLETE_ENUM,
       authorityResolution: resolution([]),
     });
     expect(result.bypasses).toEqual([]);
@@ -408,24 +436,101 @@ describe("exit-window composition", () => {
       proxy: { ...EMPTY_PROXY, pattern: "eip1967_uups", isProxy: true },
       capabilities: EMPTY_CAPS,
       accessControlRoles: [],
+      authorityIndirection: NO_INDIRECTION,
+      enumeration: COMPLETE_ENUM,
       authorityResolution: resolution([]),
     });
     expect(result.assessment.status).toBe("undetermined");
     if (result.assessment.status === "undetermined") expect(result.assessment.missing[0]).toContain("confirmed proxy");
   });
 
-  it("reports no_rule_change_route_found with the unmatched-selector caveat attached", async () => {
+  it("reports immutable_within_checks with its basis and the unmatched-selector caveat attached", async () => {
     const chain = fakeChain({});
     const { result } = await analyseExitWindow(chain, {
       proxy: EMPTY_PROXY,
       capabilities: { ...EMPTY_CAPS, unmatchedSelectors: ["0xaabbccdd", "0x11223344"] },
       accessControlRoles: [],
+      authorityIndirection: NO_INDIRECTION,
+      enumeration: COMPLETE_ENUM,
       authorityResolution: resolution([]),
     });
-    expect(result.assessment.status).toBe("no_rule_change_route_found");
-    if (result.assessment.status === "no_rule_change_route_found") {
+    expect(result.assessment.status).toBe("immutable_within_checks");
+    if (result.assessment.status === "immutable_within_checks") {
       expect(result.assessment.caveats.join(" ")).toContain("2 selector(s)");
-      expect(result.assessment.caveats.join(" ")).toContain("not a proof of immutability");
+      // The claim is bounded, and the bound names the case calibration found.
+      expect(result.assessment.caveats.join(" ")).toContain("bespoke registry");
+      // It is a POSITIVE claim, so it must carry the evidence that earned it.
+      expect(result.assessment.basis.length).toBeGreaterThan(0);
+      expect(result.assessment.basis.join(" ")).toContain("no DELEGATECALL");
+    }
+  });
+
+  // --- the day-5 inverted default ---
+  // Each of these previously produced the reassuring status by falling through.
+  // They must now produce `undetermined`, because none of them can support a
+  // positive immutability claim.
+
+  it("an authority-indirection marker forces undetermined, never a clean bill", async () => {
+    const chain = fakeChain({});
+    const { result } = await analyseExitWindow(chain, {
+      proxy: EMPTY_PROXY,
+      capabilities: EMPTY_CAPS,
+      accessControlRoles: [],
+      enumeration: COMPLETE_ENUM,
+      authorityIndirection: {
+        version: "0.1.0",
+        gettersProbed: ["getAuthorizer()"],
+        markers: [
+          {
+            signature: "getAuthorizer()",
+            selector: "0xaaabadc5",
+            target: "0x6048a8c631fb7e77eca533cf9c29784e482391e7",
+            evidence: { kind: "call", params: {}, rawValue: "0x", block: "1" },
+          },
+        ],
+      },
+      authorityResolution: resolution([]),
+    });
+    // The live Balancer Vault shape: no proxy, no owner, no roles — but power
+    // lives behind getAuthorizer(), so "clean" is not available.
+    expect(result.assessment.status).toBe("undetermined");
+    if (result.assessment.status === "undetermined") {
+      expect(result.assessment.missing.join(" ")).toContain("delegated elsewhere");
+      expect(result.assessment.missing.join(" ")).toContain("0x6048a8c631fb7e77eca533cf9c29784e482391e7");
+    }
+  });
+
+  it("a null indirection check is treated as 'could not rule out', not as 'none'", async () => {
+    const chain = fakeChain({});
+    const { result } = await analyseExitWindow(chain, {
+      proxy: EMPTY_PROXY,
+      capabilities: EMPTY_CAPS,
+      accessControlRoles: [],
+      authorityIndirection: null,
+      enumeration: COMPLETE_ENUM,
+      authorityResolution: resolution([]),
+    });
+    expect(result.assessment.status).toBe("undetermined");
+    if (result.assessment.status === "undetermined") {
+      expect(result.assessment.missing.join(" ")).toContain("did not run");
+    }
+  });
+
+  it("an undecodable dispatcher cannot support an immutability claim", async () => {
+    const chain = fakeChain({});
+    const { result } = await analyseExitWindow(chain, {
+      proxy: EMPTY_PROXY,
+      capabilities: { ...EMPTY_CAPS, dispatcherRecognized: false },
+      accessControlRoles: [],
+      authorityIndirection: NO_INDIRECTION,
+      enumeration: COMPLETE_ENUM,
+      authorityResolution: resolution([]),
+    });
+    // "No privileged capability found" is not a finding about the contract when
+    // its function set was never enumerated — the live curve-3pool shape.
+    expect(result.assessment.status).toBe("undetermined");
+    if (result.assessment.status === "undetermined") {
+      expect(result.assessment.missing.join(" ")).toContain("never enumerated");
     }
   });
 
@@ -435,6 +540,8 @@ describe("exit-window composition", () => {
       proxy: EMPTY_PROXY,
       capabilities: EMPTY_CAPS,
       accessControlRoles: [],
+      authorityIndirection: NO_INDIRECTION,
+      enumeration: COMPLETE_ENUM,
       authorityResolution: resolution([leaf("0x00000000000000000000000000000000000000cc", "owner", "contract")]),
     });
     // No route carries a delay at all, so there is nothing to be "not proven
@@ -450,6 +557,8 @@ describe("exit-window composition", () => {
       proxy: EMPTY_PROXY,
       capabilities: EMPTY_CAPS,
       accessControlRoles: [],
+      authorityIndirection: NO_INDIRECTION,
+      enumeration: COMPLETE_ENUM,
       authorityResolution: resolution([leaf(TL, "proxyAdmin", "timelock", { timelock: timelockInfo("0") })]),
     });
     expect(result.assessment.status).toBe("no_notice");
@@ -529,6 +638,8 @@ describe("exit-window composition", () => {
       proxy: EMPTY_PROXY,
       capabilities: EMPTY_CAPS,
       accessControlRoles: [],
+      authorityIndirection: NO_INDIRECTION,
+      enumeration: COMPLETE_ENUM,
       authorityResolution: resolution([leaf(EOA, "owner", "eoa")]),
     });
     expect(result.routes[0]!.rolePrivilege).toBe("not_a_role");
@@ -537,5 +648,108 @@ describe("exit-window composition", () => {
 
   it("pins the rules version so a change to the model is a visible change", () => {
     expect(exitWindowRulesVersion).toBe("0.1.0");
+  });
+});
+
+// --- ENUMERATION COMPLETENESS MUST REACH THE VERDICT (day 5.5) ---
+//
+// The class these guard against: role enumeration goes partial whenever the
+// provider caps eth_getLogs, so the exit window computes its MINIMUM notice over
+// only the routes it happened to see. An un-enumerated role holding a zero-notice
+// power then produces a reassuring verdict about a protocol nobody can leave in
+// time. Found live on two of 26 calibration protocols.
+//
+// The cap is SIMULATED here — no provider is involved — so these are
+// deterministic and cannot rot when an endpoint changes.
+
+describe("enumeration completeness gates the reassuring assessments", () => {
+  const TL = "0x000000000000000000000000000000000000ab01" as Hex;
+
+  /** A single route whose delay probes as SELF-CALL GATED, i.e. genuinely proven binding. */
+  const provenBindingChain = () =>
+    fakeChain({
+      code: { [TL]: dispatcherBytecode([UPDATE_DELAY]) },
+      probes: { [`${TL}:${UPDATE_DELAY.toLowerCase()}`]: errorString("TimelockController: caller must be timelock") },
+    });
+  const bindingRoute = () =>
+    resolution([leaf(TL, "proxyAdmin", "timelock", { timelock: timelockInfo("172800") })]);
+
+  it("does NOT report a window when a role scan behind the routes was partial", async () => {
+    // Ethena Minting's live shape: one timelocked route found, and a role scan
+    // that covered 6,750 of 5.66M blocks. The delay is real; the ROUTE SET is not
+    // established, and a minimum over an incomplete set can only be too generous.
+    const { result } = await analyseExitWindow(provenBindingChain(), {
+      proxy: EMPTY_PROXY,
+      capabilities: EMPTY_CAPS,
+      accessControlRoles: [],
+      authorityIndirection: NO_INDIRECTION,
+      enumeration: PARTIAL_ENUM,
+      authorityResolution: bindingRoute(),
+    });
+
+    expect(result.assessment.status).not.toBe("binding");
+    expect(result.assessment.status).toBe("not_proven_binding");
+    if (result.assessment.status === "not_proven_binding") {
+      // The observed figure is KEPT — degrading must not throw information away.
+      expect(result.assessment.nominalDelaySeconds).toBe("172800");
+      expect(result.assessment.missing.join(" ")).toContain("could not be shown complete");
+      expect(result.assessment.confidence).toBe("low");
+    }
+  });
+
+  it("DOES report a window when the identical routes come with a complete enumeration", async () => {
+    // The control: same chain, same routes, same delay. Only the witness differs,
+    // which is what proves the gate is doing the work and not something else.
+    const { result } = await analyseExitWindow(provenBindingChain(), {
+      proxy: EMPTY_PROXY,
+      capabilities: EMPTY_CAPS,
+      accessControlRoles: [],
+      authorityIndirection: NO_INDIRECTION,
+      enumeration: COMPLETE_ENUM,
+      authorityResolution: bindingRoute(),
+    });
+    expect(result.assessment.status).toBe("binding");
+    if (result.assessment.status === "binding") {
+      expect(result.assessment.windowSeconds).toBe("172800");
+      // The witness is carried on the value itself, not merely checked in passing.
+      expect(result.assessment.enumeration.complete).toBe(true);
+    }
+  });
+
+  it("refuses a positive immutability claim when enumeration was incomplete", async () => {
+    // "No route exists" cannot be asserted from a role set that may be missing
+    // entries — a positive claim on an incomplete enumeration is a false positive
+    // by construction.
+    const chain = fakeChain({});
+    const { result } = await analyseExitWindow(chain, {
+      proxy: EMPTY_PROXY,
+      capabilities: EMPTY_CAPS,
+      accessControlRoles: [],
+      authorityIndirection: NO_INDIRECTION,
+      enumeration: PARTIAL_ENUM,
+      authorityResolution: resolution([]),
+    });
+    expect(result.assessment.status).not.toBe("immutable_within_checks");
+    expect(result.assessment.status).toBe("undetermined");
+    if (result.assessment.status === "undetermined") {
+      expect(result.assessment.missing.join(" ")).toContain("cannot be claimed");
+    }
+  });
+
+  it("does NOT flip a bad finding to undetermined — unseen routes cannot make it safer", async () => {
+    // The direction rule. A zero-notice route already found stands whatever the
+    // enumeration did: roles nobody enumerated can only ADD routes, and an extra
+    // route can only lower the minimum, never raise it.
+    const EOA = "0x00000000000000000000000000000000000000cd" as Hex;
+    const chain = fakeChain({});
+    const { result } = await analyseExitWindow(chain, {
+      proxy: EMPTY_PROXY,
+      capabilities: EMPTY_CAPS,
+      accessControlRoles: [],
+      authorityIndirection: NO_INDIRECTION,
+      enumeration: PARTIAL_ENUM,
+      authorityResolution: resolution([leaf(EOA, "owner", "eoa")]),
+    });
+    expect(result.assessment.status).toBe("no_notice");
   });
 });

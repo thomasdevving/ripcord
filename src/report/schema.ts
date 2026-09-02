@@ -7,8 +7,8 @@
  */
 import { z } from "zod";
 
-export const schemaVersion = "0.7.0";
-export const rulesetVersion = "0.6.0";
+export const schemaVersion = "0.10.0";
+export const rulesetVersion = "0.9.0";
 
 const hexString = z.string().regex(/^0x[0-9a-fA-F]*$/);
 const address = z.string().regex(/^0x[0-9a-fA-F]{40}$/);
@@ -119,6 +119,97 @@ export const roleReconstructionSchema = z.object({
   scannedToBlock: z.string().nullable(),
 });
 export type RoleReconstruction = z.infer<typeof roleReconstructionSchema>;
+
+/**
+ * ENUMERATION COMPLETENESS — the aggregate witness (day 5.5).
+ *
+ * `roleReconstructionSchema` above says whether ONE scan saw everything. This
+ * says whether EVERY enumeration the verdict rests on did, across the target,
+ * every contract the authority recursion walked at any depth, and every
+ * dependency token. It exists because the per-scan flag was recorded and then
+ * read by nothing: the exit window computes the minimum notice across the routes
+ * it FOUND, so an un-enumerated role holding a zero-notice power produces a
+ * reassuring verdict about a protocol nobody can actually leave.
+ *
+ * Found live on two of the 26 calibration protocols, and the second one is why
+ * this is an aggregate rather than a flag on the target:
+ *   - Ethena Minting: its own role scan covered 6,750 of 5.66M blocks and
+ *     recovered only DEFAULT_ADMIN_ROLE, yet the report said
+ *     `can_exit_in_time` with `missing: []`.
+ *   - Ethena USDe: not an AccessControl contract at all, so a target-only check
+ *     would have called it complete — but its single authority route terminates
+ *     at a TimelockController whose OWN roles were partially enumerated, and
+ *     those roles are exactly what "the delay is binding" rests on.
+ *
+ * FAIL-CLOSED BY CONSTRUCTION. `complete` is a POSITIVE claim: it is true only
+ * where completeness was positively established at every site. A missing
+ * reconstruction, an `undefined` flag, a stage that threw, a contract whose
+ * deployment block could not be found — all are incomplete. Reading an absent
+ * flag as "complete" would launder a failed read into a fact, which is the exact
+ * bug class this witness closes, so the derivation must never do it either.
+ */
+/**
+ * The STRUCTURAL identity of an enumeration site (day 6).
+ *
+ * `where` is prose meant for a reader ("authority:0x… (depth 2, via owner)").
+ * `site` is the same thing as data, and it exists because two layers narrate
+ * the same gap — the exit-window assessment when it degrades over one, and the
+ * verdict which appends every gap on every branch — and the second must be able
+ * to tell "this is the gap the assessment already stated" from "this is a
+ * different gap that happens to share some words".
+ *
+ * The dedup used to compare `where` as a SUBSTRING of each `missing[]` entry.
+ * That works on the current calibration set by an accident of wording, not by
+ * construction, and the failure it invites is silent: `where` for the target is
+ * the bare string "target", so any unrelated missing[] sentence containing the
+ * word "target" anywhere would suppress a real enumeration gap and produce a
+ * report that under-states what it failed to see. Comparing identities instead
+ * means a suppression can only ever collapse the two representations of the
+ * SAME site.
+ */
+export const enumerationSiteSchema = z.object({
+  kind: z.enum(["stage", "target", "authority", "dependency", "authorityResolution"]),
+  /** The address, stage name, or "" for the singleton kinds. Lowercased where it is an address. */
+  id: z.string(),
+});
+export type EnumerationSite = z.infer<typeof enumerationSiteSchema>;
+
+/** The canonical key for a site. The ONLY thing dedup is allowed to compare. */
+export function enumerationSiteKey(site: EnumerationSite): string {
+  return site.id ? `${site.kind}:${site.id}` : site.kind;
+}
+
+export const enumerationGapSchema = z.object({
+  /** Which enumeration fell short — "target", "authority:0x…", "dependency:0x…", or a failed stage. */
+  where: z.string(),
+  /** The same site as structured data. Dedup keys on this, never on `where`. */
+  site: enumerationSiteSchema,
+  reason: z.string(),
+});
+export type EnumerationGap = z.infer<typeof enumerationGapSchema>;
+
+export const enumerationCompletenessSchema = z.object({
+  complete: z.boolean(),
+  /** Every site where completeness was NOT positively established. Empty if and only if `complete`. */
+  gaps: z.array(enumerationGapSchema),
+  note: z.string(),
+});
+export type EnumerationCompleteness = z.infer<typeof enumerationCompletenessSchema>;
+
+/**
+ * The witness a reassuring assessment must carry to exist at all.
+ *
+ * `complete` is a zod LITERAL `true`, so `binding` and `immutable_within_checks`
+ * are structurally unconstructable when any enumeration was partial — the same
+ * technique `GuardStatus` uses to stop a capability claiming a holder it cannot
+ * evidence, applied here to stop a window claiming a route set it did not see.
+ * An invariant the compiler and zod enforce cannot be forgotten by a caller.
+ */
+export const enumerationWitnessSchema = z.object({
+  complete: z.literal(true),
+  basis: z.string(),
+});
+export type EnumerationWitness = z.infer<typeof enumerationWitnessSchema>;
 
 export const accessControlSchema = z.object({
   detected: z.boolean(),
@@ -243,12 +334,30 @@ export const capabilityFindingSchema = z.object({
 export type CapabilityFinding = z.infer<typeof capabilityFindingSchema>;
 
 /**
- * A privileged-taxonomy capability where probing found no auth-shaped
- * revert from any of (at least) three unrelated probe addresses. This is
- * NEVER a normal finding and NEVER a claim that the function is unguarded —
- * that cannot be proven by probing, and it is a vulnerability claim rather
- * than a capability finding. It is an observation routed to manual review.
+ * Why a privileged-taxonomy capability could not become a normal finding.
+ * Day 2 had one reason; day-5 calibration showed it was carrying two very
+ * different meanings, and that the conflation was making the disclosure gate
+ * fire on the wrong thing.
+ *
+ *  - `no_auth_revert_observed`    — nothing recognisable came back from any of
+ *    the three probes. This is NEVER a claim that the function is unguarded
+ *    (probing cannot prove that, and asserting it would be a vulnerability
+ *    claim about a live contract) — but it cannot rule that reading out
+ *    either, so it BLOCKS publication.
+ *  - `reverted_before_auth_check` — the contract rejected the probe on a
+ *    recognised state or argument precondition, so execution never reached an
+ *    authorisation check. Ripcord probes with zero-valued arguments, so this
+ *    is a fact about the PROBE, not about the contract's guards. It supports
+ *    no vulnerability reading at all, and therefore does NOT block
+ *    publication. It is still surfaced, because "we could not test this" must
+ *    never silently vanish into a clean-looking report.
+ *
+ * Neither reason ever asserts a guard exists. That claim requires a recognised
+ * auth revert, and it lives in `guard.status`, not here.
  */
+export const manualVerificationReasonSchema = z.enum(["no_auth_revert_observed", "reverted_before_auth_check"]);
+export type ManualVerificationReason = z.infer<typeof manualVerificationReasonSchema>;
+
 export const manualVerificationEntrySchema = z.object({
   selector: hexString,
   signature: z.string(),
@@ -256,7 +365,7 @@ export const manualVerificationEntrySchema = z.object({
   scannedAddress: address,
   /** The address the probes actually called — the target/proxy. See CapabilityFinding.probedAddress. */
   probedAddress: address,
-  reason: z.literal("no_auth_revert_observed"),
+  reason: manualVerificationReasonSchema,
   note: z.string(),
   probes: z.array(evidenceSchema),
 });
@@ -354,6 +463,14 @@ export interface AuthorityNode {
   timelock: TimelockInfo | null;
   terminal: boolean;
   terminationReason: TerminationReason;
+  /**
+   * Whether AccessControl was DETECTED on this node, and how complete its role
+   * scan was. Two fields rather than one nullable, so "positively established as
+   * not an AccessControl contract" is never confused with "we did not manage to
+   * enumerate it" — see `enumerationCompletenessSchema`.
+   */
+  accessControlDetected: boolean;
+  roleEnumeration: RoleReconstruction | null;
   /** The resolved authorities of this node, if it is a non-terminal contract. Empty for a terminal leaf. */
   children: AuthorityNode[];
   evidence: Evidence[];
@@ -370,6 +487,17 @@ export const authorityNodeSchema: z.ZodType<AuthorityNode> = z.lazy(() =>
     timelock: timelockInfoSchema.nullable(),
     terminal: z.boolean(),
     terminationReason: terminationReasonSchema,
+    /**
+     * Whether AccessControl was DETECTED on this node, and how complete its role
+     * scan was. Recorded per node because a partial enumeration one hop down is
+     * just as capable of hiding a zero-notice route as one on the target — see
+     * `enumerationCompletenessSchema`, and the live Ethena USDe case that forced
+     * it. Two fields rather than one nullable, so "not an AccessControl
+     * contract" (positively established) is never confused with "we did not
+     * manage to enumerate it".
+     */
+    accessControlDetected: z.boolean(),
+    roleEnumeration: roleReconstructionSchema.nullable(),
     children: z.array(authorityNodeSchema),
     evidence: z.array(evidenceSchema),
   }),
@@ -750,16 +878,38 @@ export type BypassCheck = z.infer<typeof bypassCheckSchema>;
  * is deliberate, because "reported a comforting delay an admin can bypass" is
  * the worst failure this tool has available to it.
  *
- *  - `binding`                    every route resolved, every delay proven binding, minimum > 0.
- *  - `no_notice`                  at least one resolved route imposes ZERO delay. Proven, not assumed.
- *  - `not_proven_binding`         a delay exists but binding-ness (or another route) is unresolved.
- *  - `no_rule_change_route_found` no privileged route was found at all. NOT a claim of immutability.
- *  - `undetermined`               nothing could be resolved; `missing` names what is absent.
+ *  - `binding`                 every route resolved, every delay proven binding, minimum > 0.
+ *  - `no_notice`               at least one resolved route imposes ZERO delay. Proven, not assumed.
+ *  - `not_proven_binding`      a delay exists but binding-ness (or another route) is unresolved.
+ *  - `immutable_within_checks` POSITIVE evidence of no mutation route, bounded by `caveats`.
+ *  - `undetermined`            nothing could be resolved; `missing` names what is absent.
+ *
+ * THE DAY-5 SPLIT, and why it is an epistemic fix rather than a rename. Until
+ * day 5 this union carried a status called `no_rule_change_route_found`, which
+ * treated the ABSENCE OF A FOUND ROUTE as the ABSENCE OF A ROUTE. Those are two
+ * different claims, and collapsing them let "unknown is never safe" — the rule
+ * the whole project is built on — leak back in at the very last layer, where it
+ * is hardest to see. Calibration caught it: the status fired on three mainnet
+ * contracts and was substantively wrong on two, because both delegate authority
+ * through an indirection Ripcord does not model (Balancer's `getAuthorizer()`,
+ * rETH's RocketStorage registry). A human read "No exit-window risk was
+ * identified" about contracts that are fully controllable.
+ *
+ * So the DEFAULT IS INVERTED. `undetermined` is the safe outcome and the one
+ * reached by falling through; `immutable_within_checks` is a POSITIVE CLAIM that
+ * must be earned, and it carries the `basis[]` that earned it. Every condition
+ * in that basis is a read Ripcord actually performed — no delegatecall in the
+ * runtime bytecode, no owner, no roles, no capability finding, no authority
+ * indirection marker, and a dispatcher that was actually decoded. Its bound
+ * stays attached in `caveats[]`: unmatched selectors were not evaluated, and a
+ * bespoke authority registry that exposes no getter at all remains invisible.
  */
 export const exitWindowAssessmentSchema = z.discriminatedUnion("status", [
   z.object({
     status: z.literal("binding"),
     windowSeconds: z.string(),
+    /** Unconstructable unless every enumeration the routes rest on was complete. */
+    enumeration: enumerationWitnessSchema,
     confidence: depthConfidenceSchema,
     statement: z.string(),
   }),
@@ -773,11 +923,27 @@ export const exitWindowAssessmentSchema = z.discriminatedUnion("status", [
     /** The raw delay observed, carried HERE and never as a window. */
     nominalDelaySeconds: z.string().nullable(),
     missing: z.array(z.string()),
+    /**
+     * The enumeration sites this assessment has ALREADY narrated in `missing`,
+     * as canonical keys. The verdict appends every remaining gap and uses this
+     * to avoid restating one — structurally, by key equality, never by matching
+     * prose. Empty when the assessment degraded for reasons unrelated to
+     * enumeration.
+     */
+    citedGapSites: z.array(z.string()),
     confidence: depthConfidenceSchema,
     statement: z.string(),
   }),
   z.object({
-    status: z.literal("no_rule_change_route_found"),
+    status: z.literal("immutable_within_checks"),
+    /** Unconstructable unless every enumeration the claim rests on was complete. */
+    enumeration: enumerationWitnessSchema,
+    /**
+     * The positive findings that earn this status. Never empty: this variant
+     * exists to carry evidence, and a status that asserts something without it
+     * would be the very thing the day-5 split was made to prevent.
+     */
+    basis: z.array(z.string()),
     caveats: z.array(z.string()),
     confidence: depthConfidenceSchema,
     statement: z.string(),
@@ -785,6 +951,8 @@ export const exitWindowAssessmentSchema = z.discriminatedUnion("status", [
   z.object({
     status: z.literal("undetermined"),
     missing: z.array(z.string()),
+    /** See `not_proven_binding.citedGapSites`. */
+    citedGapSites: z.array(z.string()),
     confidence: depthConfidenceSchema,
     statement: z.string(),
   }),
@@ -908,6 +1076,36 @@ export const timeToExitSchema = z.object({
 });
 export type TimeToExit = z.infer<typeof timeToExitSchema>;
 
+// --- authority indirection (day 5) ---
+
+/**
+ * A handle to authority that Ripcord found but deliberately does NOT follow —
+ * see src/detect/authorityIndirection.ts for why this exists and what
+ * calibration failure produced it.
+ *
+ * Its only effect on the report is subtractive: a marker prevents the exit
+ * window from claiming `immutable_within_checks`. It never establishes a
+ * window, never shortens one, and never attributes power to the address it
+ * names. `gettersProbed` is present for the same reason `checksPerformed[]` is:
+ * without it, an empty `markers` array cannot be told apart from a check that
+ * never ran.
+ */
+export const indirectionMarkerSchema = z.object({
+  signature: z.string(),
+  selector: hexString,
+  /** The address the getter returned. NOT resolved further — that is the point. */
+  target: address,
+  evidence: evidenceSchema,
+});
+export type IndirectionMarker = z.infer<typeof indirectionMarkerSchema>;
+
+export const authorityIndirectionSchema = z.object({
+  version: z.string(),
+  gettersProbed: z.array(z.string()),
+  markers: z.array(indirectionMarkerSchema),
+});
+export type AuthorityIndirection = z.infer<typeof authorityIndirectionSchema>;
+
 // --- the verdict (day 4) ---
 
 /**
@@ -929,14 +1127,17 @@ export type TimeToExit = z.infer<typeof timeToExitSchema>;
  *                                  exit speed can beat it — the comparison
  *                                  collapses rather than being computed.
  *  - `can_exit_in_time`            both sides determined and tight, timeToExit < window.
- *  - `no_rule_change_route_found`  no privileged route was found to compare against.
+ *  - `immutable_within_checks`     POSITIVE evidence of no rule-change route, so
+ *                                  there is nothing to compare against. Earned,
+ *                                  never reached by falling through — see the
+ *                                  day-5 split on `exitWindowAssessmentSchema`.
  *  - `undetermined`                either side is unresolved; `missing` names exactly what.
  */
 export const verdictStatusSchema = z.enum([
   "trapped",
   "no_notice",
   "can_exit_in_time",
-  "no_rule_change_route_found",
+  "immutable_within_checks",
   "undetermined",
 ]);
 export type VerdictStatus = z.infer<typeof verdictStatusSchema>;
@@ -1005,6 +1206,19 @@ export const reportSchema = z.object({
   timeToExit: timeToExitSchema.nullable(),
   /** Day-4 composed judgement. Null only when both sides failed to run. */
   verdict: verdictSchema.nullable(),
+  /**
+   * Day-5 authority-indirection markers. Nullable so a scan whose stage failed
+   * still validates — but a null here means the check did NOT run, which is
+   * exactly why the exit window refuses `immutable_within_checks` without it.
+   */
+  authorityIndirection: authorityIndirectionSchema.nullable(),
+  /**
+   * The aggregate enumeration witness the verdict was computed under. Always
+   * present: whether the authority picture was complete is a property of every
+   * scan, not an optional extra, and a reader must be able to see it without
+   * reconstructing it from the reconstruction blocks scattered below.
+   */
+  enumeration: enumerationCompletenessSchema,
   disclosure: disclosureSchema,
   unknowns: z.array(unknownEntrySchema),
   errors: z.array(errorEntrySchema),

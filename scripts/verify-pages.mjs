@@ -1,0 +1,238 @@
+/**
+ * Proves that every headline figure on a rendered page came out of the report
+ * rather than out of the template.
+ *
+ * The renderer's honesty rule — "no presentation-layer value is computed or
+ * rounded into something the report didn't assert" — is the kind of claim that
+ * quietly stops being true the first time someone hard-codes a number into a
+ * heading. So each page embeds a manifest of its figures (see scripts/figures.ts),
+ * and this script re-derives every one of them independently:
+ *
+ *   1. the recorded jsonPath must resolve, in the SOURCE report, to exactly the
+ *      recorded raw value — so a figure cannot drift from its origin;
+ *   2. the rendered string must actually appear in the page body — so a figure
+ *      cannot be logged as provenance and then displayed as something else.
+ *
+ * It also enforces the two properties that are easy to lose in a stylesheet:
+ * that no page performs network access, and that an undetermined verdict is not
+ * rendered with the healthy tone.
+ *
+ * Run: node scripts/verify-pages.mjs [siteDir] [reportsDir]
+ */
+import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { join } from "node:path";
+
+const siteDir = process.argv[2] ?? "site";
+const reportsDir = process.argv[3] ?? "calibration/reports";
+
+function resolvePath(root, path) {
+  const parts = path.replace(/\[(\d+)\]/g, ".$1").split(".");
+  let cur = root;
+  for (const p of parts) {
+    if (cur === null || cur === undefined) return undefined;
+    cur = cur[p];
+  }
+  return cur;
+}
+
+/** Anything that would make a "static page" reach the network at view time. */
+const NETWORK_PATTERNS = [
+  /<script(?![^>]*type=["']application\/json["'])[^>]*\ssrc=/i,
+  /<link[^>]+href=["']https?:/i,
+  /\bfetch\s*\(/,
+  /XMLHttpRequest/,
+  /new\s+WebSocket/,
+  /@import\s+url\(/i,
+  /<iframe/i,
+  /src=["']https?:\/\//i,
+];
+
+let failures = 0;
+let figuresChecked = 0;
+const fail = (msg) => {
+  console.log(`  ✗ ${msg}`);
+  failures++;
+};
+
+const pages = readdirSync(siteDir).filter((f) => f.endsWith(".html") && f !== "index.html");
+if (pages.length === 0) {
+  console.error(`no pages found in ${siteDir}`);
+  process.exit(2);
+}
+
+for (const page of pages.sort()) {
+  const label = page.replace(/\.html$/, "");
+  const html = readFileSync(join(siteDir, page), "utf8");
+  const reportPath = join(reportsDir, `${label}.json`);
+  console.log(`${label}`);
+
+  if (!existsSync(reportPath)) {
+    fail(`no source report at ${reportPath}`);
+    continue;
+  }
+  const report = JSON.parse(readFileSync(reportPath, "utf8"));
+
+  // --- 1. figures ---
+  const m = html.match(/<script type="application\/json" id="ripcord-figures">([\s\S]*?)<\/script>/);
+  if (!m) {
+    fail("no figure manifest embedded — provenance cannot be checked");
+    continue;
+  }
+  const figures = JSON.parse(m[1]);
+  if (figures.length === 0) fail("figure manifest is empty");
+
+  const body = html.replace(/<script type="application\/json"[\s\S]*?<\/script>/, "");
+  for (const fig of figures) {
+    figuresChecked++;
+    const actual = resolvePath(report, fig.jsonPath);
+    if (JSON.stringify(actual) !== JSON.stringify(fig.raw)) {
+      fail(`figure "${fig.label}": ${fig.jsonPath} is ${JSON.stringify(actual)} in the report but the page recorded ${JSON.stringify(fig.raw)}`);
+    }
+    if (!body.includes(fig.rendered)) {
+      fail(`figure "${fig.label}": rendered as ${JSON.stringify(fig.rendered)} but that string is not on the page`);
+    }
+  }
+
+  // --- 2. no network at view time ---
+  for (const re of NETWORK_PATTERNS) {
+    if (re.test(html)) fail(`page contains a network-capable construct matching ${re}`);
+  }
+
+  // --- 3. an unestablished verdict must not wear the healthy tone ---
+  const status = report.verdict?.status ?? "undetermined";
+  const heroTone = html.match(/<section class="hero (\w+)"/)?.[1];
+  const expected =
+    status === "can_exit_in_time" || status === "immutable_within_checks"
+      ? "good"
+      : status === "trapped" || status === "no_notice"
+        ? "critical"
+        : "unknown";
+  if (heroTone !== expected) fail(`verdict "${status}" rendered with tone "${heroTone}", expected "${expected}"`);
+  if (expected === "unknown" && heroTone === "good") fail(`an undetermined verdict is wearing the healthy tone`);
+
+  // --- 4. an unproven delay must never be shown as a settled window ---
+  const assessment = report.exitWindow?.assessment;
+  if (assessment?.status === "not_proven_binding") {
+    if (!body.includes("not proven binding")) fail(`nominal delay is present but the page never says "not proven binding"`);
+  }
+
+  // --- 5. a partial role reconstruction must render its label and its window ---
+  const recon = report.authority?.accessControl?.reconstruction;
+  if (recon && recon.complete === false) {
+    if (!body.includes("PARTIAL role reconstruction")) fail(`partial reconstruction is not labelled as partial`);
+    if (recon.scannedFromBlock && !body.includes(recon.scannedFromBlock)) {
+      fail(`partial reconstruction does not show its covered window (from block ${recon.scannedFromBlock})`);
+    }
+  }
+
+  // --- 6. "nothing to measure" must not render as "not established" ---
+  // The day-5 assessment split separated those two claims in the data; a chart
+  // that draws them identically puts the conflation straight back.
+  if (assessment?.status === "immutable_within_checks") {
+    if (!body.includes("no rule-change route found")) fail(`a positively-established no-route result is not labelled as one`);
+    if (body.includes("NOT ESTABLISHED")) fail(`a positively-established no-route result is rendered as "NOT ESTABLISHED"`);
+    if (!body.includes("Established positively by:")) fail(`the positive basis that earned this status is not shown`);
+  }
+  if (assessment?.status === "undetermined" && !body.includes("NOT ESTABLISHED")) {
+    fail(`an undetermined window is not labelled "NOT ESTABLISHED" on the chart`);
+  }
+
+  // --- 7. a halted exit must never render as a duration ---
+  if (report.timeToExit?.blockable?.status === "currently_blocked" && !body.includes("HALTED")) {
+    fail(`the exit is halted at the pinned block but the page does not say so`);
+  }
+
+  // --- 8. only publishable reports may be rendered here ---
+  if (report.disclosure?.publishable !== true) fail(`report is not publishable but a page was rendered for it`);
+}
+
+// ---------------------------------------------------------------------------
+// REPORT-LEVEL INVARIANT: no reassuring verdict on an incomplete enumeration.
+//
+// This runs over EVERY report, not only the ones that got a page, because the
+// invariant is a property of the tool rather than of the published subset.
+//
+// It is the report analogue of the byte-identity determinism gate: instead of
+// pinning one instance of a bug, it makes the whole class impossible to
+// reintroduce. The exit window is the MINIMUM notice across authority routes,
+// so it is only sound over a route set that was fully seen — an un-enumerated
+// role holding a zero-notice power makes the minimum a minimum of the wrong
+// set. Two of the 26 calibration protocols were doing exactly that when this
+// check was written (Ethena Minting on its own scan, Ethena USDe on its
+// depth-1 timelock's), and both said `missing: []` while doing it.
+//
+// The check derives incompleteness INDEPENDENTLY of src/report/enumeration.ts —
+// straight from the reconstruction blocks in the report — so a bug in the
+// derivation cannot hide itself here.
+// ---------------------------------------------------------------------------
+
+const REASSURING_VERDICT = new Set(["can_exit_in_time", "immutable_within_checks"]);
+const REASSURING_WINDOW = new Set(["binding", "immutable_within_checks"]);
+
+/** Independently collects every site whose role enumeration is not positively complete. */
+function incompleteSites(report) {
+  const out = [];
+  const judge = (where, ac) => {
+    if (!ac || !ac.detected) return; // positively not an AccessControl contract
+    if (!ac.reconstruction) out.push(`${where} (AccessControl detected, no reconstruction produced)`);
+    else if (ac.reconstruction.complete !== true) out.push(`${where} (reconstruction.complete !== true)`);
+  };
+  judge("target", report.authority?.accessControl);
+  const walk = (n) => {
+    judge(`authority:${n.address}@depth${n.depth}`, {
+      detected: n.accessControlDetected,
+      reconstruction: n.roleEnumeration,
+    });
+    for (const c of n.children ?? []) walk(c);
+  };
+  for (const root of report.authorityResolution?.roots ?? []) walk(root);
+  for (const t of report.dependencies?.tokens ?? []) judge(`dependency:${t.token}`, t.authority?.accessControl);
+  for (const e of report.errors ?? []) {
+    if (["accessControl", "authorityResolution", "dependencies"].includes(e.stage)) out.push(`stage:${e.stage} failed`);
+  }
+  return out;
+}
+
+console.log("\n--- report-level invariant: enumeration completeness reaches the verdict ---");
+let reportsChecked = 0;
+for (const file of readdirSync(reportsDir).filter((f) => f.endsWith(".json")).sort()) {
+  const label = file.replace(/\.json$/, "");
+  const report = JSON.parse(readFileSync(join(reportsDir, file), "utf8"));
+  reportsChecked++;
+
+  const sites = incompleteSites(report);
+  const verdictStatus = report.verdict?.status;
+  const windowStatus = report.exitWindow?.assessment?.status;
+
+  if (sites.length > 0) {
+    if (REASSURING_VERDICT.has(verdictStatus)) {
+      console.log(`${label}`);
+      fail(`REASSURING VERDICT "${verdictStatus}" on an incomplete enumeration — ${sites.join("; ")}`);
+    }
+    if (REASSURING_WINDOW.has(windowStatus)) {
+      console.log(`${label}`);
+      fail(`REASSURING WINDOW "${windowStatus}" on an incomplete enumeration — ${sites.join("; ")}`);
+    }
+    // A report must never contradict itself: incomplete below, nothing missing above.
+    if ((report.verdict?.missing ?? []).length === 0) {
+      console.log(`${label}`);
+      fail(`verdict.missing is empty while ${sites.length} enumeration site(s) are incomplete — internally self-contradicting`);
+    }
+  }
+
+  // The derived witness must agree with the independent derivation above.
+  const claimed = report.enumeration?.complete;
+  if (claimed === undefined) {
+    console.log(`${label}`);
+    fail(`report carries no enumeration witness at all`);
+  } else if (claimed !== (sites.length === 0)) {
+    console.log(`${label}`);
+    fail(`enumeration.complete=${claimed} disagrees with an independent read of the report (${sites.length} incomplete site(s))`);
+  }
+}
+console.log(`${reportsChecked} reports checked for the enumeration invariant`);
+
+console.log(
+  `\n${pages.length} pages · ${figuresChecked} figures checked against their source reports · ${reportsChecked} reports checked for the enumeration invariant · ${failures} failure(s)`,
+);
+process.exit(failures === 0 ? 0 : 1);

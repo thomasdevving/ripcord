@@ -331,6 +331,16 @@ export async function analyseTimeToExit(
     try {
       value = decodeFunctionResult({ abi: [boolAbiFor(getter.signature)], data: result }) as unknown as boolean;
     } catch {
+      // An undecodable pause getter leaves the CURRENT pause state unread. That
+      // is not "not paused": `currentlyBlocked` staying null is what makes the
+      // verdict omit the "exit is HALTED" clause, so a failed read here would
+      // quietly drop the single most consequential fact in a report (the live
+      // PAID case reads `paused() == true`). Recorded as an unmeasured leg.
+      unmeasuredLegs.push({
+        name: getter.signature,
+        reason:
+          "the pause getter resolved but its return value did not decode as a bool — the CURRENT pause state is unknown, and must not be read as 'not paused'",
+      });
       continue;
     }
     if (value) {
