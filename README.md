@@ -665,6 +665,17 @@ fact about our own probe. `node scripts/manual-verification-audit.mjs
 calibration/reports` reproduces the classification from the reports' own
 `probes[]` evidence.
 
+The single strongest-looking observation in the set — PAID proxy 2's
+`mint(address,uint256)` executing successfully for three unrelated addresses on a
+live token — was followed all the way to the state level before publication: a
+real fork transaction from an unrelated sender, and from the owner, succeeds and
+changes **nothing** (Δ supply 0, Δ balance 0). It is a no-op stub, not an open
+mint. That investigation is written up in
+[CALIBRATION §12](docs/CALIBRATION.md#12-the-one-blocker-that-looked-like-a-real-finding),
+and it is the disclosure gate's first real exercise: the probe could not rule out
+"unguarded", so publication was withheld, no page was ever rendered, and only
+then did a human resolve it.
+
 The gate was **not** softened to unblock anything. Reports that still carry a
 blocking entry — including Ethena's sUSDe, which is the dead-heat showcase and
 the single most useful page in the set — remain unpublished, and their pages are

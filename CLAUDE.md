@@ -1085,6 +1085,43 @@ only via delegatecall and is usually uninitialized.
     point of this edge is that a green result nobody has tried to break is not
     evidence of anything.
 
+35. **[FOUND day 6, auditing the blocked reports before publication] A SUCCESSFUL
+    probe was being filed as an unreadable revert, and `no_auth_revert_observed`
+    conflates two very different observations.** `probeCall` records
+    `rawValue = revertData ?? "reverted"` on a revert and `result ?? "0x"` on a
+    success, so a literal `"0x"` can ONLY come from a call that ran to
+    completion. `scripts/manual-verification-audit.mjs` mapped `"0x"` to "(no
+    revert data returned)" — so the strongest observation in the whole
+    calibration set, a privileged-looking function EXECUTING for three unrelated
+    addresses on a live 594M-supply token, was written up as a provider quirk
+    (KNOWN EDGE #4).
+
+    Investigated to state level rather than reasoned about: `mint` on PAID proxy
+    2 is reachable by anyone, and a real fork transaction from an unrelated
+    sender — and from the OWNER — succeeds with Δ totalSupply 0 and Δ balance 0.
+    A garbage selector reverts on the same proxy, so there is no permissive
+    fallback and the call genuinely dispatches. It is a NO-OP STUB, the expected
+    shape of remediation for a deployment drained through an unguarded mint in
+    March 2021. Not a vulnerability; not a privileged function either. The
+    "0 genuinely unguarded privileged functions" result is unchanged and now
+    better evidenced, because the one candidate that looked most like a
+    counterexample was followed all the way down and cleared.
+
+    THE RESIDUAL, deliberately NOT fixed on a lock-down day:
+    `no_auth_revert_observed` covers both "the call reverted and we could not
+    read it" and "the call executed and returned". The second is one step from
+    "unguarded" and wants its own reason code (`executed_without_revert`) beside
+    day 5's split. Both block publication today, so the GATE'S BEHAVIOUR is
+    already correct and nothing unsafe follows from the conflation — only the
+    reporting is coarser than the evidence. A schema reason code is a detection
+    change, so it is logged as the next thing to build. The audit script now
+    reports the two distinctly (`EXECUTED` vs a revert class).
+
+    This is also the disclosure gate's first real exercise: probe could not rule
+    out "unguarded" -> publishable went false -> no page was ever rendered -> a
+    human looked -> harmless. Had it gone the other way, the gate would have held
+    a live vulnerability claim off a public site. See docs/CALIBRATION.md §12.
+
 22. **The cleared-dependency registry is small, manual, and mainnet-only
     (consolidation pass).** `clearedRegistry.ts` documents design-not-bug
     capabilities for the 6 curated majors (USDC/USDT/DAI/WBTC/stETH; WETH has
