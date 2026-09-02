@@ -12,6 +12,11 @@ Ripcord reads it. Day 1 built the **Power Map**: a static scan of who holds priv
 
 ## Quickstart
 
+**Prerequisites:** Node **22.13+** and pnpm. The exact pnpm is pinned in
+`package.json`'s `packageManager` field (`pnpm@11.24.0`) so `corepack` fetches it
+for you; pnpm 11 itself requires Node ≥ 22.13, which is why the floor is there.
+Only `ripcord prove` needs anything further — Foundry's `anvil` on your `PATH`.
+
 ```sh
 git clone https://github.com/thomasdevving/ripcord.git
 cd ripcord

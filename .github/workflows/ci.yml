@@ -10,9 +10,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # No `version:` here ON PURPOSE. package.json's `packageManager` field
+      # (pnpm@11.24.0) is the single source of truth, and pnpm/action-setup
+      # reads it. Declaring a version in both places is a hard error —
+      # "Multiple versions of pnpm specified" — and pinning 9 here while the
+      # lockfile was written by 11 is the kind of skew `--frozen-lockfile`
+      # exists to catch.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - uses: actions/setup-node@v4
         with:
