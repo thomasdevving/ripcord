@@ -16,7 +16,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -40,12 +40,45 @@ jobs:
       # actually running the documented command from a clean clone.
       - run: pnpm verify:claims
 
+  # Secret scan over the FULL history, every run.
+  #
+  # This deliberately does NOT use gitleaks/gitleaks-action@v2. That action
+  # derives a commit RANGE from the push event and scans only that, as
+  # `<base>^..<head>` — which is not a valid revision when the push contains the
+  # repository's first commit, because the first commit has no parent. Observed
+  # live on this repo: the action died with "ambiguous argument
+  # fe1181d...^..7e0cf55", scanned ~0 bytes, and printed "no leaks found in
+  # partial scan" alongside a failing exit code.
+  #
+  # A scanner that scans nothing and reports clean is precisely the failure mode
+  # this project exists to refuse, so the range arithmetic is removed entirely:
+  # `gitleaks detect` with no range scans the whole history, every time. It costs
+  # under two seconds on this repo and it cannot silently degrade to a partial
+  # scan.
   gitleaks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # PINNED, and the pin is load-bearing rather than hygiene. `.gitleaks.toml`
+      # uses the `[[allowlists]]` (plural) block, which gitleaks 8.24.3 — the
+      # version gitleaks-action installs — does not honour: on this repository it
+      # reports 102 findings where 8.30.1 reports 0, because it silently ignores
+      # the allowlist rather than failing to parse it. Verified locally against
+      # both release binaries before pinning. A scanner whose config is only
+      # partly applied is a scanner reporting on rules nobody wrote.
+      - name: Install gitleaks (pinned)
+        run: |
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
+            | tar -xz -C /usr/local/bin gitleaks
+          gitleaks version
+      - name: Scan full history
+        run: |
+          # Fail loud if the scan did not actually walk the history. The failure
+          # this guards against is not a leak — it is a scan that covers nothing
+          # and reports clean, which is what the replaced action did here.
+          COMMITS=$(git rev-list --all --count)
+          echo "history: $COMMITS commits"
+          test "$COMMITS" -gt 0
+          gitleaks detect --source . --config .gitleaks.toml --redact -v
