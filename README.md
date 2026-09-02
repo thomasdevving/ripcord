@@ -228,6 +228,21 @@ node scripts/run-calibration.mjs                # all 26 targets, pinned to bloc
 node scripts/compare-reports.mjs calibration/reports <your-output-dir>
 ```
 
+**One operational warning, because you will hit it.** A full cold regeneration
+of all 26 targets takes roughly an hour on a free-tier endpoint, and the two
+deep-history AccessControl contracts (Aave's ACLManager, Ethena's Minting) each
+fire up to ~1500 `eth_getLogs` requests on a 9-block range. That sustained burst
+exhausts a free tier's throughput allowance, after which the provider rejects
+everything for a while — so those targets finish and the *next several fail
+immediately*. Ripcord behaves correctly there: it fails **loud** rather than
+producing a clean-looking report from a dead endpoint, which is exactly the
+property [the day-6 audit](docs/CALIBRATION.md#10-the-semantic-cache-audit-day-6)
+exists to guarantee. `run-calibration.mjs` retries a failed target up to three
+times with a 90-second cooldown, and because the cache is never invalidated,
+each retry **resumes** from wherever the last attempt stopped rather than
+starting over. If a target still fails after that, re-run it alone with
+`--only <label>`; it will pick up where it left off.
+
 `compare-reports.mjs` normalises `generatedAt` — the only intentionally
 non-deterministic field — and diffs everything else byte for byte. **A cold run
 and a warm run must be byte-identical.** That equivalence is the whole point of
@@ -612,6 +627,32 @@ Because that distinction is easy to lose under time pressure, it is enforced as 
 Every report carries a `disclosure` block computed from exactly that rule (`publishable`, `reason`, and `blockedBy` naming each entry), and the CLI prints a loud `DO NOT PUBLISH THIS REPORT` warning to stderr when it trips. Day 5's calibration set is filtered on `disclosure.publishable`, so nothing gets published because someone eyeballed it and thought it looked fine.
 
 Where an entry does turn out to be a real, exploitable vulnerability rather than a design property: do not publish it, do not commit it to this repository's fixtures or examples, make one contact attempt through the project's published security channel (or a platform such as Immunefi if they run one), document that the attempt was made, and leave it there. Standard responsible disclosure, and the documented attempt is what makes it verifiable that we followed it.
+
+### What calibration actually found, and why no disclosure was owed
+
+Stated plainly, because it is the question a security reviewer asks first:
+
+> **Across 26 mainnet protocols, Ripcord found zero genuinely unguarded
+> privileged functions.** All 30 entries that tripped the publication gate were
+> decoded and hand-classified: 22 were contracts stating in their own revert
+> string that a guard had fired, in a dialect Ripcord could not yet read; 4 were
+> Ripcord's own zero-valued probe arguments being rejected by a state or
+> argument precondition before any auth check ran; 4 were genuinely
+> undetermined — an unrecognised custom error or no revert data at all.
+
+So **no responsible-disclosure obligation was triggered**, because nothing was
+found that could be disclosed: not one finding where a non-privileged party
+could seize control. Every blocker was either a guard we could not read or a
+fact about our own probe. `node scripts/manual-verification-audit.mjs
+calibration/reports` reproduces the classification from the reports' own
+`probes[]` evidence.
+
+The gate was **not** softened to unblock anything. Reports that still carry a
+blocking entry — including Ethena's sUSDe, which is the dead-heat showcase and
+the single most useful page in the set — remain unpublished, and their pages are
+not in `site/`. The published set is filtered on `disclosure.publishable`
+computed by the tool, never on a per-protocol judgement made under time
+pressure.
 
 ### Cleared dependency registry
 

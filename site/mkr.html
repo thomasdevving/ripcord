@@ -1,0 +1,250 @@
+<title>Ripcord — mkr</title>
+<style>
+:root{
+  color-scheme: light;
+  --surface-1:#fcfcfb; --plane:#f9f9f7;
+  --text-primary:#0b0b0b; --text-secondary:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --baseline:#c3c2b7; --border:rgba(11,11,11,.10);
+  --series-1:#2a78d6; --series-2:#eb6834;
+  --good:#0ca30c; --warning:#fab219; --critical:#d03b3b;
+  --good-ink:#006300; --warn-ink:#7a5200; --crit-ink:#9c2020;
+  --good-bg:#eef7ee; --warn-bg:#fdf5e3; --crit-bg:#fbeded;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --surface-1:#1a1a19; --plane:#0d0d0d;
+    --text-primary:#ffffff; --text-secondary:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --baseline:#383835; --border:rgba(255,255,255,.10);
+    --series-1:#3987e5; --series-2:#d95926;
+    --good-ink:#0ca30c; --warn-ink:#fab219; --crit-ink:#e66767;
+    --good-bg:#12210f; --warn-bg:#241d09; --crit-bg:#2a1414;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --surface-1:#1a1a19; --plane:#0d0d0d;
+  --text-primary:#ffffff; --text-secondary:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --baseline:#383835; --border:rgba(255,255,255,.10);
+  --series-1:#3987e5; --series-2:#d95926;
+  --good-ink:#0ca30c; --warn-ink:#fab219; --crit-ink:#e66767;
+  --good-bg:#12210f; --warn-bg:#241d09; --crit-bg:#2a1414;
+}
+body{background:var(--plane);color:var(--text-primary);font:14px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;}
+.page{max-width:960px;margin:0 auto;padding:32px 20px 64px;}
+code,pre,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}
+h1{font-size:24px;margin:0 0 4px;letter-spacing:-.01em;}
+h2{font-size:17px;margin:0 0 6px;letter-spacing:-.01em;}
+h3{font-size:14px;margin:22px 0 8px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.06em;}
+p{margin:0 0 10px;}
+.muted{color:var(--muted);}
+.note{color:var(--text-secondary);font-size:13px;margin-bottom:14px;}
+.statement{font-size:15px;color:var(--text-primary);}
+
+.masthead{display:flex;gap:18px;align-items:baseline;border-bottom:1px solid var(--border);padding-bottom:18px;margin-bottom:22px;}
+.brand{font-weight:700;letter-spacing:.16em;font-size:12px;color:var(--muted);}
+.target code{font-size:12px;color:var(--text-secondary);display:block;margin-bottom:2px;word-break:break-all;}
+.target .muted{font-size:12px;}
+
+section{background:var(--surface-1);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px;}
+
+/* The hero. Tone is carried by a left rule + an iconed badge, never by colour alone. */
+.hero{border-left:4px solid var(--muted);}
+.hero.good{border-left-color:var(--good);}
+.hero.critical{border-left-color:var(--critical);}
+.hero.unknown{border-left-color:var(--warning);}
+.verdict-badge{display:inline-block;font-weight:650;font-size:13px;letter-spacing:.04em;text-transform:uppercase;
+  padding:5px 11px;border-radius:999px;margin-bottom:10px;border:1px solid var(--border);}
+.hero.good .verdict-badge{background:var(--good-bg);color:var(--good-ink);}
+.hero.critical .verdict-badge{background:var(--crit-bg);color:var(--crit-ink);}
+.hero.unknown .verdict-badge{background:var(--warn-bg);color:var(--warn-ink);}
+.verdict-statement{font-size:16px;line-height:1.5;margin-bottom:18px;}
+.margin{font-size:14px;color:var(--text-secondary);}
+
+.chart{margin:6px 0 4px;}
+.chart svg{width:100%;height:auto;display:block;}
+.bar-label{font:600 12.5px system-ui,sans-serif;fill:var(--text-primary);}
+.bar-value{font:600 13px system-ui,sans-serif;fill:var(--text-primary);}
+.bar-sub{font:11.5px system-ui,sans-serif;fill:var(--muted);}
+.legend{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--text-secondary);margin-top:6px;}
+.legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;vertical-align:-1px;}
+.sw1{background:var(--series-1);} .sw2{background:var(--series-2);}
+.swh{background:repeating-linear-gradient(45deg,var(--muted) 0 2px,transparent 2px 5px);border:1px solid var(--baseline);}
+.swn{background:color-mix(in srgb,var(--series-1) 12%,transparent);border:1px solid var(--series-1);}
+
+.missing{background:var(--warn-bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin:14px 0 4px;font-size:13px;}
+.missing ul{margin:6px 0 0;padding-left:18px;} .missing li{margin-bottom:4px;}
+.basis{background:var(--plane);border:1px solid var(--border);border-radius:8px;padding:12px 14px;font-size:13px;}
+.basis ul{margin:4px 0 10px;padding-left:18px;}
+
+.proof{margin-top:18px;border:1px solid var(--border);border-radius:8px;background:var(--plane);padding:16px;}
+.proof-head{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start;}
+.proof-label{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:2px;}
+.proof-figure{font-size:34px;font-weight:650;letter-spacing:-.02em;line-height:1.1;}
+.proof-notice-figure{font-size:20px;font-weight:600;}
+.proof-note{font-size:12px;color:var(--text-secondary);max-width:40ch;margin-top:4px;}
+.sandbox{font-size:12px;color:var(--text-secondary);margin:12px 0 0;}
+.repro{background:var(--plane);border:1px solid var(--border);border-radius:6px;padding:12px;overflow-x:auto;font-size:12px;}
+
+.banner{border-radius:8px;padding:12px 14px;margin:12px 0;border:1px solid var(--border);font-size:13px;}
+.banner p{margin:4px 0 0;}
+.banner.warn{background:var(--warn-bg);}
+.banner.danger{background:var(--crit-bg);color:var(--crit-ink);}
+.banner.ok{background:var(--good-bg);}
+
+.chip{display:inline-block;font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);white-space:nowrap;}
+.chip.good{background:var(--good-bg);color:var(--good-ink);}
+.chip.critical{background:var(--crit-bg);color:var(--crit-ink);}
+.chip.unknown{background:var(--warn-bg);color:var(--warn-ink);}
+
+.scroll{overflow-x:auto;}
+table{border-collapse:collapse;width:100%;font-size:13px;}
+th{text-align:left;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--baseline);padding:7px 10px 7px 0;font-size:12px;text-transform:uppercase;letter-spacing:.04em;}
+td{border-bottom:1px solid var(--grid);padding:8px 10px 8px 0;vertical-align:top;}
+td code{font-size:12px;}
+.addr{background:var(--plane);border:1px solid var(--border);border-radius:4px;padding:1px 5px;}
+
+.path{border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:var(--plane);}
+.path-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;font-size:13px;}
+.hops{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
+.hops li{display:flex;flex-direction:column;gap:2px;border:1px solid var(--border);border-radius:6px;padding:6px 10px;background:var(--surface-1);}
+.hops li+li::before{content:"→";position:absolute;margin-left:-19px;color:var(--muted);}
+.hop-kind{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);}
+.rel{font-size:11px;color:var(--text-secondary);}
+
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px 22px;margin:0;}
+.kv dt{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);}
+.kv dd{margin:1px 0 0;font-size:13px;word-break:break-all;}
+.counts{font-size:14px;}
+.wrap{word-break:break-all;font-size:12px;color:var(--text-secondary);}
+details{margin-top:12px;}
+summary{cursor:pointer;font-size:13px;color:var(--text-secondary);padding:6px 0;}
+.tabletwin{margin-top:16px;}
+footer{margin-top:26px;font-size:12px;color:var(--text-secondary);}
+</style>
+<main class="page">
+  <header class="masthead">
+    <div class="brand">RIPCORD</div>
+    <div class="target">
+      <h1>mkr</h1>
+      <code>0x9f8F72aA9304c8B593d555F12eF6589cC3A579A2</code>
+      <span class="muted">chain 1 · block 25800000</span>
+    </div>
+  </header>
+
+  
+
+  <section class="hero unknown">
+    <div class="verdict-badge">? Undetermined</div>
+    <p class="verdict-statement">Verdict undetermined on the exit-window side: Exit window undetermined: privileged functions exist but their holders could not be identified, so the notice before a rule change cannot be bounded. Time to exit is at least 0s, but the comparison cannot be made against a window that was not established.</p>
+    <figure class="chart">
+  <svg viewBox="0 0 720 162" role="img" aria-label="Notice before the rules can change, against the time needed to leave">
+    <defs>
+      <pattern id="hatch-unknown" width="7" height="7" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+        <rect width="7" height="7" fill="var(--surface-1)"/><line x1="0" y1="0" x2="0" y2="7" stroke="var(--muted)" stroke-width="2.5"/>
+      </pattern>
+      <pattern id="hatch-series-1" width="7" height="7" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+        <rect width="7" height="7" fill="var(--surface-1)"/><line x1="0" y1="0" x2="0" y2="7" stroke="var(--series-1)" stroke-width="2.5"/>
+      </pattern>
+      <pattern id="hatch-series-2" width="7" height="7" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+        <rect width="7" height="7" fill="var(--surface-1)"/><line x1="0" y1="0" x2="0" y2="7" stroke="var(--series-2)" stroke-width="2.5"/>
+      </pattern>
+    </defs>
+    <line x1="4" y1="6" x2="4" y2="140" stroke="var(--baseline)" stroke-width="1" />
+    <g>
+      <text x="4" y="20" class="bar-label">Notice before the rules can change</text>
+      <title>Notice before the rules can change: NOT ESTABLISHED</title>
+      <rect x="4" y="28" width="506" height="22" rx="4"
+             fill="url(#hatch-unknown)" stroke="var(--muted)" stroke-width="1" stroke-dasharray="4 3" />
+      <text x="520" y="43" class="bar-value">NOT ESTABLISHED</text>
+      <text x="4" y="65" class="bar-sub">not established — see what is missing below</text>
+    </g>
+<g>
+      <text x="4" y="84" class="bar-label">Time needed to leave</text>
+      <title>Time needed to leave: 0 — none at all</title>
+      <rect x="4" y="92" width="3" height="22" fill="var(--series-2)" />
+      <text x="17" y="107" class="bar-value">0 — none at all</text>
+      <text x="4" y="129" class="bar-sub">no_mechanism_detected — every detected leg measured, nothing currently blocking</text>
+    </g>
+  </svg>
+  <figcaption class="legend">
+    <span><i class="sw sw1"></i>Notice before the rules can change</span>
+    <span><i class="sw sw2"></i>Time needed to leave</span>
+    <span><i class="sw swh"></i>Hatched = not established; deliberately no length to read off it</span>
+    <span><i class="sw swn"></i>Flat tint = nothing to measure (no route was found to exist)</span>
+  </figcaption>
+</figure>
+    
+    
+    <div class="missing"><strong>What is missing, and why this verdict is not crisper</strong><ul><li>privileged capabilities were detected but none could be attributed to an identified holder, so no route could be built and no notice period can be bounded</li></ul></div>
+    <details class="tabletwin"><summary>The same two figures as a table</summary>
+      <div class="scroll"><table>
+    <thead><tr><th>Measure</th><th>Value</th><th>Established?</th></tr></thead>
+    <tbody><tr><td>Notice before the rules can change</td><td>NOT ESTABLISHED</td><td>no</td></tr><tr><td>Time needed to leave</td><td>0 — none at all</td><td>yes</td></tr></tbody>
+  </table></div>
+    </details>
+  </section>
+
+  <section><h2>Exit window</h2><p class="note">The exit window is the notice you get before a rule change takes effect, minus every way that notice can be cut. It is modelled per route and the protocol figure is the <strong>minimum</strong> across them: a timelock on one path is worth nothing beside an un-delayed one.</p><p class="statement">Exit window undetermined: privileged functions exist but their holders could not be identified, so the notice before a rule change cannot be bounded.</p>
+     
+     <h3>Routes to changing the rules</h3>
+     <p class="muted">None.</p>
+     <h3>Ways the notice could be shorter than it looks</h3>
+     <p class="muted">None found — and the table below is what makes that mean something.</p>
+     <details><summary>Which checks actually ran (2 of 8)</summary><div class="scroll"><table>
+    <thead><tr><th>Check</th><th>Ran?</th><th>Result</th><th>Note</th></tr></thead>
+    <tbody><tr><td>parallel_ungated_route</td><td><span class="chip good">✓ performed</span></td><td>none found</td><td>0 route(s) enumerated; none was found to impose zero delay</td></tr><tr><td>delay_mutator_present</td><td><span class="chip unknown">? NOT performed</span></td><td><span class='muted'>—</span></td><td>no timelock was reached on any route, so there was no delay to test for mutability</td></tr><tr><td>delay_mutator_guard</td><td><span class="chip unknown">? NOT performed</span></td><td><span class='muted'>—</span></td><td>not applicable: no timelock on any route</td></tr><tr><td>timelock_upgradeable</td><td><span class="chip unknown">? NOT performed</span></td><td><span class='muted'>—</span></td><td>not applicable: no timelock on any route</td></tr><tr><td>canceller_or_guardian</td><td><span class="chip unknown">? NOT performed</span></td><td><span class='muted'>—</span></td><td>not applicable: no timelock on any route</td></tr><tr><td>pending_owner_excluded</td><td><span class="chip good">✓ performed</span></td><td>none found</td><td>0 pendingOwner route(s) excluded</td></tr><tr><td>governance_proposal_path</td><td><span class="chip unknown">? NOT performed</span></td><td><span class='muted'>—</span></td><td>NOT CHECKED. Enumerating what an arbitrary-call governor can reach requires modelling proposal execution, which is out of scope. Where a governor sits behind a timelock the delay still applies to it, so this gap does not make a reported delay optimistic; where a governor is reachable WITHOUT a delay it is already captured as an ungated route.</td></tr><tr><td>safe_module_or_guard</td><td><span class="chip unknown">? NOT performed</span></td><td><span class='muted'>—</span></td><td>NOT CHECKED. Safe modules are not enumerated. This does not affect the window arithmetic, because a Safe is already modelled as imposing ZERO notice — a module could change WHO acts, not HOW FAST.</td></tr></tbody>
+  </table></div></details></section>
+
+  <section><h2>Time to exit</h2><p class="note">A <strong>lower bound</strong> on how long a holder actually needs to leave, with its gaps named. An unmeasured leg is never counted as zero.</p><p class="statement">No exit-delay mechanism was detected: none of the cooldown/unstaking accessors Ripcord knows resolve, and no two-step request/claim exit shape is present in the dispatcher. Exit appears to be synchronous. This is a positive observation over a curated, finite pattern table — not proof that no delay exists.</p>
+     <p class="muted">None.</p>
+     
+     <div class="banner warn"><strong>Liquidity depth is not modelled.</strong><p>Liquidity depth is not modelled. Establishing whether a given position could actually be sold requires pool discovery and depth integration across venues — an indexer, which Ripcord deliberately does not run (same reason its major-token list is curated). Any shortcut available here would produce an authoritative-looking number that is not one, so no number is produced. Practical consequence: for a position large relative to available liquidity the real time-to-exit is LONGER than the figure above, never shorter.</p>
+     <p>Consequence: for a position large relative to available liquidity the real time to exit is <strong>longer</strong> than shown here, never shorter.</p></div></section>
+
+  <section><h2>Authority path</h2><p class="note">Who ends up holding the power, and how many hops away. Confidence degrades with depth — a controller three hops out is never asserted with a direct owner's certainty.</p><p class="muted">No authority path resolved. That is an absence of evidence, not evidence of absence — see the exit-window section for exactly which positive check failed.</p></section>
+
+  <section><h2>Authority held elsewhere</h2><p class="note">Handles to authorisation that Ripcord finds but does not follow.</p><p>Ripcord found a handle to authority held <strong>elsewhere</strong>, and deliberately does not follow it. Its presence alone is why this report refuses to call the contract authority-free.</p><div class="scroll"><table>
+    <thead><tr><th>Getter</th><th>Points at</th><th>Followed?</th></tr></thead>
+    <tbody><tr><td><code>authority()</code></td><td><code class="addr" title="0x6eEB68B2C7A918f36B78E2DB80dcF279236DDFb8">0x6eEB68B2…6DDFb8</code></td><td><span class='muted'>no — see limitations</span></td></tr></tbody>
+  </table></div></section>
+
+  <section><h2>Capabilities</h2><p class="note">What a privileged address is technically able to do. Guards are established by <strong>probing</strong> — a real eth_call from unrelated addresses at the pinned block — never by reading source or guessing from a name.</p>
+     <p class="counts">
+       <strong>25</strong> selectors recovered ·
+       <strong>2</strong> classified capabilities ·
+       <strong>0</strong> needing manual verification ·
+       <strong>23</strong> unmatched
+     </p>
+     <p class="note">Unmatched means <em>not in Ripcord's taxonomy table</em> — never <em>not privileged</em>. The count is published so "2 capabilities" cannot quietly read as "there are only 2".</p>
+     <div class="scroll"><table>
+    <thead><tr><th>Function</th><th>Category</th><th>Guard</th><th>Name match</th><th>Attributed to</th></tr></thead>
+    <tbody><tr><td><code>mint(address,uint256)</code></td><td><code>SUPPLY</code></td><td><span class="chip unknown">? inconclusive</span></td><td>standard</td><td><span class='muted'>—</span></td></tr><tr><td><code>mint(uint256)</code></td><td><code>SUPPLY</code></td><td><span class="chip unknown">? inconclusive</span></td><td>standard</td><td><span class='muted'>—</span></td></tr></tbody>
+  </table></div>
+     
+     <details><summary>Unmatched selectors (23)</summary><p class="mono wrap">0x06fdde03 0x07da68f5 0x095ea7b3 0x13af4035 0x18160ddd 0x23b872dd 0x313ce567 0x42966c68 0x5ac801fe 0x70a08231 0x75f12b21 0x7a9e5e4b 0x8da5cb5b 0x95d89b41 0x9dc29fac 0xa9059cbb 0xb753a98c 0xbb35783b 0xbe9a6555 0xbf7e214f 0xdaea85c5 0xdd62ed3e 0xf2d5d56b</p></details></section>
+
+  
+
+  
+
+  <section><h2>Provenance</h2><p class="note">Everything above is pinned to one block and reproducible from the JSON report this page was rendered from.</p><dl class="meta">
+    <div class="kv"><dt>Target</dt><dd><code>0x9f8F72aA9304c8B593d555F12eF6589cC3A579A2</code></dd></div>
+    <div class="kv"><dt>Chain</dt><dd>1</dd></div>
+    <div class="kv"><dt>Pinned block</dt><dd><code>25800000</code></dd></div>
+    <div class="kv"><dt>Block hash</dt><dd><code>0xeb4ccbdb418b083ebbf646b371092c7c02016194e3a90caba9a9492becba8a2d</code></dd></div>
+    <div class="kv"><dt>Schema version</dt><dd>0.10.0</dd></div>
+    <div class="kv"><dt>Ruleset version</dt><dd>0.9.0</dd></div>
+    <div class="kv"><dt>Cleared-registry version</dt><dd>0.1.0</dd></div>
+    <div class="kv"><dt>Exit-window rules</dt><dd>0.1.0</dd></div>
+    <div class="kv"><dt>Time-to-exit rules</dt><dd>0.1.0</dd></div>
+    <div class="kv"><dt>Taxonomy version</dt><dd>0.2.0</dd></div>
+  </dl></section>
+
+  <footer>
+    <p>Generated by Ripcord from a pinned JSON report. This page performs no network access, at render time or view time.
+    Every headline figure on it is machine-checked against the source report by <code>scripts/verify-pages.mjs</code>.</p>
+    <p class="muted">Capability, not intent: nothing here claims anyone will do anything. It reports what a privileged address is technically able to do, and how much notice you would get.</p>
+  </footer>
+</main>
+<script type="application/json" id="ripcord-figures">[{"jsonPath":"verdict.status","raw":"undetermined","rendered":"Undetermined","label":"verdict status"},{"jsonPath":"verdict.timeToExitSeconds","raw":"0","rendered":"0 — none at all","label":"time to exit"},{"jsonPath":"block.number","raw":"25800000","rendered":"25800000","label":"pinned block"}]</script>

@@ -71,6 +71,52 @@ build one commit behind. Rather than assert the property transfers, the diff was
 taken: the dedup is provably the only delta, and it is pure composition
 downstream of every read, with no cache interaction.
 
+Re-run once more on day 6, on the final code (fail-closed read classification,
+structural gap dedup, schema 0.10.0), with a full cache wipe first:
+
+| Leg | What ran | Result |
+|---|---|---|
+| 9 | `.cache/` deleted, all 26 re-scanned **cold** (48.5 min) | 26 reports, **0 errors** |
+| 10 | all 26 re-run **warm** on the rebuilt cache (1.0 min) | **26/26 byte-identical** |
+| 11 | day-6 reports vs the day-5 set, compared semantically | **0 of 26 differ** — no verdict, window, publishability, enumeration, `missing[]` or `unknowns[]` change |
+| 12 | day-6 reports vs day-5, compared structurally | exactly **3 field paths added**, none removed: `enumeration.gaps[].site.{kind,id}` and `exitWindow.assessment.citedGapSites[]` |
+
+Legs 9–10 are the strongest determinism result the project has recorded: day 5
+managed 24/26 with two differing by `proof` present-vs-null, an artefact of
+running `scan` and `prove` in different passes. The run is now driven from
+`calibration/run-manifest.json`, which pins each target's mode, so the same
+command produces the same set every time — **26/26**.
+
+Legs 11–12 are the acceptance check for the day-6 changes, and they say the two
+things that needed saying: the inverted read classifier changed **no result**
+(every genuine revert in the set is still recognised as one), and the structural
+dedup tighten changed **no `missing[]` content** — its entire effect is to make
+the suppression key on identity instead of prose.
+
+### One live catch, worth recording
+
+The first cold pass produced a single `errors[]` entry, on stETH:
+
+```
+authorityIndirection: eth_call(0xae7ab9…) failed without any positive sign of a
+contract revert — treated as an infrastructure failure, not as "this function
+reverted"
+```
+
+Re-probing all 14 indirection getters against stETH afterwards classified every
+one of them as a **revert**, correctly — so the failure was a genuine transient
+infrastructure blip during the run, not a misclassification. Under the day-5
+code that call would have been recorded, and permanently cached, as a revert:
+`markers: []`, rendered as "checked, found none", on an Aragon contract whose
+authority *is* an ACL. Instead the stage failed loudly,
+`authorityIndirection` came back `null` — which CLAUDE.md defines as "cannot
+rule out delegated authority", never as "none" — and a re-run produced a clean
+report.
+
+That is the day-6 fix catching, on its first outing, exactly the class of thing
+it was built for. The re-run's report (0 errors, 14 getters probed, 0 markers) is
+the one committed.
+
 Leg 6 is worth stating separately: two independent ephemeral anvil forks
 produced the same $540,604,938.71 to the cent, so the proof engine is
 reproducible and not merely repeatable.

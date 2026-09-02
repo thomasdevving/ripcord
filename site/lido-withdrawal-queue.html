@@ -1,0 +1,274 @@
+<title>Ripcord — lido-withdrawal-queue</title>
+<style>
+:root{
+  color-scheme: light;
+  --surface-1:#fcfcfb; --plane:#f9f9f7;
+  --text-primary:#0b0b0b; --text-secondary:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --baseline:#c3c2b7; --border:rgba(11,11,11,.10);
+  --series-1:#2a78d6; --series-2:#eb6834;
+  --good:#0ca30c; --warning:#fab219; --critical:#d03b3b;
+  --good-ink:#006300; --warn-ink:#7a5200; --crit-ink:#9c2020;
+  --good-bg:#eef7ee; --warn-bg:#fdf5e3; --crit-bg:#fbeded;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --surface-1:#1a1a19; --plane:#0d0d0d;
+    --text-primary:#ffffff; --text-secondary:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --baseline:#383835; --border:rgba(255,255,255,.10);
+    --series-1:#3987e5; --series-2:#d95926;
+    --good-ink:#0ca30c; --warn-ink:#fab219; --crit-ink:#e66767;
+    --good-bg:#12210f; --warn-bg:#241d09; --crit-bg:#2a1414;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --surface-1:#1a1a19; --plane:#0d0d0d;
+  --text-primary:#ffffff; --text-secondary:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --baseline:#383835; --border:rgba(255,255,255,.10);
+  --series-1:#3987e5; --series-2:#d95926;
+  --good-ink:#0ca30c; --warn-ink:#fab219; --crit-ink:#e66767;
+  --good-bg:#12210f; --warn-bg:#241d09; --crit-bg:#2a1414;
+}
+body{background:var(--plane);color:var(--text-primary);font:14px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;}
+.page{max-width:960px;margin:0 auto;padding:32px 20px 64px;}
+code,pre,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}
+h1{font-size:24px;margin:0 0 4px;letter-spacing:-.01em;}
+h2{font-size:17px;margin:0 0 6px;letter-spacing:-.01em;}
+h3{font-size:14px;margin:22px 0 8px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.06em;}
+p{margin:0 0 10px;}
+.muted{color:var(--muted);}
+.note{color:var(--text-secondary);font-size:13px;margin-bottom:14px;}
+.statement{font-size:15px;color:var(--text-primary);}
+
+.masthead{display:flex;gap:18px;align-items:baseline;border-bottom:1px solid var(--border);padding-bottom:18px;margin-bottom:22px;}
+.brand{font-weight:700;letter-spacing:.16em;font-size:12px;color:var(--muted);}
+.target code{font-size:12px;color:var(--text-secondary);display:block;margin-bottom:2px;word-break:break-all;}
+.target .muted{font-size:12px;}
+
+section{background:var(--surface-1);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px;}
+
+/* The hero. Tone is carried by a left rule + an iconed badge, never by colour alone. */
+.hero{border-left:4px solid var(--muted);}
+.hero.good{border-left-color:var(--good);}
+.hero.critical{border-left-color:var(--critical);}
+.hero.unknown{border-left-color:var(--warning);}
+.verdict-badge{display:inline-block;font-weight:650;font-size:13px;letter-spacing:.04em;text-transform:uppercase;
+  padding:5px 11px;border-radius:999px;margin-bottom:10px;border:1px solid var(--border);}
+.hero.good .verdict-badge{background:var(--good-bg);color:var(--good-ink);}
+.hero.critical .verdict-badge{background:var(--crit-bg);color:var(--crit-ink);}
+.hero.unknown .verdict-badge{background:var(--warn-bg);color:var(--warn-ink);}
+.verdict-statement{font-size:16px;line-height:1.5;margin-bottom:18px;}
+.margin{font-size:14px;color:var(--text-secondary);}
+
+.chart{margin:6px 0 4px;}
+.chart svg{width:100%;height:auto;display:block;}
+.bar-label{font:600 12.5px system-ui,sans-serif;fill:var(--text-primary);}
+.bar-value{font:600 13px system-ui,sans-serif;fill:var(--text-primary);}
+.bar-sub{font:11.5px system-ui,sans-serif;fill:var(--muted);}
+.legend{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--text-secondary);margin-top:6px;}
+.legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;vertical-align:-1px;}
+.sw1{background:var(--series-1);} .sw2{background:var(--series-2);}
+.swh{background:repeating-linear-gradient(45deg,var(--muted) 0 2px,transparent 2px 5px);border:1px solid var(--baseline);}
+.swn{background:color-mix(in srgb,var(--series-1) 12%,transparent);border:1px solid var(--series-1);}
+
+.missing{background:var(--warn-bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin:14px 0 4px;font-size:13px;}
+.missing ul{margin:6px 0 0;padding-left:18px;} .missing li{margin-bottom:4px;}
+.basis{background:var(--plane);border:1px solid var(--border);border-radius:8px;padding:12px 14px;font-size:13px;}
+.basis ul{margin:4px 0 10px;padding-left:18px;}
+
+.proof{margin-top:18px;border:1px solid var(--border);border-radius:8px;background:var(--plane);padding:16px;}
+.proof-head{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start;}
+.proof-label{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:2px;}
+.proof-figure{font-size:34px;font-weight:650;letter-spacing:-.02em;line-height:1.1;}
+.proof-notice-figure{font-size:20px;font-weight:600;}
+.proof-note{font-size:12px;color:var(--text-secondary);max-width:40ch;margin-top:4px;}
+.sandbox{font-size:12px;color:var(--text-secondary);margin:12px 0 0;}
+.repro{background:var(--plane);border:1px solid var(--border);border-radius:6px;padding:12px;overflow-x:auto;font-size:12px;}
+
+.banner{border-radius:8px;padding:12px 14px;margin:12px 0;border:1px solid var(--border);font-size:13px;}
+.banner p{margin:4px 0 0;}
+.banner.warn{background:var(--warn-bg);}
+.banner.danger{background:var(--crit-bg);color:var(--crit-ink);}
+.banner.ok{background:var(--good-bg);}
+
+.chip{display:inline-block;font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);white-space:nowrap;}
+.chip.good{background:var(--good-bg);color:var(--good-ink);}
+.chip.critical{background:var(--crit-bg);color:var(--crit-ink);}
+.chip.unknown{background:var(--warn-bg);color:var(--warn-ink);}
+
+.scroll{overflow-x:auto;}
+table{border-collapse:collapse;width:100%;font-size:13px;}
+th{text-align:left;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--baseline);padding:7px 10px 7px 0;font-size:12px;text-transform:uppercase;letter-spacing:.04em;}
+td{border-bottom:1px solid var(--grid);padding:8px 10px 8px 0;vertical-align:top;}
+td code{font-size:12px;}
+.addr{background:var(--plane);border:1px solid var(--border);border-radius:4px;padding:1px 5px;}
+
+.path{border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:var(--plane);}
+.path-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;font-size:13px;}
+.hops{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
+.hops li{display:flex;flex-direction:column;gap:2px;border:1px solid var(--border);border-radius:6px;padding:6px 10px;background:var(--surface-1);}
+.hops li+li::before{content:"→";position:absolute;margin-left:-19px;color:var(--muted);}
+.hop-kind{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);}
+.rel{font-size:11px;color:var(--text-secondary);}
+
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px 22px;margin:0;}
+.kv dt{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);}
+.kv dd{margin:1px 0 0;font-size:13px;word-break:break-all;}
+.counts{font-size:14px;}
+.wrap{word-break:break-all;font-size:12px;color:var(--text-secondary);}
+details{margin-top:12px;}
+summary{cursor:pointer;font-size:13px;color:var(--text-secondary);padding:6px 0;}
+.tabletwin{margin-top:16px;}
+footer{margin-top:26px;font-size:12px;color:var(--text-secondary);}
+</style>
+<main class="page">
+  <header class="masthead">
+    <div class="brand">RIPCORD</div>
+    <div class="target">
+      <h1>lido-withdrawal-queue</h1>
+      <code>0x889edC2eDab5f40e902b864aD4d7AdE8E412F9B1</code>
+      <span class="muted">chain 1 · block 25800000</span>
+    </div>
+  </header>
+
+  
+
+  <section class="hero unknown">
+    <div class="verdict-badge">? Undetermined</div>
+    <p class="verdict-statement">Verdict undetermined on the exit-window side: Exit window not established: 1 authority route(s) could not be resolved to a controller, and no route was found to impose any delay. Unknown notice is not the same as no risk, and it is not the same as a delay either. Time to exit is at least 0s, but the comparison cannot be made against a window that was not established.</p>
+    <figure class="chart">
+  <svg viewBox="0 0 720 162" role="img" aria-label="Notice before the rules can change, against the time needed to leave">
+    <defs>
+      <pattern id="hatch-unknown" width="7" height="7" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+        <rect width="7" height="7" fill="var(--surface-1)"/><line x1="0" y1="0" x2="0" y2="7" stroke="var(--muted)" stroke-width="2.5"/>
+      </pattern>
+      <pattern id="hatch-series-1" width="7" height="7" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+        <rect width="7" height="7" fill="var(--surface-1)"/><line x1="0" y1="0" x2="0" y2="7" stroke="var(--series-1)" stroke-width="2.5"/>
+      </pattern>
+      <pattern id="hatch-series-2" width="7" height="7" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+        <rect width="7" height="7" fill="var(--surface-1)"/><line x1="0" y1="0" x2="0" y2="7" stroke="var(--series-2)" stroke-width="2.5"/>
+      </pattern>
+    </defs>
+    <line x1="4" y1="6" x2="4" y2="140" stroke="var(--baseline)" stroke-width="1" />
+    <g>
+      <text x="4" y="20" class="bar-label">Notice before the rules can change</text>
+      <title>Notice before the rules can change: NOT ESTABLISHED</title>
+      <rect x="4" y="28" width="506" height="22" rx="4"
+             fill="url(#hatch-unknown)" stroke="var(--muted)" stroke-width="1" stroke-dasharray="4 3" />
+      <text x="520" y="43" class="bar-value">NOT ESTABLISHED</text>
+      <text x="4" y="65" class="bar-sub">not established — see what is missing below</text>
+    </g>
+<g>
+      <text x="4" y="84" class="bar-label">Time needed to leave</text>
+      <title>Time needed to leave: at least 0 — none at all</title>
+      <rect x="4" y="92" width="3" height="22" fill="var(--series-2)" />
+      <text x="17" y="107" class="bar-value">at least 0 — none at all</text>
+      <text x="4" y="129" class="bar-sub">lower_bound — a LOWER BOUND; unmeasured legs are never counted as zero</text>
+    </g>
+  </svg>
+  <figcaption class="legend">
+    <span><i class="sw sw1"></i>Notice before the rules can change</span>
+    <span><i class="sw sw2"></i>Time needed to leave</span>
+    <span><i class="sw swh"></i>Hatched = not established; deliberately no length to read off it</span>
+    <span><i class="sw swn"></i>Flat tint = nothing to measure (no route was found to exist)</span>
+  </figcaption>
+</figure>
+    
+    
+    <div class="missing"><strong>What is missing, and why this verdict is not crisper</strong><ul><li>route &quot;proxyAdmin&quot; terminates as no_authority_found at 0x3e40d73eb977dc6a537af587d48316fee66e9c8c — its notice period is unknown</li><li>role enumeration at target could not be shown complete, so an authority route may exist that was never seen: Enumerable membership below is authoritative, but role-hash DISCOVERY was partial: the provider's eth_getLogs range (9 blocks) and the 1500-request budget covered only blocks 25793250–25800000 of 17172547–25800000; a role never granted/revoked within that window would be missed</li></ul></div>
+    <details class="tabletwin"><summary>The same two figures as a table</summary>
+      <div class="scroll"><table>
+    <thead><tr><th>Measure</th><th>Value</th><th>Established?</th></tr></thead>
+    <tbody><tr><td>Notice before the rules can change</td><td>NOT ESTABLISHED</td><td>no</td></tr><tr><td>Time needed to leave</td><td>at least 0 — none at all</td><td>lower bound only</td></tr></tbody>
+  </table></div>
+    </details>
+  </section>
+
+  <section><h2>Exit window</h2><p class="note">The exit window is the notice you get before a rule change takes effect, minus every way that notice can be cut. It is modelled per route and the protocol figure is the <strong>minimum</strong> across them: a timelock on one path is worth nothing beside an un-delayed one.</p><p class="statement">Exit window not established: 1 authority route(s) could not be resolved to a controller, and no route was found to impose any delay. Unknown notice is not the same as no risk, and it is not the same as a delay either.</p>
+     
+     <h3>Routes to changing the rules</h3>
+     <div class="scroll"><table>
+    <thead><tr><th>Route</th><th>Notice</th><th>Effective controller</th><th>Terminated because</th><th>Role privilege</th><th>Reaches</th><th>Confidence</th></tr></thead>
+    <tbody><tr><td><code>proxyAdmin</code></td><td><span class="chip unknown">? undetermined</span></td><td>contract <code class="addr" title="0x3e40d73eb977dc6a537af587d48316fee66e9c8c">0x3e40d73e…6e9c8c</code></td><td>no_authority_found</td><td><span class='muted'>n/a</span></td><td><code>CODE_CHANGE</code> <code>AUTHORITY_CHANGE</code></td><td>high</td></tr></tbody>
+  </table></div>
+     <h3>Ways the notice could be shorter than it looks</h3>
+     <div class="scroll"><table>
+    <thead><tr><th>Kind</th><th>Route</th><th>Detail</th></tr></thead>
+    <tbody><tr><td><code>unresolved_authority</code></td><td>proxyAdmin</td><td>proxyAdmin terminates at 0x3e40d73eb977dc6a537af587d48316fee66e9c8c as &quot;no_authority_found&quot; — Ripcord could not establish who ultimately controls it, so an un-delayed path through it cannot be excluded</td></tr></tbody>
+  </table></div>
+     <details><summary>Which checks actually ran (2 of 8)</summary><div class="scroll"><table>
+    <thead><tr><th>Check</th><th>Ran?</th><th>Result</th><th>Note</th></tr></thead>
+    <tbody><tr><td>parallel_ungated_route</td><td><span class="chip good">✓ performed</span></td><td>none found</td><td>1 route(s) enumerated; none was found to impose zero delay</td></tr><tr><td>delay_mutator_present</td><td><span class="chip unknown">? NOT performed</span></td><td><span class='muted'>—</span></td><td>no timelock was reached on any route, so there was no delay to test for mutability</td></tr><tr><td>delay_mutator_guard</td><td><span class="chip unknown">? NOT performed</span></td><td><span class='muted'>—</span></td><td>not applicable: no timelock on any route</td></tr><tr><td>timelock_upgradeable</td><td><span class="chip unknown">? NOT performed</span></td><td><span class='muted'>—</span></td><td>not applicable: no timelock on any route</td></tr><tr><td>canceller_or_guardian</td><td><span class="chip unknown">? NOT performed</span></td><td><span class='muted'>—</span></td><td>not applicable: no timelock on any route</td></tr><tr><td>pending_owner_excluded</td><td><span class="chip good">✓ performed</span></td><td>none found</td><td>0 pendingOwner route(s) excluded</td></tr><tr><td>governance_proposal_path</td><td><span class="chip unknown">? NOT performed</span></td><td><span class='muted'>—</span></td><td>NOT CHECKED. Enumerating what an arbitrary-call governor can reach requires modelling proposal execution, which is out of scope. Where a governor sits behind a timelock the delay still applies to it, so this gap does not make a reported delay optimistic; where a governor is reachable WITHOUT a delay it is already captured as an ungated route.</td></tr><tr><td>safe_module_or_guard</td><td><span class="chip unknown">? NOT performed</span></td><td><span class='muted'>—</span></td><td>NOT CHECKED. Safe modules are not enumerated. This does not affect the window arithmetic, because a Safe is already modelled as imposing ZERO notice — a module could change WHO acts, not HOW FAST.</td></tr></tbody>
+  </table></div></details></section>
+
+  <section><h2>Time to exit</h2><p class="note">A <strong>lower bound</strong> on how long a holder actually needs to leave, with its gaps named. An unmeasured leg is never counted as zero.</p><p class="statement">Time to exit is AT LEAST 0s, possibly more: 0 waiting leg(s) were measured but 1 detected leg(s) could not be (requestWithdrawals(uint256[],address) → claimWithdrawals(uint256[],uint256[])). The unmeasured legs are named rather than treated as zero, which is why this is a floor and not a value.</p>
+     <div class="scroll"><table>
+    <thead><tr><th>Leg</th><th>Kind</th><th>Duration</th><th>Measured?</th><th>Note</th></tr></thead>
+    <tbody><tr><td><code>requestWithdrawals(uint256[],address) → claimWithdrawals(uint256[],uint256[])</code></td><td>two_step</td><td><span class="chip unknown">? unknown duration</span></td><td><span class="chip unknown">? no</span></td><td>Lido withdrawal-queue shape: a request is minted as an NFT and claimed once finalized. Exit is queued, and Ripcord could not read how long the queue takes — this leg is of UNKNOWN length, which makes the whole time-to-exit a lower bound.</td></tr></tbody>
+  </table></div>
+     <h3>Legs known to exist but not measured</h3><div class="scroll"><table>
+    <thead><tr><th>Leg</th><th>Why</th></tr></thead>
+    <tbody><tr><td>requestWithdrawals(uint256[],address) → claimWithdrawals(uint256[],uint256[])</td><td>a two-step exit is present but exposes no readable duration accessor, so the queue length is unknown</td></tr></tbody>
+  </table></div>
+     <div class="banner warn"><strong>Liquidity depth is not modelled.</strong><p>Liquidity depth is not modelled. Establishing whether a given position could actually be sold requires pool discovery and depth integration across venues — an indexer, which Ripcord deliberately does not run (same reason its major-token list is curated). Any shortcut available here would produce an authoritative-looking number that is not one, so no number is produced. Practical consequence: for a position large relative to available liquidity the real time-to-exit is LONGER than the figure above, never shorter.</p>
+     <p>Consequence: for a position large relative to available liquidity the real time to exit is <strong>longer</strong> than shown here, never shorter.</p></div></section>
+
+  <section><h2>Authority path</h2><p class="note">Who ends up holding the power, and how many hops away. Confidence degrades with depth — a controller three hops out is never asserted with a direct owner's certainty.</p><div class="path">
+      <div class="path-head"><code>proxyAdmin</code> <span class="chip unknown">? no_authority_found</span> <span class="muted">confidence high</span></div>
+      <ol class="hops">
+        <li><span class="hop-kind">target</span><code class="addr" title="0x889edC2eDab5f40e902b864aD4d7AdE8E412F9B1">0x889edC2e…12F9B1</code></li>
+        <li><span class="hop-kind">contract · depth 1</span><code class="addr" title="0x3e40d73eb977dc6a537af587d48316fee66e9c8c">0x3e40d73e…6e9c8c</code><span class="rel">via proxyAdmin</span></li>
+      </ol>
+    </div></section>
+
+  <section><h2>Authority held elsewhere</h2><p class="note">Handles to authorisation that Ripcord finds but does not follow.</p><p class="muted">Checked 14 delegated-authority getters; none resolved to a non-zero address. (An empty result here means <em>checked and found none</em> — the list of what was probed is in the report.)</p></section>
+
+  <section><h2>Capabilities</h2><p class="note">What a privileged address is technically able to do. Guards are established by <strong>probing</strong> — a real eth_call from unrelated addresses at the pinned block — never by reading source or guessing from a name.</p><div class="banner warn">
+        <strong>PARTIAL role reconstruction</strong>
+        <span class="muted">confidence medium</span>
+        <p>Enumerable membership below is authoritative, but role-hash DISCOVERY was partial: the provider's eth_getLogs range (9 blocks) and the 1500-request budget covered only blocks 25793250–25800000 of 17172547–25800000; a role never granted/revoked within that window would be missed</p>
+        <p class="mono">covered blocks 25793250–25800000 · provider eth_getLogs range 9</p>
+      </div>
+     <p class="counts">
+       <strong>67</strong> selectors recovered ·
+       <strong>3</strong> classified capabilities ·
+       <strong>0</strong> needing manual verification ·
+       <strong>64</strong> unmatched
+     </p>
+     <p class="note">Unmatched means <em>not in Ripcord's taxonomy table</em> — never <em>not privileged</em>. The count is published so "3 capabilities" cannot quietly read as "there are only 3".</p>
+     <div class="scroll"><table>
+    <thead><tr><th>Function</th><th>Category</th><th>Guard</th><th>Name match</th><th>Attributed to</th></tr></thead>
+    <tbody><tr><td><code>grantRole(bytes32,address)</code></td><td><code>AUTHORITY_CHANGE</code></td><td><span class="chip critical">✕ attributed to 1 holder(s)</span></td><td>standard</td><td><code class="addr" title="0x3e40D73EB977Dc6a537aF587D48316feE66E9C8c">0x3e40D73E…6E9C8c</code></td></tr><tr><td><code>renounceRole(bytes32,address)</code></td><td><code>AUTHORITY_CHANGE</code></td><td><span class="chip good">✓ guarded, holder unknown</span></td><td>standard</td><td><span class='muted'>—</span></td></tr><tr><td><code>revokeRole(bytes32,address)</code></td><td><code>AUTHORITY_CHANGE</code></td><td><span class="chip critical">✕ attributed to 1 holder(s)</span></td><td>standard</td><td><code class="addr" title="0x3e40D73EB977Dc6a537aF587D48316feE66E9C8c">0x3e40D73E…6E9C8c</code></td></tr></tbody>
+  </table></div>
+     
+     <details><summary>Unmatched selectors (64)</summary><p class="mono wrap">0x01ffc9a7 0x046f7da2 0x06fdde03 0x07e2cea5 0x081812fc 0x095ea7b3 0x0d25a957 0x19aa6257 0x19c2b4c3 0x220ca2f4 0x23b872dd 0x248a9ca3 0x29fd065d 0x2b95b781 0x2de03aa1 0x389ed267 0x42842e0e 0x46a086b4 0x4f069a13 0x526eae3e 0x55f804b3 0x589ff76c 0x5e7eead9 0x62abe3fa 0x6352211e 0x70a08231 0x714c5398 0x7951b76f 0x7d031b65 0x8aa10435 0x9010d07c 0x91d14854 0x92b18a47 0x95d89b41 0x96992fed 0x9b36be58 0xa217fddf 0xa22cb465 0xa302ee38 0xa52e9c9f 0xabe9cfc8 0xacf41e4d 0xb187bd26 0xb6013cef 0xb7bdf748 0xb88d4fde 0xb8c4b85a 0xc2fc7aff 0xc4d66de8 0xc87b56dd 0xc97912d8 0xca15c873 0xd0fb84e8 0xd6681042 0xd9fb643a 0xdb2296cd 0xe00bfe50 0xe3afe0a3 0xe7c0835d 0xe985e9c5 0xeed53bf5 0xf3f449c7 0xf6fa8a47 0xf8444436</p></details></section>
+
+  
+
+  <section><h2>Unknowns and errors</h2><p class="note">Always present, never suppressed to look clean. An empty list here is a claim that nothing went wrong.</p><div class="scroll"><table>
+    <thead><tr><th>Field</th><th>Reason</th></tr></thead>
+    <tbody><tr><td><code>authority.accessControl.roles</code></td><td>Enumerable membership below is authoritative, but role-hash DISCOVERY was partial: the provider's eth_getLogs range (9 blocks) and the 1500-request budget covered only blocks 25793250–25800000 of 17172547–25800000; a role never granted/revoked within that window would be missed</td></tr><tr><td><code>dependencies.tokens[0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84].capabilities</code></td><td>target's proxy pattern is 'unknown' (a DELEGATECALL was found but no recognized storage pattern) — capability detection scanned the target's OWN bytecode as a best-effort fallback, but if this DELEGATECALL actually belongs to a genuine unrecognized proxy scheme rather than an embedded child contract (see day-1 known edge), the real capabilities may belong to an unidentified implementation instead</td></tr><tr><td><code>exitWindow</code></td><td>route &quot;proxyAdmin&quot; terminates as no_authority_found at 0x3e40d73eb977dc6a537af587d48316fee66e9c8c — its notice period is unknown</td></tr><tr><td><code>timeToExit.legs</code></td><td>requestWithdrawals(uint256[],address) → claimWithdrawals(uint256[],uint256[]): a two-step exit is present but exposes no readable duration accessor, so the queue length is unknown</td></tr></tbody>
+  </table></div>
+           <p class="muted">No infrastructure errors.</p></section>
+
+  <section><h2>Provenance</h2><p class="note">Everything above is pinned to one block and reproducible from the JSON report this page was rendered from.</p><dl class="meta">
+    <div class="kv"><dt>Target</dt><dd><code>0x889edC2eDab5f40e902b864aD4d7AdE8E412F9B1</code></dd></div>
+    <div class="kv"><dt>Chain</dt><dd>1</dd></div>
+    <div class="kv"><dt>Pinned block</dt><dd><code>25800000</code></dd></div>
+    <div class="kv"><dt>Block hash</dt><dd><code>0xeb4ccbdb418b083ebbf646b371092c7c02016194e3a90caba9a9492becba8a2d</code></dd></div>
+    <div class="kv"><dt>Schema version</dt><dd>0.10.0</dd></div>
+    <div class="kv"><dt>Ruleset version</dt><dd>0.9.0</dd></div>
+    <div class="kv"><dt>Cleared-registry version</dt><dd>0.1.0</dd></div>
+    <div class="kv"><dt>Exit-window rules</dt><dd>0.1.0</dd></div>
+    <div class="kv"><dt>Time-to-exit rules</dt><dd>0.1.0</dd></div>
+    <div class="kv"><dt>Taxonomy version</dt><dd>0.2.0</dd></div>
+  </dl></section>
+
+  <footer>
+    <p>Generated by Ripcord from a pinned JSON report. This page performs no network access, at render time or view time.
+    Every headline figure on it is machine-checked against the source report by <code>scripts/verify-pages.mjs</code>.</p>
+    <p class="muted">Capability, not intent: nothing here claims anyone will do anything. It reports what a privileged address is technically able to do, and how much notice you would get.</p>
+  </footer>
+</main>
+<script type="application/json" id="ripcord-figures">[{"jsonPath":"verdict.status","raw":"undetermined","rendered":"Undetermined","label":"verdict status"},{"jsonPath":"verdict.timeToExitSeconds","raw":"0","rendered":"at least 0 — none at all","label":"time to exit"},{"jsonPath":"block.number","raw":"25800000","rendered":"25800000","label":"pinned block"}]</script>

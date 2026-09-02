@@ -178,7 +178,7 @@ would be dishonest.
 **Do you host anything a user has to trust?**
 One thing: the static report site. It is a convenience, not a dependency —
 every page is generated from a committed JSON report by `scripts/render.ts`, and
-`pnpm verify:pages` re-checks all 78 headline figures on the pages against the
+`pnpm verify:pages` re-checks all 77 headline figures on the pages against the
 source reports in CI. So a reader who does not trust the hosted pages can
 regenerate them from the repository and diff. Nothing about the tool requires the
 site to exist.

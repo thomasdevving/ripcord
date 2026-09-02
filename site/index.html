@@ -1,0 +1,256 @@
+<title>Ripcord — calibration set</title>
+<style>
+:root{
+  color-scheme: light;
+  --surface-1:#fcfcfb; --plane:#f9f9f7;
+  --text-primary:#0b0b0b; --text-secondary:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --baseline:#c3c2b7; --border:rgba(11,11,11,.10);
+  --series-1:#2a78d6; --series-2:#eb6834;
+  --good:#0ca30c; --warning:#fab219; --critical:#d03b3b;
+  --good-ink:#006300; --warn-ink:#7a5200; --crit-ink:#9c2020;
+  --good-bg:#eef7ee; --warn-bg:#fdf5e3; --crit-bg:#fbeded;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --surface-1:#1a1a19; --plane:#0d0d0d;
+    --text-primary:#ffffff; --text-secondary:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --baseline:#383835; --border:rgba(255,255,255,.10);
+    --series-1:#3987e5; --series-2:#d95926;
+    --good-ink:#0ca30c; --warn-ink:#fab219; --crit-ink:#e66767;
+    --good-bg:#12210f; --warn-bg:#241d09; --crit-bg:#2a1414;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --surface-1:#1a1a19; --plane:#0d0d0d;
+  --text-primary:#ffffff; --text-secondary:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --baseline:#383835; --border:rgba(255,255,255,.10);
+  --series-1:#3987e5; --series-2:#d95926;
+  --good-ink:#0ca30c; --warn-ink:#fab219; --crit-ink:#e66767;
+  --good-bg:#12210f; --warn-bg:#241d09; --crit-bg:#2a1414;
+}
+body{background:var(--plane);color:var(--text-primary);font:14px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;}
+.page{max-width:960px;margin:0 auto;padding:32px 20px 64px;}
+code,pre,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}
+h1{font-size:24px;margin:0 0 4px;letter-spacing:-.01em;}
+h2{font-size:17px;margin:0 0 6px;letter-spacing:-.01em;}
+h3{font-size:14px;margin:22px 0 8px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.06em;}
+p{margin:0 0 10px;}
+.muted{color:var(--muted);}
+.note{color:var(--text-secondary);font-size:13px;margin-bottom:14px;}
+.statement{font-size:15px;color:var(--text-primary);}
+
+.masthead{display:flex;gap:18px;align-items:baseline;border-bottom:1px solid var(--border);padding-bottom:18px;margin-bottom:22px;}
+.brand{font-weight:700;letter-spacing:.16em;font-size:12px;color:var(--muted);}
+.target code{font-size:12px;color:var(--text-secondary);display:block;margin-bottom:2px;word-break:break-all;}
+.target .muted{font-size:12px;}
+
+section{background:var(--surface-1);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px;}
+
+/* The hero. Tone is carried by a left rule + an iconed badge, never by colour alone. */
+.hero{border-left:4px solid var(--muted);}
+.hero.good{border-left-color:var(--good);}
+.hero.critical{border-left-color:var(--critical);}
+.hero.unknown{border-left-color:var(--warning);}
+.verdict-badge{display:inline-block;font-weight:650;font-size:13px;letter-spacing:.04em;text-transform:uppercase;
+  padding:5px 11px;border-radius:999px;margin-bottom:10px;border:1px solid var(--border);}
+.hero.good .verdict-badge{background:var(--good-bg);color:var(--good-ink);}
+.hero.critical .verdict-badge{background:var(--crit-bg);color:var(--crit-ink);}
+.hero.unknown .verdict-badge{background:var(--warn-bg);color:var(--warn-ink);}
+.verdict-statement{font-size:16px;line-height:1.5;margin-bottom:18px;}
+.margin{font-size:14px;color:var(--text-secondary);}
+
+.chart{margin:6px 0 4px;}
+.chart svg{width:100%;height:auto;display:block;}
+.bar-label{font:600 12.5px system-ui,sans-serif;fill:var(--text-primary);}
+.bar-value{font:600 13px system-ui,sans-serif;fill:var(--text-primary);}
+.bar-sub{font:11.5px system-ui,sans-serif;fill:var(--muted);}
+.legend{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--text-secondary);margin-top:6px;}
+.legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;vertical-align:-1px;}
+.sw1{background:var(--series-1);} .sw2{background:var(--series-2);}
+.swh{background:repeating-linear-gradient(45deg,var(--muted) 0 2px,transparent 2px 5px);border:1px solid var(--baseline);}
+.swn{background:color-mix(in srgb,var(--series-1) 12%,transparent);border:1px solid var(--series-1);}
+
+.missing{background:var(--warn-bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin:14px 0 4px;font-size:13px;}
+.missing ul{margin:6px 0 0;padding-left:18px;} .missing li{margin-bottom:4px;}
+.basis{background:var(--plane);border:1px solid var(--border);border-radius:8px;padding:12px 14px;font-size:13px;}
+.basis ul{margin:4px 0 10px;padding-left:18px;}
+
+.proof{margin-top:18px;border:1px solid var(--border);border-radius:8px;background:var(--plane);padding:16px;}
+.proof-head{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start;}
+.proof-label{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:2px;}
+.proof-figure{font-size:34px;font-weight:650;letter-spacing:-.02em;line-height:1.1;}
+.proof-notice-figure{font-size:20px;font-weight:600;}
+.proof-note{font-size:12px;color:var(--text-secondary);max-width:40ch;margin-top:4px;}
+.sandbox{font-size:12px;color:var(--text-secondary);margin:12px 0 0;}
+.repro{background:var(--plane);border:1px solid var(--border);border-radius:6px;padding:12px;overflow-x:auto;font-size:12px;}
+
+.banner{border-radius:8px;padding:12px 14px;margin:12px 0;border:1px solid var(--border);font-size:13px;}
+.banner p{margin:4px 0 0;}
+.banner.warn{background:var(--warn-bg);}
+.banner.danger{background:var(--crit-bg);color:var(--crit-ink);}
+.banner.ok{background:var(--good-bg);}
+
+.chip{display:inline-block;font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);white-space:nowrap;}
+.chip.good{background:var(--good-bg);color:var(--good-ink);}
+.chip.critical{background:var(--crit-bg);color:var(--crit-ink);}
+.chip.unknown{background:var(--warn-bg);color:var(--warn-ink);}
+
+.scroll{overflow-x:auto;}
+table{border-collapse:collapse;width:100%;font-size:13px;}
+th{text-align:left;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--baseline);padding:7px 10px 7px 0;font-size:12px;text-transform:uppercase;letter-spacing:.04em;}
+td{border-bottom:1px solid var(--grid);padding:8px 10px 8px 0;vertical-align:top;}
+td code{font-size:12px;}
+.addr{background:var(--plane);border:1px solid var(--border);border-radius:4px;padding:1px 5px;}
+
+.path{border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:var(--plane);}
+.path-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;font-size:13px;}
+.hops{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
+.hops li{display:flex;flex-direction:column;gap:2px;border:1px solid var(--border);border-radius:6px;padding:6px 10px;background:var(--surface-1);}
+.hops li+li::before{content:"→";position:absolute;margin-left:-19px;color:var(--muted);}
+.hop-kind{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);}
+.rel{font-size:11px;color:var(--text-secondary);}
+
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px 22px;margin:0;}
+.kv dt{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);}
+.kv dd{margin:1px 0 0;font-size:13px;word-break:break-all;}
+.counts{font-size:14px;}
+.wrap{word-break:break-all;font-size:12px;color:var(--text-secondary);}
+details{margin-top:12px;}
+summary{cursor:pointer;font-size:13px;color:var(--text-secondary);padding:6px 0;}
+.tabletwin{margin-top:16px;}
+footer{margin-top:26px;font-size:12px;color:var(--text-secondary);}
+</style>
+<style>
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;}
+.card{display:flex;flex-direction:column;gap:5px;padding:14px 16px;border:1px solid var(--border);border-left-width:4px;
+  border-radius:9px;background:var(--surface-1);text-decoration:none;color:inherit;}
+.card.good{border-left-color:var(--good);} .card.critical{border-left-color:var(--critical);} .card.unknown{border-left-color:var(--warning);}
+.card-verdict{font-size:11.5px;font-weight:650;text-transform:uppercase;letter-spacing:.05em;}
+.card.good .card-verdict{color:var(--good-ink);} .card.critical .card-verdict{color:var(--crit-ink);} .card.unknown .card-verdict{color:var(--warn-ink);}
+.card-name{font-size:15px;font-weight:600;}
+.card-meta{font-size:12px;color:var(--text-secondary);}
+</style>
+<main class="page">
+  <header class="masthead"><div class="brand">RIPCORD</div><div class="target"><h1>Calibration set</h1>
+    <span class="muted">22 mainnet protocols, every one pinned to block 25800000 on chain 1</span></div></header>
+  <section>
+    <h2>What these pages are</h2>
+    <p class="note">Each page is rendered from a pinned JSON report — no live scanning, no network access at render or view time.
+    Only reports that pass the disclosure gate are published here; reports blocked by an unrecognised probe result are deliberately absent.</p>
+    <p class="note"><strong>Read the colours as epistemics, not as grades.</strong> Amber is not "medium risk" — it means Ripcord
+    could not establish an answer, and an unestablished answer is never rendered as a pass. A hatched bar has no length to read off it
+    on purpose.</p>
+  </section>
+  <section><h2>Reports</h2><div class="cards"><a class="card unknown" href="./aave-pool-addresses-provider.html">
+        <span class="card-verdict">? Undetermined</span>
+        <span class="card-name">aave-pool-addresses-provider</span>
+        <span class="card-meta">notice: not established · leave: 0 — none at all</span>
+      </a>
+<a class="card unknown" href="./aave-v3-acl-manager.html">
+        <span class="card-verdict">? Undetermined</span>
+        <span class="card-name">aave-v3-acl-manager</span>
+        <span class="card-meta">notice: not established · leave: 0 — none at all</span>
+      </a>
+<a class="card unknown" href="./balancer-vault.html">
+        <span class="card-verdict">? Undetermined</span>
+        <span class="card-name">balancer-vault</span>
+        <span class="card-meta">notice: not established · leave: 0 — none at all</span>
+      </a>
+<a class="card critical" href="./cbeth.html">
+        <span class="card-verdict">✕ No notice at all</span>
+        <span class="card-name">cbeth</span>
+        <span class="card-meta">notice: 0 — none at all · leave: 0 — none at all</span>
+      </a>
+<a class="card unknown" href="./compound-cdai.html">
+        <span class="card-verdict">? Undetermined</span>
+        <span class="card-name">compound-cdai</span>
+        <span class="card-meta">notice: not established · leave: 0 — none at all</span>
+      </a>
+<a class="card good" href="./compound-comet-cusdcv3.html">
+        <span class="card-verdict">✓ You can exit in time</span>
+        <span class="card-name">compound-comet-cusdcv3</span>
+        <span class="card-meta">notice: 2 days · leave: 0 — none at all</span>
+      </a>
+<a class="card unknown" href="./compound-unitroller.html">
+        <span class="card-verdict">? Undetermined</span>
+        <span class="card-name">compound-unitroller</span>
+        <span class="card-meta">notice: not established · leave: 0 — none at all</span>
+      </a>
+<a class="card unknown" href="./curve-3pool.html">
+        <span class="card-verdict">? Undetermined</span>
+        <span class="card-name">curve-3pool</span>
+        <span class="card-meta">notice: not established · leave: not established</span>
+      </a>
+<a class="card unknown" href="./dai.html">
+        <span class="card-verdict">? Undetermined</span>
+        <span class="card-name">dai</span>
+        <span class="card-meta">notice: not established · leave: 0 — none at all</span>
+      </a>
+<a class="card unknown" href="./ethena-usde.html">
+        <span class="card-verdict">? Undetermined</span>
+        <span class="card-name">ethena-usde</span>
+        <span class="card-meta">notice: 1 day nominal, unproven · leave: 0 — none at all</span>
+      </a>
+<a class="card critical" href="./frax-share-fxs.html">
+        <span class="card-verdict">✕ No notice at all</span>
+        <span class="card-name">frax-share-fxs</span>
+        <span class="card-meta">notice: 0 — none at all · leave: 0 — none at all</span>
+      </a>
+<a class="card unknown" href="./lido-withdrawal-queue.html">
+        <span class="card-verdict">? Undetermined</span>
+        <span class="card-name">lido-withdrawal-queue</span>
+        <span class="card-meta">notice: not established · leave: 0 — none at all</span>
+      </a>
+<a class="card unknown" href="./mkr.html">
+        <span class="card-verdict">? Undetermined</span>
+        <span class="card-name">mkr</span>
+        <span class="card-meta">notice: not established · leave: 0 — none at all</span>
+      </a>
+<a class="card critical" href="./morpho-blue.html">
+        <span class="card-verdict">✕ No notice at all</span>
+        <span class="card-name">morpho-blue</span>
+        <span class="card-meta">notice: 0 — none at all · leave: 0 — none at all</span>
+      </a>
+<a class="card critical" href="./paid-network-token-proxy-1.html">
+        <span class="card-verdict">✕ No notice at all</span>
+        <span class="card-name">paid-network-token-proxy-1</span>
+        <span class="card-meta">notice: 0 — none at all · leave: HALTED at this block</span>
+      </a>
+<a class="card unknown" href="./reth.html">
+        <span class="card-verdict">? Undetermined</span>
+        <span class="card-name">reth</span>
+        <span class="card-meta">notice: not established · leave: 0 — none at all</span>
+      </a>
+<a class="card unknown" href="./steth.html">
+        <span class="card-verdict">? Undetermined</span>
+        <span class="card-name">steth</span>
+        <span class="card-meta">notice: not established · leave: 0 — none at all</span>
+      </a>
+<a class="card good" href="./uniswap-v3-factory.html">
+        <span class="card-verdict">✓ You can exit in time</span>
+        <span class="card-name">uniswap-v3-factory</span>
+        <span class="card-meta">notice: 2 days · leave: 0 — none at all</span>
+      </a>
+<a class="card critical" href="./usdc.html">
+        <span class="card-verdict">✕ No notice at all</span>
+        <span class="card-name">usdc</span>
+        <span class="card-meta">notice: 0 — none at all · leave: 0 — none at all</span>
+      </a>
+<a class="card unknown" href="./usdt.html">
+        <span class="card-verdict">? Undetermined</span>
+        <span class="card-name">usdt</span>
+        <span class="card-meta">notice: not established · leave: 0 — none at all</span>
+      </a>
+<a class="card good" href="./weth9.html">
+        <span class="card-verdict">✓ No rule-change route, within checks</span>
+        <span class="card-name">weth9</span>
+        <span class="card-meta">notice: no route found · leave: 0 — none at all</span>
+      </a>
+<a class="card good" href="./wsteth.html">
+        <span class="card-verdict">✓ No rule-change route, within checks</span>
+        <span class="card-name">wsteth</span>
+        <span class="card-meta">notice: no route found · leave: 0 — none at all</span>
+      </a></div></section>
+</main>

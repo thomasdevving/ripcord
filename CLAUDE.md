@@ -955,6 +955,90 @@ only via delegatecall and is usually uninitialized.
     reassurance, 20 of 26 enumerate completely, and the 4 remaining reassuring
     verdicts all carry a complete witness. schema 0.9.0 / ruleset 0.8.0.
 
+31. **[FOUND AND FIXED day 6, the FIFTH cache-boundary defect and the one the
+    determinism gate structurally could not catch] An infrastructure failure that
+    did not look TRANSIENT was cached as a contract revert.** `PinnedChain.call`
+    and `probeCall` asked "does this failure look transient?" and, if not,
+    recorded — and permanently cached — `reverted: true`. That is fail-OPEN, and
+    it matters because ~20 detectors read a revert as a fact about the CONTRACT:
+    `owner()` reverted → no owner; `DEFAULT_ADMIN_ROLE()` reverted → not
+    AccessControl; `balanceOf()` reverted → holds nothing.
+
+    Day 4's edge #14 narrowed this catch from unconditional to
+    transient-throws. That was an improvement in the right direction and still
+    the wrong SHAPE, because the residual set is unbounded. Reproduced live
+    against a real provider (`scripts/audit-error-shapes.ts`), three ordinary
+    failures matching NO transient pattern:
+
+        bad / expired API key   -32600  "Must be authenticated!"
+        unreachable endpoint    (none)  "fetch failed" / "bad port"
+        block not available     -32001  "block not found: 0x…"
+
+    The third is the one that should have been obvious for five days: EVERY
+    Ripcord read is pinned to a HISTORICAL block, so a non-archive endpoint
+    fails in exactly this way — and would have produced a complete,
+    schema-valid, confidently CLEAN report in which every contract has no owner,
+    no roles and no capabilities. It is byte-identical cold and warm, so the
+    determinism gate certifies it, and once written it is permanent.
+
+    THE LESSON, distinct from #14's and worth keeping separate: the determinism
+    gate catches the STRUCTURAL failure (a miss and a hit differing in
+    type/shape). It is structurally incapable of catching the SEMANTIC one — a
+    read that failed, cached CONSISTENTLY as an absent fact. Consistency is not
+    correctness. A gate that proves two runs agree proves nothing about whether
+    either is true.
+
+    THE FIX IS THE INVERSION, not a longer pattern list — adding those three
+    strings would have closed three cases and left the class open. A result is
+    now a revert only when POSITIVELY identified as one: revert bytes in the
+    cause chain, viem's `ExecutionRevertedError`, RPC code 3, or the node's own
+    `execution reverted`. All four derived from live observation, never memory.
+    Every genuine revert observed carries the last three TOGETHER — including
+    no-data reverts (edge #4's USDT case) and custom-error reverts (sUSDe's
+    `OperationNotAllowed()`), which is what makes a tight classifier safe for
+    this set rather than merely better in theory. Deliberately excluded: viem's
+    regex also matches "gas required exceeds allowance", a gas-configuration
+    failure, not a contract decision.
+
+    Residual, and the right way round: a genuine revert phrased in a way all
+    four signals miss now becomes a loud `errors[]` entry rather than a silent
+    absence — visible, arguable, and withholding the enumeration witness. WETH9
+    (the true-negative control) cold-scans byte-identically under it.
+
+32. **Four more absence-from-failure sites, found by walking every read path
+    (day 6).** Each was a genuine revert being read as a fact rather than an
+    infrastructure failure, so #31 does not cover them:
+      - `getRoleMemberCount` reverting MID-ENUMERATION returned `members: []` on
+        a contract already POSITIVELY established as Enumerable. A role that
+        vanishes is a route that vanishes from the exit window's minimum.
+      - `balanceOf` reverting on a CURATED major token silently reported "holds
+        nothing" — which also removes that token's own privileged capabilities
+        from the report and can flip the disclosure gate to publishable. Every
+        MAJOR_TOKENS entry was verified live as a working ERC20, so a revert
+        there is an anomaly, not the ordinary "does not implement it" case that
+        a reverting `owner()` is.
+      - An undecodable oracle getter was a silent `continue`.
+      - An undecodable pause getter left `currentlyBlocked` null, i.e. "not
+        paused" — on PAID, `paused()` reading TRUE is the single most
+        consequential fact in the report.
+    All four now record an `unknowns[]` entry or an unmeasured leg. The sites
+    where the conflation is genuinely impossible (`owner()`, `getRoleAdmin`, the
+    timelock delay read, the beacon implementation decode) got a comment stating
+    WHY instead — in three of those the failure direction is provably
+    conservative, and that argument is now written down rather than re-derived.
+
+33. **The gap dedup keyed on PROSE, not identity (day 6, cosmetic bug in a
+    non-cosmetic place).** `composeVerdict` suppressed an enumeration gap when
+    any `missing[]` entry CONTAINED the gap's `where` string. `where` for the
+    target is the bare word `"target"`, so any unrelated sentence mentioning a
+    target would have suppressed a REAL enumeration gap — under-reporting what
+    was not seen, which is the failure edge #30 exists to prevent, reached
+    through a tidy-up. Gaps now carry a structural `site: {kind, id}`, the exit
+    window publishes the canonical KEYS of the sites it already narrated
+    (`citedGapSites`), and dedup is key equality. A suppression can now only
+    collapse two representations of the SAME site. No change to the 26.
+    schema 0.10.0 / ruleset 0.9.0.
+
 22. **The cleared-dependency registry is small, manual, and mainnet-only
     (consolidation pass).** `clearedRegistry.ts` documents design-not-bug
     capabilities for the 6 curated majors (USDC/USDT/DAI/WBTC/stETH; WETH has
@@ -1107,7 +1191,7 @@ which were genuinely privileged, report THAT percentage.
   nominal) / unknown (full hatch, no length to read) / none (flat tint, nothing to
   measure) — because drawing "we found nothing" the same as "there is nothing"
   would put the day-5 conflation straight back in the stylesheet.
-  22 pages in `site/`, 78 figures machine-checked, 0 failures.
+  22 pages in `site/`, 77 figures machine-checked, 0 failures.
 - **Day 5 (original brief, for reference).** Calibration against 10-15 real protocols; README/report polish.
   Published set filtered on `disclosure.publishable`. Report the FALSE-NEGATIVE
   rate, not a classification percentage — see "Taxonomy strategy" below.
@@ -1183,7 +1267,7 @@ which were genuinely privileged, report THAT percentage.
   protocol "you can exit in time" while an un-enumerated minter could dilute a
   holder with no notice — and corrected itself to `undetermined` on calibration
   day, from its own recorded evidence. That is the whole thesis in one case.
-- **Day 6.** **FIRST: the cache-boundary audit pass.** FOUR separate defects
+- **Day 6 (DONE — see edges #31/#32/#33 and docs/CALIBRATION.md §10/§11).** **FIRST: the cache-boundary audit pass.** FOUR separate defects
   have now entered through the same seam — the `authority.ts` `.catch(() => null)`
   that turned a network outage into "no roles found" (consolidation pass), the
   docs overclaiming `getLogs` completeness (consolidation pass), an
