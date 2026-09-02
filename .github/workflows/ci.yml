@@ -32,6 +32,14 @@ jobs:
       # sides are committed — so it belongs in CI rather than in a manual pass.
       - run: pnpm verify:pages
 
+      # The prose is checked against the reports too. verify:pages protects the
+      # rendered figures; nothing protected the sentences in README/CLAUDE.md,
+      # and on day 6 that gap produced a real error — a demo beat asserting that
+      # one contract both had paused()==true AND produced a $748.90 drain proof.
+      # Neither contract had both. It survived three days and was caught only by
+      # actually running the documented command from a clean clone.
+      - run: pnpm verify:claims
+
   gitleaks:
     runs-on: ubuntu-latest
     steps:
