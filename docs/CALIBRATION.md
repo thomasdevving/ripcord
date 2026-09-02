@@ -27,6 +27,7 @@ rebuilt cold. That is not a formality; see [Task 0](#0-the-determinism-gate).
 - [9. The last false-clean vector: enumeration completeness](#9-the-last-false-clean-vector-enumeration-completeness)
 - [10. The semantic cache audit (day 6)](#10-the-semantic-cache-audit-day-6)
 - [11. Aave: a bounded answer, documented rather than bought](#11-aave-a-bounded-answer-documented-rather-than-bought)
+- [12. The one blocker that looked like a real finding](#12-the-one-blocker-that-looked-like-a-real-finding)
 
 ---
 
@@ -437,7 +438,8 @@ table.)
 |---|---|---|
 | **Demonstrably guarded**, in a dialect Ripcord could not read | **22** | The contract said so in its own revert string |
 | Probe rejected **before** any auth check could run | 4 | Ripcord's own zero-valued argument coming back |
-| Unrecognised custom error, or no revert data at all | 4 | Genuinely undetermined — correctly still blocking |
+| Unrecognised custom error | 3 | Genuinely undetermined — correctly still blocking |
+| **Call executed with no revert at all** | 1 | PAID proxy 2's `mint`. Resolved on day 6 as a no-op stub — see [§12](#12-the-one-blocker-that-looked-like-a-real-finding) |
 
 > **Genuinely unguarded privileged functions found: 0 of 30.**
 > **Gate false-alarm rate: 26 of 30 (87%)** — that is, 26 blockers carried no
@@ -494,7 +496,7 @@ protocol using an unlisted dialect still blocks, correctly — Wasabi still does
 | Report | Blocker | Assessment |
 |---|---|---|
 | Wasabi | `upgradeToAndCall` → `0xf07e038f` carrying the caller | Auth-*shaped* to a human, unidentified to the tool. A 210-candidate signature scan failed to name it. Correctly blocked. |
-| PAID proxy 2 | `mint` → empty revert payload | KNOWN EDGE #4, provider-dependent. Correctly blocked. |
+| PAID proxy 2 | `mint(address,uint256)` → **the call SUCCEEDS**, no revert at all | The strongest-looking observation in the set, and the reason the gate exists. Investigated to state level on day 6 (§12): it is a **no-op stub** — it succeeds for any caller *including the owner* and changes nothing. Not a vulnerability, and not a privileged function either. Correctly blocked while unresolved. |
 | Ethena sUSDe | `renounceRole` → `OperationNotAllowed()` (`0xf50a3b52`) | Ethena appears to disable the function outright — but that cannot be *proven* from a probe, because the identical error is also what its blacklist enforcement returns (confirmed while verifying the restricted-staker role in §5). Correctly blocked. |
 | Ethena Minting | `renounceRole` → `0x6317a0fa` | An unidentified custom error; a 210-candidate signature scan did not name it. Correctly blocked. |
 
@@ -835,3 +837,89 @@ with a topic filter over the full range sidesteps the cap entirely and is free.
 It is a new ingestion source that touches the pinned-and-cached determinism model
 every reproducibility claim rests on — post-hackathon work, not a lock-down-day
 change.
+
+---
+
+## 12. The one blocker that looked like a real finding
+
+Before publishing the 26 reports, each of the four the disclosure gate blocks was
+re-examined — the point of a gate being that something eventually has to look at
+what it caught. Three were unrecognised custom errors. The fourth was not what
+the write-up had said it was.
+
+### What the earlier classification got wrong
+
+§6 recorded PAID proxy 2's `mint(address,uint256)` blocker as *"empty revert
+payload — KNOWN EDGE #4, provider-dependent"*, i.e. the weakest and least
+interesting class: a provider declining to return revert bytes.
+
+That was wrong, and the error was in the audit script rather than in Ripcord.
+`probeCall` records `rawValue = revertData ?? "reverted"` when a call reverts,
+and `result ?? "0x"` when it does not — so the literal `"0x"` in the evidence can
+**only** be produced by a call that ran to completion. The script mapped `"0x"`
+to "(no revert data returned)". The result was that the single strongest
+observation in the entire calibration set — *a privileged-looking function
+executing successfully for three unrelated addresses on a live token* — had been
+filed as a provider quirk.
+
+### What is actually there
+
+Re-probed live at the pinned block, then executed as a real transaction on an
+ephemeral fork:
+
+```
+eth_call  mint(unrelated, 1000e18) from 3 unrelated addresses -> SUCCEEDS, no revert
+eth_call  garbage selector 0xdeadbeef                         -> REVERTS
+          (so there is no permissive fallback; the call really is dispatched)
+
+fork tx   mint(recipient, 12345e18) from an unrelated sender  -> status success
+                                                    Δ totalSupply = 0, Δ balance = 0
+fork tx   mint(recipient, 12345e18) from the OWNER itself     -> status success
+                                                    Δ totalSupply = 0, Δ balance = 0
+```
+
+`mint` on this contract is a **no-op stub**. It is reachable by anyone, returns
+successfully, and changes no state for any caller — including the owner. On a
+token with a 594,717,455 supply that is not paused, and one whose deployment was
+drained through an unguarded mint in March 2021, a neutered `mint` is the
+expected shape of the remediation.
+
+**So: not a vulnerability, and not a privileged function either.** It confers no
+power on anyone. The headline result is unchanged and is now better evidenced
+than before — the one candidate that looked most like a counterexample was
+followed to the state level and cleared:
+
+> **Genuinely unguarded privileged functions found across 26 protocols: 0.**
+> No responsible-disclosure obligation was triggered, because there is nothing
+> to disclose.
+
+### Why this is the gate working, not the gate failing
+
+The sequence is exactly what the disclosure policy is built for:
+
+1. The probe saw no auth-shaped revert, so the "unguarded" reading could not be
+   ruled out.
+2. `disclosure.publishable` went **false** and the report was withheld — no page
+   was ever rendered for it.
+3. A human investigated the specific claim.
+4. It resolved as harmless, and *nothing had been published in the meantime*.
+
+Had it resolved the other way, the gate would have held a live vulnerability
+claim off a public site. That is the whole design, and this is the first time it
+has been exercised on something that genuinely warranted the look.
+
+### The residual, logged and not fixed today
+
+`no_auth_revert_observed` currently covers two epistemically different
+observations: *"the call reverted and we could not read it"* and *"the call
+executed and returned"*. The second is a much stronger signal — it is one step
+from "unguarded" — and it deserves its own reason code
+(`executed_without_revert`) beside day 5's split. Both block publication today,
+so the gate's **behaviour** is already correct and nothing unsafe follows from
+the conflation; only the reporting is coarser than the evidence.
+
+Adding a schema reason code is a detection change, which day 6 is closed to, so
+it is recorded here as the next thing to build rather than slipped in on a
+lock-down day. `scripts/manual-verification-audit.mjs` now reports the two
+distinctly (`EXECUTED` vs a revert class), so the evidence is at least no longer
+mislabelled while the schema catches up.
