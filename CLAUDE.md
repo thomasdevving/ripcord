@@ -873,7 +873,7 @@ only via delegatecall and is usually uninitialized.
     available to this project — for COVERAGE, not just speed.
 
 29. **Under-determination is now the dominant error mode, and that is the
-    deliberate trade (day 5).** 13 of 26 protocols come back `undetermined`. The
+    deliberate trade (day 5).** 15 of 26 protocols come back `undetermined`. The
     named causes: custom authority schemes (5), Compound's delegator pattern
     (`admin()`+`implementation()` as plain getters, 2 — the marker now NAMES the
     Compound Timelock but the route is still not resolved), provider-starved role
@@ -1039,6 +1039,52 @@ only via delegatecall and is usually uninitialized.
     collapse two representations of the SAME site. No change to the 26.
     schema 0.10.0 / ruleset 0.9.0.
 
+34. **[FOUND day 6 BY ACTUALLY RUNNING THE DOCUMENTED COMMAND] The prose drifted
+    from the data, and nothing checked it.** `verify-pages.mjs` re-derives every
+    headline figure on every rendered page from its source JSON. The SENTENCES in
+    README.md, CLAUDE.md and docs/ had no equivalent, and they drifted:
+
+      - The PAID demo beat asserted that ONE contract both moved $748.90 on a
+        fork AND read `paused() == true`. That is true of NEITHER. The drain
+        belongs to proxy `0x8c8687fc…` (whose report the disclosure gate BLOCKS,
+        so it has no page); the frozen exit belongs to proxy `0x1614f18f…`
+        (which holds none of the priced majors and correctly returns
+        `produced: false`). The README's "reproduce our headline claim" command
+        pointed at the address that cannot produce it.
+      - The `undetermined` count was quoted as thirteen in three documents. It
+        has been fifteen since the enumeration-completeness fix moved both
+        Ethena protocols off `can_exit_in_time`. (Written out in words here on
+        purpose: the checker matches the digit form, and this sentence exists to
+        DESCRIBE the stale claim, not to restate it.)
+      - CALIBRATION.md §4's per-protocol table listed Ethena USDe and Ethena
+        Minting as `can_exit_in_time` while §9 of the SAME DOCUMENT explained
+        that they had been moved off it. Its group counts summed to 24, not 26.
+
+    None of these is a code defect; every report was correct throughout. That is
+    precisely what makes the class dangerous — the tool was right and the story
+    about it was wrong, and a jury reads the story. It was caught only because
+    day 6 required running the documented commands from a clean clone instead of
+    assuming they worked.
+
+    THE FIX, deliberately mechanical rather than a promise to be careful:
+    `scripts/verify-claims.mjs` checks the prose against the reports and runs in
+    CI beside `verify:pages`. It verifies dollar figures against
+    `proof.totalUsd`/`delta.usd`, protocol-name→verdict claims in markdown table
+    rows, address→verdict claims in a paragraph, "N of 26 <verdict>" counts,
+    publishable counts, page-existence for every `site/*.html` referenced, and
+    that no unpublishable report has a page. Two escape hatches, both explicit
+    and both scoped to the paragraph or row they appear in, because a write-up
+    that records its own corrections must be able to name a wrong number:
+    `[retracted-figure]` and `[was]`. It is deliberately NARROW and prints the
+    paragraphs a human still has to read rather than implying full coverage —
+    a claim-checker that pretended to be exhaustive would be its own false-clean.
+
+    Proven able to fail: injecting a wrong dollar figure, a wrong verdict word
+    beside an address, a wrong "N of 26" count, and a corrupted table row each
+    produce a failure. That check matters more than the passing run — the whole
+    point of this edge is that a green result nobody has tried to break is not
+    evidence of anything.
+
 22. **The cleared-dependency registry is small, manual, and mainnet-only
     (consolidation pass).** `clearedRegistry.ts` documents design-not-bug
     capabilities for the 6 curated majors (USDC/USDT/DAI/WBTC/stETH; WETH has
@@ -1109,7 +1155,12 @@ which were genuinely privileged, report THAT percentage.
   Proof engine (src/fork/*): ONE archetype, CODE_CHANGE->drain on a transparent
   proxy, impersonating the RESOLVED controller, dollar-denominated via Chainlink,
   reproduce command + cast-run trace artifact, fail-loud produced=false path.
-  Verified live: PAID v1 proof PRODUCED ($748.90 moved by the depth-2 EOA); all
+  Verified live on day 3: a PAID proxy proof PRODUCED, moved by the depth-2 EOA.
+  (CORRECTED day 6 — the figure was long quoted against the WRONG address. The
+  producing target is proxy 0x8c8687fc…, whose report is disclosure-BLOCKED and
+  therefore unpublished; proxy 0x1614f18f… holds none of the priced majors and
+  correctly returns produced=false. [retracted-figure] The figure is retired
+  from the story entirely: the dollar claim rests on Comet alone.); all
   5 fixtures still schema-valid; 76 tests green. FIRST DAY-5 TASK (noted below,
   not built): a versioned "cleared registry" of common dependencies (USDC/USDT/
   WETH/major LSTs) whose privileged capabilities are documented design, so the
@@ -1232,12 +1283,27 @@ which were genuinely privileged, report THAT percentage.
   **DEMO BEATS (decided day 4, from the fixture results).** Run PAID and Comet
   back to back — they are the pair that proves the tool DISCRIMINATES rather
   than alarms, which is the test this jury will fire:
-    - PAID: the power is there ($748.90 moved, proven on a fork) and you cannot
-      leave — zero notice, and the live token's `paused()` reads TRUE at the
-      pinned block, so the exit is not slow, it is shut.
-    - Comet: the power is there and far larger ($540,604,938.71 moved, proven
-      on the same fork) BUT it is bound — a proven-binding 2-day notice against
-      an instant exit. Same engine, opposite verdict.
+    - PAID (0x1614f18f…, `no_notice`, page published): NO dollar figure — see
+      the correction below. Both authority routes terminate at plain EOAs with
+      no delay anywhere, AND `paused()` reads TRUE at the pinned block, so the
+      exit is not slow, IT IS SHUT. You cannot leave slowly; you cannot leave at
+      all. (This is the contract PAID redeployed after its March-2021 incident;
+      Ripcord just reads the current state.) A frozen exit is a livelier trapped
+      case than any small drain simulation.
+    - Comet (0xc3d688B6…, `can_exit_in_time`): the power is enormous —
+      $540,604,938.71 moved, proven on a fork, reproducible to the cent across
+      two independent forks — BUT it is bound: a proven-binding 2-day notice
+      against an instant exit. Same engine, opposite verdict.
+  **CORRECTED DAY 6 — do not reinstate the $748.90.** [retracted-figure] The old beat asserted that
+  ONE contract both moved $748.90 and read `paused()` TRUE. That is true of
+  NEITHER: the drain belongs to proxy 0x8c8687fc… (whose report the disclosure
+  gate BLOCKS, so it has no page), and the frozen exit belongs to proxy
+  0x1614f18f… (which produces no proof at all). The dollar figure now rests
+  entirely on Comet, which is stronger anyway — $540M is the number that lands,
+  and $748 on a dead contract never was. If a "the gate blocks me" beat is
+  wanted, use sUSDe: a verdict-level `trapped` case explainable in one sentence,
+  rather than a probe edge case (empty revert payload, edge #4) that costs demo
+  time to explain.
   The two halves of the story come from two different engines (proof engine =
   the SIZE of the power; exit window = whether you can escape it), and the
   notice figure in the proof headline is read from the same exit-window ROUTE

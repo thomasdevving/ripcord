@@ -282,7 +282,7 @@ name and in every rendered page.
 Verdict correctness judged against the on-chain reality, not against what would
 be convenient. "Direction" says which way an error leans.
 
-### Correct, and confidently so (13)
+### Correct, and confidently so — a determined verdict, and the right one (11)
 
 | Protocol | Verdict | Why it is right |
 |---|---|---|
@@ -290,14 +290,13 @@ be convenient. "Direction" says which way an error leans.
 | wstETH | `immutable_within_checks` | All 21 selectors derived and checked; none privileged. |
 | Compound Comet cUSDCv3 | `can_exit_in_time` | Proven-binding 2-day timelock vs an instant exit. |
 | Uniswap v3 Factory | `can_exit_in_time` | Owner is a Compound-style timelock, delay proven binding. |
-| Ethena USDe | `can_exit_in_time` | Owner is a 1-day timelock; the token itself has no cooldown. |
-| Ethena Minting | `can_exit_in_time` | Same timelock, reached from the minting contract. |
 | Ethena sUSDe | `trapped` | 1-day cooldown vs 1-day notice — an exact dead heat, margin 0. |
 | USDC | `no_notice` | Upgradeable proxy, admin is a plain EOA, no delay anywhere. |
 | cbETH | `no_notice` | Same shape, single custodian. |
 | FXS | `no_notice` | `DEFAULT_ADMIN_ROLE` → a 3-of-5 Safe. A threshold is not a delay. |
 | Morpho Blue | `no_notice` | Immutable code, live owner → Safe. Narrow power, zero notice. |
-| PAID ×2 | `no_notice` | Two zero-notice routes; `paused()` reads **true**, so the exit is shut. |
+| PAID proxy 1 (`0x1614f18f…`) | `no_notice` | Two zero-notice routes, both terminating at plain EOAs — **and** `paused()` reads **true** at the pinned block, so the exit is not slow, it is shut. |
+| PAID proxy 2 (`0x8c8687fc…`) | `no_notice` | Two zero-notice routes, same shape. `paused()` reads **false** here; its `blockable` is `undetermined`. Disclosure-blocked, so no published page. |
 
 ### Correct, and the desired answer, on the four deliberate traps (4)
 
@@ -308,7 +307,7 @@ be convenient. "Direction" says which way an error leans.
 | Balancer Vault | `undetermined` | Names `getAuthorizer()` and refuses to follow it. |
 | stETH | `undetermined` | Aragon proxy detected as `pattern: unknown`; the isProxy branch forces undetermined. |
 
-### Correct but under-determined — Ripcord knows less than an auditor would (7)
+### Correct but under-determined — Ripcord knows less than an auditor would (11)
 
 These are **false negatives in usefulness, not in safety**. Each says "I could
 not establish this" about something a human can establish.
@@ -324,6 +323,13 @@ not establish this" about something a human can establish.
 | Lido Withdrawal Queue | `proxyAdmin` terminates at a contract with no resolvable authority. It *did* correctly detect the real two-step exit path (`requestWithdrawals → claimWithdrawals`) as an **unmeasured** leg. | conservative |
 | rETH | Caught only via a taxonomy addition; the bespoke registry itself is undetectable. | conservative |
 | Wasabi | Access control is a custom error Ripcord cannot identify; correctly blocked from publication. | conservative |
+| **Ethena USDe** | Its single route terminates at a `TimelockController` whose OWN roles were only partially enumerated, so the completeness witness is withheld and `binding` degrades to `not_proven_binding`. Before [§9](#9-the-last-false-clean-vector-enumeration-completeness) this read `can_exit_in_time`. | conservative |
+| **Ethena Minting** | Its own role scan covered 6,750 of 5.66M blocks. Same degradation, one layer shallower. Before §9 this read `can_exit_in_time`. | conservative |
+
+**The groups sum to 26**: 11 determined-and-correct + 4 deliberate traps + 11
+under-determined. All 15 `undetermined` verdicts are the 4 traps plus the 11
+above; every figure in this section is re-derivable with
+`node scripts/summarize.mjs calibration/reports`.
 
 ### False positives (alarm where there is none): 0
 
@@ -538,7 +544,7 @@ that an undecodable dispatcher cannot support an immutability claim.
 - **Liquidity depth is still not modelled at all**, so every time-to-exit is a
   floor. For a position large relative to available liquidity the real figure is
   longer, never shorter.
-- **13 of 26 are `undetermined`.** That is honest, and it is also a lot. The
+- **15 of 26 are `undetermined`.** That is honest, and it is also a lot. The
   named causes are: custom authority schemes (5), Compound's delegator pattern
   (2), provider-starved role reconstruction (2), an unresolvable contract owner
   (1), Vyper (1), Aave's governance shape (1), a custom access-control error (1).
@@ -578,8 +584,8 @@ three consumers.
 
 | Protocol | What the report said | What was actually enumerated |
 |---|---|---|
-| **Ethena Minting** | `can_exit_in_time`, window `binding` at confidence **high**, `missing: []` | its own scan covered **6,750 of 5.66M blocks** and recovered only `DEFAULT_ADMIN_ROLE` (0 members) |
-| **Ethena USDe** | `can_exit_in_time`, window `binding`, `missing: []` | **not an AccessControl contract at all** — the partial scan is on its **depth-1 TimelockController** |
+| **Ethena Minting** | [was] `can_exit_in_time`, window `binding` at confidence **high**, `missing: []` | its own scan covered **6,750 of 5.66M blocks** and recovered only `DEFAULT_ADMIN_ROLE` (0 members) |
+| **Ethena USDe** | [was] `can_exit_in_time`, window `binding`, `missing: []` | **not an AccessControl contract at all** — the partial scan is on its **depth-1 TimelockController** |
 
 The second is the one that shaped the fix. A target-only completeness check calls
 Ethena USDe complete and closes only the shallow leak. But its single authority

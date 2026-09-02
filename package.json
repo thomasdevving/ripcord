@@ -21,7 +21,8 @@
     "verify:pages": "node scripts/verify-pages.mjs site calibration/reports",
     "calibrate:summary": "node scripts/summarize.mjs calibration/reports",
     "calibrate:blockers": "node scripts/manual-verification-audit.mjs calibration/reports",
-    "determinism": "node scripts/compare-reports.mjs"
+    "determinism": "node scripts/compare-reports.mjs",
+    "verify:claims": "node scripts/verify-claims.mjs"
   },
   "dependencies": {
     "commander": "^12.1.0",

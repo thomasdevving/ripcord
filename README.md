@@ -198,27 +198,39 @@ the tool **discriminates** rather than alarms, which is the first thing a
 sceptical reviewer will test.
 
 ```sh
-# 1. The power is real, and you cannot leave. PAID Network, day-3 proof engine.
-pnpm ripcord prove 0x1614f18fc94f47967a3fbe5ffcd46d4e7da3d787 --block 25800000 --chain 1
+# 1. The power is real, and the exit is SHUT. PAID Network token proxy.
+pnpm ripcord scan 0x1614f18fc94f47967a3fbe5ffcd46d4e7da3d787 --block 25800000 --chain 1
 
-# 2. The power is FAR larger — and it is bound. Same engine, opposite verdict.
+# 2. Power far larger — and it is BOUND. Compound III, proof engine on a fork.
 pnpm ripcord prove 0xc3d688B66703497DAA19211EEdff47f25384cdc3 --block 25800000 --chain 1
 ```
 
-The first moves **$748.90** on an ephemeral fork by impersonating the resolved
-depth-2 EOA, and the token's `paused()` reads `true` at that block — so the exit
-is not slow, it is shut. The second moves **$540,604,938.71** by the same
-mechanism, and comes back `can_exit_in_time`: a proven-binding 2-day notice
-against an instant exit.
+The first comes back `no_notice`: both authority routes terminate at plain EOAs
+with no delay anywhere, so there is no interval to move inside. And
+`paused()` reads **`true`** at that block — so the exit is not slow, **it is
+shut**. You cannot leave slowly; you cannot leave at all. (This is the contract
+PAID redeployed after its March-2021 incident; Ripcord simply reads its current
+state off the chain.)
 
-The two halves come from two different engines — the proof engine measures the
-*size* of the power, the exit window measures whether you can escape it — and the
-notice figure printed in the proof headline is read from the **same exit-window
-route** the verdict uses, so the two can never quote different delays.
+The second comes back `can_exit_in_time`, and the proof engine demonstrates the
+scale of what the authority could do: **$540,604,938.71** moved on an ephemeral
+fork, by impersonating the resolved controller and executing its own upgrade
+path — against a **proven-binding 2-day notice** and an instant exit.
+
+That pair is the point. Same tool, same engines, opposite verdicts: one protocol
+where the power is modest and you are trapped anyway, one where the power is
+enormous and you are fine. A tool that only alarms cannot produce the second
+result.
+
+The two halves also come from two different engines — the proof engine measures
+the *size* of the power, the exit window measures whether you can escape it — and
+the notice figure printed in the proof headline is read from the **same
+exit-window route** the verdict uses, so the two can never quote different delays.
 
 `prove` needs Foundry's `anvil` on your `PATH` and takes about a minute; it runs
-entirely on a local fork and sends no mainnet transaction. Both runs write a
-`cast run --trace` call-trace artefact and a `reproduce.sh` under `.ripcord/proofs/`.
+entirely on a local fork and sends no mainnet transaction, and writes a
+`cast run --trace` call-trace artefact plus a `reproduce.sh` under
+`.ripcord/proofs/`.
 
 To regenerate the entire published calibration set instead:
 
@@ -300,26 +312,32 @@ This is the whole thesis in two lines. The token's *business-logic* owner is a w
 `ripcord prove` turns the static "this authority can upgrade the proxy" claim into an executed demonstration on a mainnet fork — impersonating the **resolved** controller (the EOA at the end of the path above, not the proxy's nominal owner), running the admin's own legitimate upgrade to a minimal implementation, and measuring the target's holdings leaving.
 
 ```sh
-pnpm ripcord prove 0x8c8687fc965593dfb2f0b4eaefd55e9d8df348df --block 25800000
+pnpm ripcord prove 0xc3d688B66703497DAA19211EEdff47f25384cdc3 --block 25800000
 ```
 
 ```
 ✓ PROOF PRODUCED (sandbox fork — no mainnet tx sent)
    In simulation on a fork at block 25800000, the resolved upgrade authority
-   0x18738290…65be CAN move $748.90 of the tokens this contract holds, in one upgrade path.
-   impersonated: proxyAdmin:0x7bb7580e… → owner:0x18738290…65be (depth 2, confidence medium)
-   - USDC: moved 200000000 ($199.98) via Chainlink USDC/USD
-   - USDT: moved 549123214 ($548.92) via Chainlink USDT/USD
-   reproduce: pnpm ripcord prove 0x8c8687fc965593dfb2f0b4eaefd55e9d8df348df --block 25800000 --chain 1
+   0x6d903f6003cca6255D85CcA4D3B5E5146dC33925 CAN move $540,604,938.71 of the tokens
+   this contract holds, in one upgrade path. This authority is subject to a
+   proven-binding 172800s notice period, which the fork skips by impersonation —
+   in reality the operation would be publicly visible for that long before it could execute.
+   impersonated: proxyAdmin:0x1ec63b58… → owner:0x6d903f60… (depth 2, confidence medium)
+   - USDC: moved 39744687928433 ($39,740,146.30) via Chainlink USDC/USD
+   - WETH: moved 61284532057431493222830 ($142,923,579.33) via Chainlink ETH/USD (WETH is 1:1 wrapped ETH)
+   - WBTC: moved 486599463253 ($357,941,213.07) via Chainlink BTC/USD (WBTC is 1:1 wrapped BTC)
+   reproduce: pnpm ripcord prove 0xc3d688B66703497DAA19211EEdff47f25384cdc3 --block 25800000 --chain 1
 ```
 
-The human-readable call trace is written to `.ripcord/proofs/<target>-<block>/trace.txt` (captured via `cast run`), the exact tree of `ProxyAdmin.upgrade → delegatecall drainer → USDC.transfer / USDT.transfer` with the `Transfer` events. The **reproduce command** is the whole thing, deterministic against the pinned block — a judge runs that one line to replay it.
+The human-readable call trace is written to `.ripcord/proofs/<target>-<block>/trace.txt` (captured via `cast run`), the exact tree of `ProxyAdmin.upgrade → delegatecall drainer → USDC.transfer / WETH.transfer / WBTC.transfer` with the `Transfer` events. The **reproduce command** is the whole thing, deterministic against the pinned block — a judge runs that one line to replay it. Run twice on two independent forks it produces the same total **to the cent**.
+
+Read the notice sentence carefully, because it is the honesty rail that matters most here. This is a proven-binding **2-day** timelock, and the fork skips the queue by impersonating the controller directly. The proof says so, in its own headline, and the `172800s` figure is read from the **same exit-window route the verdict uses** — so the proof cannot advertise a capability as more immediate than the verdict says it is. Without that, this section would read as "$540M can be taken from Compound," which is false: it can be *proposed*, in public, two days ahead.
 
 Non-negotiable honesty rules, because auditors will (and should) probe them:
 
 - **Sandbox only.** Everything runs on an ephemeral local anvil fork. No mainnet transaction is ever sent, no private key is used or held, no approval is requested.
-- **Capability, not intent.** Every string says what the authority *can* do — never "will," "malicious," or "rug." The impersonated address is a legitimate admin exercising a legitimate power; the point is that the power exists and is under-protected.
-- **A missing proof is honest; a fabricated one is disqualifying.** If the archetype doesn't apply — a non-transparent proxy, an authority that didn't resolve to an impersonable account, or a target holding none of the priced tokens — `prove` returns `produced: false` with a stated reason and falls back to the static finding. It never invents a trace. (Verified: Wasabi's UUPS proxy, WETH9, and the empty-holdings PAID v2 all return an explicit not-produced reason, no crash.)
+- **Capability, not intent.** Every string says what the authority *can* do — never "will," "malicious," or "rug." The impersonated address is a legitimate admin exercising a legitimate power; the point is that the power exists, and how much notice you get before it is used.
+- **A missing proof is honest; a fabricated one is disqualifying.** If the archetype doesn't apply — a non-transparent proxy, an authority that didn't resolve to an impersonable account, or a target holding none of the priced tokens — `prove` returns `produced: false` with a stated reason and falls back to the static finding. It never invents a trace. Verified live: Wasabi's UUPS proxy and WETH9 both return an explicit not-produced reason, and so does PAID's proxy at `0x1614f18f…`, which holds none of the priced major tokens — its report carries `produced: false` with exactly that sentence, which is why the PAID case in this README is made with a `scan` and not a proof.
 
 The dollar figure is a **floor**, not a ceiling: it counts only the curated major-token holdings the [dependency graph](#what-a-report-contains) knows to look for, priced from Chainlink — value in unlisted tokens, LP positions, or staked principal is invisible to it. See [Limitations](#limitations).
 
@@ -679,7 +697,7 @@ none of them are on a roadmap to be fixed by the end of the week.
 | **Enumeration is bounded by the provider's `eth_getLogs` range** | Role membership on a non-Enumerable contract is reconstructed by replaying events. On a range-capped endpoint a deep-history contract is only partially scanned — and Ripcord then refuses to issue a reassuring verdict at all. See [Aave's ACLManager](#the-aave-case-what-a-bounded-answer-looks-like) for the worked example. **By design, not by accident.** |
 | **It does not follow authority it cannot model** | Custom registries, Aragon ACLs, Maker's `wards`, governance whose delay lives off the executor — Ripcord detects that an indirection *exists* where it can, names the address, and stops. It never calls into what it finds and never guesses at the structure behind it. |
 | **It does not monitor** | There is no watchtower, no alerting, no queue-watching. A report is a photograph of one block, not a subscription. |
-| **It is frequently less useful than a good auditor** | 13 of 26 calibration protocols come back `undetermined`. That is the deliberate trade: an under-determination is visible and arguable in the report, while a false clean bill is invisible by construction. |
+| **It is frequently less useful than a good auditor** | 15 of 26 calibration protocols come back `undetermined`. That is the deliberate trade: an under-determination is visible and arguable in the report, while a false clean bill is invisible by construction. |
 
 **The one thing it will not do, under any circumstance, is tell you a contract
 is safe when it has not established that.** Every reassuring result in Ripcord is
@@ -709,7 +727,7 @@ the type checker rather than by anyone remembering to check.
 - **A bespoke authority registry exposing no getter is still invisible** (day 5). The indirection markers catch a delegated-authority *handle* only when a zero-argument getter returns a non-zero address. Rocket Pool's rETH exposes none — its RocketStorage check is entirely internal — so nothing explains *why* it is undetermined; the inverted default holds it there regardless, which is the safe outcome, but this is exactly the bound that `immutable_within_checks` carries in its name and its `caveats[]`.
 - **The guard-dialect dictionary is in-sample and must be described that way.** Its 13 entries were found by reading the calibration set's own reverts, so "22 of 30 blockers were demonstrably guarded" is a statement about *that set*. A protocol using an unlisted dialect still blocks — correctly. The safety property does not depend on coverage: an unrecognised revert never moves toward "guarded", by construction, and `test/guardDialects.test.ts` pins that boundary with more cases than it pins coverage.
 - **`mint(uint256,address)` is one selector with two unrelated meanings.** It is Rocket Pool's privileged minter *and* ERC-4626's public `mint(shares, receiver)`. It is in the taxonomy marked `nameMatchSpecificity: "generic"`, and the probe tells the two apart on evidence (rETH's guard fires; sUSDe returns `InvalidAmount()`). Selectors are not names — worth re-checking for any future taxonomy addition.
-- **Under-determination is now the dominant error mode.** 13 of 26 calibration protocols return `undetermined`, with named causes: custom authority schemes (5), Compound's delegator pattern (2 — the marker names the Timelock but the route is not resolved), provider-starved role reconstruction (2), an owner contract with no resolvable authority (1), Vyper's unrecognised dispatcher (1), Aave's governance shape (1), a custom access-control error (1). Against **0 false-clean results** this is the right way round, but it should be quoted honestly whenever coverage is described.
+- **Under-determination is now the dominant error mode.** 15 of 26 calibration protocols return `undetermined`, with named causes: custom authority schemes (5), provider-starved role enumeration (4), Compound's delegator pattern (2 — the marker names the Timelock but the route is not resolved), an owner contract with no resolvable authority (1), Vyper's unrecognised dispatcher (1), Aave's governance shape (1), a custom access-control error (1). Against **0 false-clean results** this is the right way round, but it should be quoted honestly whenever coverage is described.
 - **The fail-closed revert classifier can, in principle, over-report.** Since day 6 an `eth_call` failure is treated as a contract revert only when positively identified as one; anything else becomes a loud `errors[]` entry. If some provider ever phrases a genuine revert in a way all four signals miss, Ripcord will report an infrastructure error where a revert occurred — visible, arguable, and blocking a reassuring verdict rather than enabling one. That is the deliberate direction: the alternative, which is what shipped for the first five days, was that an unrecognised *infrastructure* failure became a silent, permanently-cached "this contract has no owner." All three revert shapes present in the calibration set (`Error(string)`, custom errors, and reverts carrying no data at all) were confirmed live to be recognised before the change landed, and WETH9 — the true-negative control — cold-scans byte-identically under it.
 - **No live monitoring.** Watchtower (alerting when a rule change is actually queued) is day-6 scope. The Exit Window metric landed on day 4 — see [The Exit Window](#the-exit-window).
 

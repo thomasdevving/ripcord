@@ -55,7 +55,7 @@
         "verdict": "no_notice",
         "window": "no_notice (confidence medium)",
         "timeToExit": "no_mechanism_detected, 0s, tight",
-        "why": "CORRECT. Both routes terminate at plain EOAs (proxyAdmin -> 0x18738290, owner -> 0x53bc21D3) with no delay anywhere, so the window is a PROVEN zero rather than an unknown. paused() reads false here (unlike proxy-1), so exit is not currently blocked. PROOF/VERDICT AGREEMENT: `ripcord prove` produces a real $748.90 drain against the resolved EOA, and the proof now carries noticeSeconds=0 — 'this authority is subject to NO notice period.' Proof and exit window state the same fact from two directions, which is the day-4 requirement that they agree structurally rather than by luck."
+        "why": "CORRECT. Both routes terminate at plain EOAs (proxyAdmin -> 0x18738290, owner -> 0x53bc21D3) with no delay anywhere, so the window is a PROVEN zero rather than an unknown. paused() reads false here (unlike proxy-1), so exit is not currently blocked. PROOF/VERDICT AGREEMENT: `ripcord prove` on THIS address produces a real drain against the resolved EOA (run it to see the figure; this report is stored as a `scan`, and the address is disclosure-BLOCKED so it has no published page \u2014 the project's headline dollar figure is Compound Comet's, never this one), and the proof carries noticeSeconds=0 — 'this authority is subject to NO notice period.' Proof and exit window state the same fact from two directions, which is the day-4 requirement that they agree structurally rather than by luck."
       }
     },
     {
