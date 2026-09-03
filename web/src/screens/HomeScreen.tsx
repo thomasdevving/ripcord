@@ -19,6 +19,44 @@ import { navigate } from "../router.js";
 import { Hero } from "../components/Hero.js";
 import type { ReactElement } from "react";
 
+/**
+ * The pipeline, in the order it runs. Written from what the engine does, not
+ * from what it is for: a reader deciding whether to trust an output wants the
+ * mechanism, and every claim here is one the report itself carries evidence for.
+ */
+const STEPS: { title: string; text: string }[] = [
+  {
+    title: "Find who holds privileged power",
+    text:
+      "Proxy pattern first, because the code an auditor reviewed is not necessarily the code that runs tomorrow. Then owner and pending owner, then AccessControl roles — read from the enumerable getters where a contract has them, otherwise reconstructed by replaying grant and revoke events from the deployment block. A partial reconstruction is labelled partial, with the exact window it covered.",
+  },
+  {
+    title: "Classify each holder",
+    text:
+      "Every address that turned up is resolved to an externally owned account, a multisig whose threshold and owners are read, or a contract. A threshold is recorded as a threshold — it raises how many parties must agree, and adds no notice at all.",
+  },
+  {
+    title: "Establish what that power can do",
+    text:
+      "Function selectors are recovered from the contract's own dispatcher by following reachable jumps, not by scanning bytes, so code embedded for a child contract is not mistaken for this one's. Each is matched against a versioned table, and every selector recovered is either classified or listed as unmatched — never silently dropped.",
+  },
+  {
+    title: "Attribute the guards by probing",
+    text:
+      "Whether a privileged function is actually guarded is settled with real calls at the pinned block, from three unrelated addresses, reading what comes back. A recognised authorization revert establishes that a guard fired; only where it also names a party already resolved is a holder attributed, and otherwise the finding says guarded, holder unknown. An unrecognised reply is never read as unguarded — and where the unguarded reading cannot be ruled out, the report is withheld from publication rather than shown, because 'guarded by a scheme we do not know' and 'not guarded' cannot be told apart from the outside.",
+  },
+  {
+    title: "Follow authority to where it ends",
+    text:
+      "A contract that holds power is resolved into its own authority, and so on, to a depth of three. Every path terminates with a stated reason — an account, a multisig, a timelock whose delay is read, a cycle, or no authority found — and confidence falls as depth grows. An owner reached through three hops is never asserted with a direct owner's certainty.",
+  },
+  {
+    title: "Measure both clocks, then test one",
+    text:
+      "Notice is modelled per route and the protocol's window is the minimum across them, since the fastest route is the one that matters. Time to exit is a lower bound with its unmeasured legs named. Where the fork experiment applies, a real withdrawal is established on a sandbox fork, the guarding party is made to close it, and the identical withdrawal is repeated — a restriction that is demonstrated rather than argued.",
+  },
+];
+
 /** The contract the hero's example card quotes. See Hero.tsx. */
 const QUOTED_ADDRESS = "0xc3d688b66703497daa19211eedff47f25384cdc3";
 
@@ -76,6 +114,56 @@ export function HomeScreen({ config }: { config: ConfigResponse | null }): React
             the other. Where the fork experiment runs, the answer comes from a withdrawal that succeeded, a privileged
             call, and the same withdrawal attempted again.
           </p>
+        </section>
+
+        {/* Numbered because this genuinely is a sequence: each step consumes what
+            the one before it established, and the last two cannot run without the
+            addresses the first three resolved. */}
+        <section className="card">
+          <h3>How a run works</h3>
+          <p className="note" style={{ marginTop: 0, maxWidth: "70ch" }}>
+            Six stages, in order, every one of them pinned to a single block so the whole run describes one moment on
+            chain and can be repeated exactly.
+          </p>
+
+          <ol className="steps">
+            {STEPS.map((step, i) => (
+              <li className="step" key={step.title}>
+                <span className="step-n" aria-hidden="true">{String(i + 1).padStart(2, "0")}</span>
+                <div className="step-body">
+                  <h4 className="step-title">{step.title}</h4>
+                  <p className="step-text">{step.text}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        <section className="card">
+          <h3>What it will not tell you</h3>
+          <p className="note" style={{ marginTop: 0, maxWidth: "70ch" }}>
+            The limits are part of the output, not a disclaimer under it. Each of these is enforced in the report's own
+            shape rather than left to wording.
+          </p>
+          <ul className="plain" style={{ maxWidth: "70ch" }}>
+            <li>
+              <strong>That a contract is safe.</strong> There is no such verdict. The strongest positive result is that
+              no restriction was found among the paths actually tested, carrying the count of what was tested.
+            </li>
+            <li>
+              <strong>That nobody will act.</strong> Findings describe what a privileged address is technically able to
+              do. Intent is not observable on chain and is never claimed.
+            </li>
+            <li>
+              <strong>That silence means nothing is there.</strong> A read that failed is recorded as unknown, not as an
+              absence. A delay that could not be proven binding never appears as a notice period.
+            </li>
+            <li>
+              <strong>Whether you could actually sell.</strong> Market depth is not modelled, and the report says so as a
+              field rather than a footnote. For a large position the real time to exit is longer than reported, never
+              shorter.
+            </li>
+          </ul>
         </section>
       </main>
     </>

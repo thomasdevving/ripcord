@@ -438,7 +438,15 @@ label {
 .split { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
 @media (max-width: 1040px) { .split { grid-template-columns: minmax(0, 1fr); } }
 
-.detail-panel { position: sticky; top: 110px; max-height: calc(100vh - 130px); overflow-y: auto; }
+/* STICKINESS BELONGS TO THE SPLIT LAYOUT, NOT TO THE PANEL.
+ *
+ * In the analysis view the panel is a side column beside a 540px graph, and
+ * staying in view while the reader works the map is the point. The report
+ * stacks the same component full-width under the map, where sticky made an
+ * often-EMPTY "Details — select a node" card follow the reader down the entire
+ * report. Scoping the rule to `.split` gives the side column its behaviour and
+ * lets the stacked one scroll away like any other section. */
+.split > .detail-panel { position: sticky; top: 110px; max-height: calc(100vh - 130px); overflow-y: auto; }
 
 /* --- tables and evidence -------------------------------------------------- */
 
@@ -539,6 +547,48 @@ pre.raw {
 .route header { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; margin-bottom: 4px; }
 .route .r-label { font-weight: 600; font-size: 13px; }
 .route .r-notice { font-family: var(--mono); font-size: 12px; }
+
+/* --- numbered steps -------------------------------------------------------
+ *
+ * Numbered because the pipeline genuinely is a sequence — each stage consumes
+ * what the one before it established — and not as decoration. The number is set
+ * in the mono face at label weight so it reads as an index, not as a score.
+ *
+ * Hairlines between rows rather than a card each: six bordered panels would
+ * make one process look like six separate products.
+ */
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+
+.step {
+  display: grid;
+  grid-template-columns: 2.4rem minmax(0, 1fr);
+  gap: 4px 14px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.step-n {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  padding-top: 2px;
+}
+
+.step-body { min-width: 0; }
+.step-title { margin: 0 0 4px; font-size: 13.5px; font-weight: 600; }
+.step-text { margin: 0; font-size: 13px; line-height: 1.62; color: var(--text-secondary); max-width: 72ch; }
+
+@media (max-width: 560px) {
+  .step { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .step-n { padding-top: 0; }
+}
 
 /* --- misc ----------------------------------------------------------------- */
 
