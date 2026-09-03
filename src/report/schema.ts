@@ -8,7 +8,7 @@
 import { z } from "zod";
 
 export const schemaVersion = "0.13.0";
-export const rulesetVersion = "0.12.0";
+export const rulesetVersion = "0.13.0";
 
 const hexString = z.string().regex(/^0x[0-9a-fA-F]*$/);
 const address = z.string().regex(/^0x[0-9a-fA-F]{40}$/);

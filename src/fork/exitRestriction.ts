@@ -9,8 +9,8 @@
  *      succeeds before any mutation (Part 2 — the control),
  *   3. for each restriction candidate registered by the matched archetype, snapshots the fork,
  *      impersonates the party that guards it, calls it with the exit-restricting
- *      argument, and re-runs the exit (Part 3 — the differential). Exit now
- *      fails → that function is a direct exit-restrictor, demonstrated.
+ *      argument, and re-runs the exit at the same block/time (Part 3). A pause
+ *      transition plus the expected Paused() revert establishes the restriction.
  *
  * THE EPISTEMIC CEILING is honoured, not hidden. A clean run is NEVER a safety
  * guarantee and never reuses `can_exit_in_time`; its outcome is the deliberately
@@ -22,16 +22,17 @@
  *   - Everything runs on the ephemeral fork. No mainnet tx, no key, no approval.
  *   - Capability, not intent, in every string: a party CAN close the exit.
  *   - A Safe-guarded restrictor is impersonated AT THE SAFE ADDRESS, so it
- *     demonstrates "this Safe can, if its signers collude," not "one key can" —
- *     stated on the finding (same rail as the proof engine's KNOWN EDGE #9).
+ *     assumes the Safe can authorize the call. Signatures, guards and modules
+ *     are not executed; that condition is stated on the finding.
  *   - FAIL LOUD: an unestablished baseline or an unidentifiable exit action is
  *     an explicit `undetermined`-producing outcome, never a fabricated clean run.
  */
-import { encodeFunctionData, getAddress, type Hex } from "viem";
+import { encodeFunctionData, getAddress, maxUint256, type Hex } from "viem";
 import { startAnvilFork, type ForkHandle, type ForkTransactionResult } from "./anvil.js";
 import { checkAnvilAvailable } from "./preflight.js";
 import {
   BASE_TOKEN_WHALES,
+  COMET_PAUSED_ERROR,
   cometAbi,
   cometSupplyCalldata,
   cometWithdrawCalldata,
@@ -40,6 +41,7 @@ import {
   identifyExitInterface,
   SELECTORS,
 } from "./exitActions.js";
+import { fullWithdrawalVerified, readWithdrawalPosition, samePosition } from "./withdrawal.js";
 import type { Evidence } from "../chain/client.js";
 import type {
   AuthorityResolution,
@@ -111,11 +113,12 @@ export function classifyCandidateEvaluation(
 ): CandidateEvaluationConclusion {
   const restrictors = candidates.filter((candidate) => candidate.result === "restrictor");
   const evaluationGaps = [
+    ...(candidates.length === 0 ? ["no registered candidates were evaluated"] : []),
     ...candidates
       .filter((candidate) => candidate.result === "inconclusive" || candidate.result === "not_evaluated")
       .map((candidate) => `candidate ${candidate.selector} returned ${candidate.result}: ${candidate.detail}`),
     ...(!enumeration.complete
-      ? enumeration.gaps.map((gap) => `aggregate enumeration incomplete at ${gap.where}: ${gap.reason}`)
+      ? (enumeration.gaps.length ? enumeration.gaps.map((gap) => `aggregate enumeration incomplete at ${gap.where}: ${gap.reason}`) : ["aggregate enumeration is incomplete"])
       : []),
   ];
 
@@ -160,6 +163,9 @@ function txEv(
         blockHash: result.blockHash,
         transactionIndex: result.transactionIndex,
         gasUsed: result.gasUsed.toString(),
+        blockTimestamp: result.blockTimestamp.toString(),
+        baseFeePerGas: result.baseFeePerGas?.toString() ?? null,
+        effectiveGasPrice: result.effectiveGasPrice.toString(),
       },
       revertData: result.revertData,
     },
@@ -169,7 +175,7 @@ function txEv(
 
 /** All selectors the dispatcher recovered — matched findings plus the unmatched remainder. */
 function allSelectors(caps: CapabilitiesResult): string[] {
-  return [...caps.findings.map((f) => f.selector), ...caps.unmatchedSelectors];
+  return [...caps.findings.map((f) => f.selector), ...caps.needsManualVerification.map((f) => f.selector), ...caps.unmatchedSelectors];
 }
 
 /** Minimal fork-side account classification: safe (getOwners+getThreshold) / eoa (no code) / contract. */
@@ -267,193 +273,155 @@ async function runCometArchetype(
 ): Promise<ExitRestrictionResult> {
   const evidence: Evidence[] = [];
   const target = req.target;
-
-  const baseToken = getAddress(
-    (await fork.client.readContract({ address: target, abi: cometAbi, functionName: "baseToken" })) as Hex,
-  );
-  const guardian = getAddress(
-    (await fork.client.readContract({ address: target, abi: cometAbi, functionName: "pauseGuardian" })) as Hex,
-  );
-  evidence.push(ev({ read: "baseToken()" }, baseToken, req.blockNumber));
-  evidence.push(ev({ read: "pauseGuardian()" }, guardian, req.blockNumber));
-
-  const whale = BASE_TOKEN_WHALES[baseToken.toLowerCase()];
+  const HOLDER: Hex = "0x000000000000000000000000000000000000abc1";
+  const CONTROL_SINK: Hex = "0x000000000000000000000000000000000000abc2";
   const baseUnattempted = (reason: string): ExitRestrictionResult => ({
     restrictorRoute: null,
     exitRestriction: mkRestriction(req, exitAction, {
       outcome: "baseline_unestablished",
-      baseline: { status: "unestablished", holder: null, holderSource: reason, note: reason, evidence },
-      candidates: [],
-      restrictors: [],
-      coverage: { guardedTotal: 0, evaluated: 0 },
-      restrictionState: "undetermined",
-      confirmationMethod: "not_confirmed",
-      evidence,
+      baseline: { status: "unestablished", holder: HOLDER, holderSource: "deterministic sandbox supplier", note: reason, evidence: [...evidence] },
+      candidates: [], restrictors: [], evaluationGaps: [reason],
+      coverage: { guardedTotal: 1, evaluated: 0 },
+      restrictionState: "undetermined", confirmationMethod: "not_confirmed", evidence,
     }),
   });
-  if (!whale) {
-    return baseUnattempted(`no curated whale for base token ${baseToken}, so a baseline position could not be funded on the fork — baseline unestablished, verdict stays undetermined`);
+  const read = async (functionName: string, phase: string) => {
+    const head = await fork.client.getBlock();
+    const data = encodeFunctionData({ abi: cometAbi, functionName });
+    const value = await fork.client.readContract({ address: target, abi: cometAbi, functionName, blockNumber: head.number });
+    evidence.push(ev({ method: "eth_call", address: target, data, read: `${functionName}()`, phase,
+      localBlock: head.number.toString(), localTimestamp: head.timestamp.toString(), forkOnly: true }, value, req.blockNumber));
+    return value;
+  };
+  const baseToken = getAddress(await read("baseToken", "identify") as Hex);
+  const guardian = getAddress(await read("pauseGuardian", "identify") as Hex);
+  const whale = BASE_TOKEN_WHALES[baseToken.toLowerCase()];
+  if (!whale) return baseUnattempted(`no curated whale for base token ${baseToken}`);
+  const initialPaused = await read("isWithdrawPaused", "before setup") as boolean;
+  // A current pause is observable, but does not establish an exitable position
+  // or a before/after causal witness. Do not fabricate an authority route.
+  if (initialPaused) return baseUnattempted("withdrawals are paused before setup; no successful baseline can be established, and no privileged mutation was tested");
+  const otherFlags = {
+    supply: await read("isSupplyPaused", "before setup") as boolean,
+    transfer: await read("isTransferPaused", "before setup") as boolean,
+    absorb: await read("isAbsorbPaused", "before setup") as boolean,
+    buy: await read("isBuyPaused", "before setup") as boolean,
+  };
+  const sinkCode = await fork.client.getCode({ address: CONTROL_SINK });
+  if (sinkCode && sinkCode !== "0x") return baseUnattempted("the neutral control recipient has code; refusing a control transaction with unknown side effects");
+  const observe = (phase: string) => readWithdrawalPosition(fork, target, baseToken, HOLDER, phase, req.blockNumber, evidence);
+  let initial;
+  try { initial = await observe("before funding"); }
+  catch { return baseUnattempted("could not read the holder's token balance and protocol position before funding"); }
+  if (initial.tokens !== 0n || initial.principal !== 0n || initial.supplied !== 0n || initial.borrowed !== 0n) {
+    return baseUnattempted("the sandbox holder already has tokens or a protocol position; refusing to attribute pre-existing value to this setup");
   }
-
-  // --- Part 2: establish a baseline position and exit. ---
-  const HOLDER: Hex = "0x000000000000000000000000000000000000abc1"; // deterministic sandbox holder (lowercase — no checksum)
-  const gasCap = 10n ** 18n;
-  const decimals = whale.decimals;
-  const fundAmount = 100_000n * 10n ** BigInt(decimals); // 100k base
-  const supplyAmount = 50_000n * 10n ** BigInt(decimals);
-  const withdrawAmount = 10_000n * 10n ** BigInt(decimals);
-
+  const fundAmount = 100_000n * 10n ** BigInt(whale.decimals);
+  const supplyAmount = 50_000n * 10n ** BigInt(whale.decimals);
   for (const acct of [whale.whale, HOLDER, guardian]) {
-    await fork.client.setBalance({ address: acct, value: gasCap });
+    await fork.client.setBalance({ address: acct, value: 10n ** 18n });
     await fork.client.impersonateAccount({ address: acct });
   }
-
-  // Fund the holder from the whale.
-  const fundTx = {
-    to: baseToken,
-    data: encodeErc20Transfer(HOLDER, fundAmount),
-    gas: 200_000n,
+  const send = async (action: string, from: Hex, tx: { to: Hex; data?: Hex; gas: bigint }) => {
+    const result = await fork.sendFrom(from, tx);
+    evidence.push(txEv(action, from, tx, result, req.blockNumber));
+    return result;
   };
-  const fund = await fork.sendFrom(whale.whale, fundTx);
-  evidence.push(txEv("fund holder", whale.whale, fundTx, fund, req.blockNumber));
-  if (fund.status !== "success") {
-    return baseUnattempted(`funding the holder from whale ${whale.whale} reverted on the fork — baseline unestablished`);
+  const fund = await send("fund holder", whale.whale, { to: baseToken, data: encodeErc20Transfer(HOLDER, fundAmount), gas: 200_000n });
+  if (fund.status !== "success") return baseUnattempted("funding the holder reverted");
+  const funded = await observe("after funding");
+  if (funded.tokens - initial.tokens !== fundAmount) return baseUnattempted("funding transaction succeeded but the expected base tokens were not received");
+  const approve = await send("approve base token", HOLDER, { to: baseToken, data: encodeErc20Approve(target, fundAmount), gas: 100_000n });
+  if (approve.status !== "success") return baseUnattempted("base-token approval reverted");
+  const supply = await send("supply baseline position", HOLDER, { to: target, data: cometSupplyCalldata(baseToken, supplyAmount), gas: 900_000n });
+  if (supply.status !== "success") return baseUnattempted("supplying the baseline position reverted");
+  const supplied = await observe("after supply");
+  if (funded.tokens - supplied.tokens !== supplyAmount || supplied.principal <= 0n || supplied.supplied <= 0n || supplied.borrowed !== 0n) {
+    return baseUnattempted("supply receipt succeeded but the expected token debit and positive debt-free base position were not established");
   }
-  // Approve + supply into Comet.
-  const approveTx = { to: baseToken, data: encodeErc20Approve(target, fundAmount), gas: 100_000n };
-  const approve = await fork.sendFrom(HOLDER, approveTx);
-  evidence.push(txEv("approve base token", HOLDER, approveTx, approve, req.blockNumber));
-  const supplyTx = { to: target, data: cometSupplyCalldata(baseToken, supplyAmount), gas: 900_000n };
-  const supply = await fork.sendFrom(HOLDER, supplyTx);
-  evidence.push(txEv("supply baseline position", HOLDER, supplyTx, supply, req.blockNumber));
-  if (approve.status !== "success" || supply.status !== "success") {
-    return baseUnattempted("approve/supply into the protocol reverted on the fork, so no exitable position exists — baseline unestablished");
-  }
-  evidence.push(ev({ action: "fund+approve+supply", holder: HOLDER, amount: supplyAmount.toString() }, "position established", req.blockNumber));
 
-  // Snapshot the position, then run the baseline exit.
+  // Both branches start from this position. A neutral transaction occupies the
+  // mutation's block and guardian nonce in the control branch. The fork restores
+  // its clock on revert, so corresponding reads and exits have identical times.
   const baseSnap = await fork.snapshot();
-  const withdrawTx = { to: target, data: cometWithdrawCalldata(baseToken, withdrawAmount), gas: 900_000n };
-  const baselineWithdraw = await fork.sendFrom(HOLDER, withdrawTx);
-  evidence.push(txEv("baseline holder withdraw", HOLDER, withdrawTx, baselineWithdraw, req.blockNumber));
-  await fork.revert(baseSnap);
-
-  if (baselineWithdraw.status !== "success") {
-    // The exit reverts BEFORE any mutation — the door is already shut at the
-    // pinned block. A decisive current restriction, not an unestablished baseline.
-    const isPaused = (await fork.client.readContract({ address: target, abi: cometAbi, functionName: "isWithdrawPaused" })) as boolean;
-    evidence.push(ev({ read: "isWithdrawPaused()", phase: "baseline failure diagnosis" }, isPaused, req.blockNumber));
-    const cand: RestrictionCandidate = {
-      selector: SELECTORS.cometWithdraw,
-      signature: "withdraw(address,uint256) already reverts",
-      category: "ACCESS_RESTRICTION",
-      guardingParty: null,
-      guardingPartyType: null,
-      args: "none — the exit reverts in its current state",
-      result: "restrictor",
-      noticeSeconds: "0",
-      detail: `The baseline exit reverts at the pinned block (isWithdrawPaused()=${isPaused}) — the exit is already shut, no notice applies.`,
-      evidence,
-    };
-    return {
-      restrictorRoute: buildRestrictorRoute(target, cand, { type: "contract", threshold: null, owners: null }, "already_shut"),
-      exitRestriction: mkRestriction(req, exitAction, {
-        outcome: "restrictor_found",
-        baseline: { status: "unestablished", holder: HOLDER, holderSource: "impersonated deterministic holder, funded+supplied", note: "position established but the baseline exit itself reverts — already shut", evidence },
-        candidates: [cand],
-        restrictors: [cand],
-        coverage: { guardedTotal: 1, evaluated: 1 },
-        restrictionState: "already_shut",
-        confirmationMethod: "fork_confirmed",
-        evidence,
-      }),
-    };
+  const withdrawTx = { to: target, data: cometWithdrawCalldata(baseToken, maxUint256), gas: 900_000n };
+  const control = await send("neutral control step", guardian, { to: CONTROL_SINK, gas: 21_000n });
+  if (control.status !== "success") {
+    await fork.revert(baseSnap);
+    return baseUnattempted("neutral control transaction failed");
   }
-  evidence.push(ev({ action: "baseline withdraw", holder: HOLDER, amount: withdrawAmount.toString() }, "success", req.blockNumber));
+  const beforeBaseline = await observe("before baseline withdrawal");
+  const baselineWithdraw = await send("baseline holder withdraw", HOLDER, withdrawTx);
+  const afterBaseline = await observe("after baseline withdrawal");
+  await fork.revert(baseSnap);
+  if (baselineWithdraw.status !== "success" || !fullWithdrawalVerified(beforeBaseline, afterBaseline)) {
+    return baseUnattempted("baseline full withdrawal did not both succeed and recover the supplied base assets with zero remaining principal and no debt; its cause is unestablished, not a demonstrated restriction");
+  }
+  const recovered = afterBaseline.tokens - beforeBaseline.tokens;
   const baseline: ExitRestriction["baseline"] = {
-    status: "established",
-    holder: HOLDER,
-    holderSource: `funded 100k ${whale.symbol} from whale ${whale.whale}, supplied 50k, baseline withdraw of 10k succeeded`,
-    note: "control established: the exit action succeeds before any privileged mutation",
-    evidence,
+    status: "established", holder: HOLDER,
+    holderSource: `funded 100k ${whale.symbol} from whale ${whale.whale}, supplied 50k, then withdrew the full base position (uint256.max)`,
+    note: `receipt success AND ${recovered} base-token units received, zero remaining principal, zero supply and zero debt; control and mutation use the same fork clock`,
+    evidence: [...evidence],
   };
 
-  // --- Part 3: the differential. One candidate for this archetype: the
-  // pause guardian's withdraw-pause. Snapshot → pause → re-run exit → revert. ---
   const guardianClass = await classifyOnFork(fork, guardian);
   const diffSnap = await fork.snapshot();
-  const pausedBefore = (await fork.client.readContract({ address: target, abi: cometAbi, functionName: "isWithdrawPaused" })) as boolean;
-  evidence.push(ev({ read: "isWithdrawPaused()", phase: "before candidate mutation" }, pausedBefore, req.blockNumber));
-  const pauseTx = { to: target, data: cometWithdrawPauseCalldata(), gas: 300_000n };
-  const pause = await fork.sendFrom(guardian, pauseTx);
-  const pauseEvidence = txEv("guardian pause withdraw", guardian, pauseTx, pause, req.blockNumber);
-  evidence.push(pauseEvidence);
-  let candidate: RestrictionCandidate;
-  if (pause.status !== "success") {
-    candidate = {
-      selector: SELECTORS.cometPause,
-      signature: "pause(bool,bool,bool,bool,bool)",
-      category: "ACCESS_RESTRICTION",
-      guardingParty: guardian,
-      guardingPartyType: guardianClass.type,
-      args: "withdraw-pause = true",
-      result: "inconclusive",
-      noticeSeconds: null,
-      detail: "the pause guardian's pause() call itself reverted on the fork, so nothing about the exit was learned — reported as inconclusive, never as no-effect",
-      evidence: [pauseEvidence],
-    };
+  const candidateStart = evidence.length;
+  const pausedBefore = await read("isWithdrawPaused", "before candidate mutation") as boolean;
+  const pauseTx = { to: target, data: cometWithdrawPauseCalldata(otherFlags), gas: 300_000n };
+  const pause = await send("guardian pause withdraw", guardian, pauseTx);
+  let result: RestrictionCandidate["result"] = "inconclusive";
+  let detail = "the guardian mutation reverted; no effect on withdrawal was established";
+  try {
+    if (pause.status === "success") {
+      const pausedAfter = await read("isWithdrawPaused", "after candidate mutation") as boolean;
+      const beforeMutationExit = await observe("before withdrawal after candidate");
+      const afterWithdraw = await send("holder withdraw after candidate", HOLDER, withdrawTx);
+      const afterMutationExit = await observe("after withdrawal after candidate");
+      const timesMatch = beforeBaseline.block === beforeMutationExit.block && beforeBaseline.timestamp === beforeMutationExit.timestamp &&
+        afterBaseline.block === afterMutationExit.block && afterBaseline.timestamp === afterMutationExit.timestamp;
+      const stateMatches = samePosition(beforeBaseline, beforeMutationExit);
+      if (!timesMatch || !stateMatches) {
+        detail = "control and mutation branches did not have matching withdrawal times and starting balances; causality is unestablished";
+      } else if (pausedBefore || !pausedAfter) {
+        detail = "the mutation did not establish the required isWithdrawPaused false-to-true transition";
+      } else if (afterWithdraw.status === "reverted") {
+        if (afterWithdraw.revertData?.toLowerCase() === COMET_PAUSED_ERROR.toLowerCase() &&
+          afterWithdraw.gasUsed < withdrawTx.gas &&
+          afterMutationExit.tokens === beforeMutationExit.tokens && afterMutationExit.principal === beforeMutationExit.principal &&
+          afterMutationExit.borrowed === 0n) {
+          result = "restrictor";
+          detail = "DIFFERENTIAL CONFIRMED: the control recovered the full base position; the guardian changed withdraw-pause from false to true, and the identical withdrawal at the same block/time reverted with Paused(), leaving the holder's tokens and principal unchanged.";
+        } else {
+          detail = "withdrawal reverted, but the expected Paused() cause and unchanged balances were not confirmed (an unrelated failure or gas limit is not a proven restrictor)";
+        }
+      } else if (fullWithdrawalVerified(beforeMutationExit, afterMutationExit) && afterMutationExit.tokens - beforeMutationExit.tokens === recovered) {
+        result = "no_effect";
+        detail = "the pause transition executed, but the identical full withdrawal recovered the same base assets and cleared the position; no direct restriction in this evaluated scenario";
+      } else {
+        detail = "withdrawal receipt succeeded but recovery of the full base position did not match the control; no clean outcome is justified";
+      }
+    }
+  } finally {
     await fork.revert(diffSnap);
-  } else {
-    const afterWithdraw = await fork.sendFrom(HOLDER, withdrawTx);
-    const afterWithdrawEvidence = txEv("holder withdraw after candidate", HOLDER, withdrawTx, afterWithdraw, req.blockNumber);
-    evidence.push(afterWithdrawEvidence);
-    const isPaused = (await fork.client.readContract({ address: target, abi: cometAbi, functionName: "isWithdrawPaused" })) as boolean;
-    const pausedEvidence = ev({ read: "isWithdrawPaused()", phase: "after candidate mutation" }, isPaused, req.blockNumber);
-    evidence.push(pausedEvidence);
-    await fork.revert(diffSnap);
-    const safeRail =
-      guardianClass.type === "safe"
-        ? ` The guardian is a ${guardianClass.threshold}-of-${guardianClass.owners} Safe, impersonated at its address — this demonstrates the Safe CAN close the exit if its signers collude, not that a single key can.`
-        : "";
-    candidate = {
-      selector: SELECTORS.cometPause,
-      signature: "pause(bool,bool,bool,bool,bool)",
-      category: "ACCESS_RESTRICTION",
-      guardingParty: guardian,
-      guardingPartyType: guardianClass.type,
-      args: "withdraw-pause = true",
-      result: afterWithdraw.status !== "success" ? "restrictor" : "no_effect",
-      noticeSeconds: guardianClass.type === "contract" ? null : "0",
-      detail:
-        afterWithdraw.status !== "success"
-          ? `DIFFERENTIAL CONFIRMED: baseline withdraw succeeded; after the guardian set isWithdrawPaused()=${isPaused}, the identical withdraw reverts. The pause guardian can close the exit.${safeRail}`
-          : `the guardian set isWithdrawPaused()=${isPaused} but the baseline withdraw still succeeded — not an exit restrictor.`,
-      evidence: [
-        pauseEvidence,
-        pausedEvidence,
-        afterWithdrawEvidence,
-      ],
-    };
   }
-
+  if (guardianClass.type === "safe") {
+    detail += ` The ${guardianClass.threshold}-of-${guardianClass.owners} Safe was impersonated: this result assumes it can authorize and submit the call; signatures, transaction guards and modules were not executed.`;
+  } else if (guardianClass.type === "contract") {
+    detail += " The contract controller was impersonated; its own execution constraints and notice were not established.";
+  }
+  const candidate: RestrictionCandidate = {
+    selector: SELECTORS.cometPause, signature: "pause(bool,bool,bool,bool,bool)", category: "ACCESS_RESTRICTION",
+    guardingParty: guardian, guardingPartyType: guardianClass.type, args: "withdraw-pause = true; other pause flags preserved",
+    result, noticeSeconds: guardianClass.type === "contract" ? null : "0", detail,
+    evidence: evidence.slice(candidateStart),
+  };
   const conclusion = classifyCandidateEvaluation([candidate], req.enumeration);
-  const restrictorRoute =
-    conclusion.restrictors.length > 0
-      ? buildRestrictorRoute(target, candidate, guardianClass, "restrictable")
-      : null;
-
   return {
-    restrictorRoute,
+    restrictorRoute: conclusion.restrictors.length ? buildRestrictorRoute(target, candidate, guardianClass) : null,
     exitRestriction: mkRestriction(req, exitAction, {
-      outcome: conclusion.outcome,
-      baseline,
-      candidates: [candidate],
-      restrictors: conclusion.restrictors,
-      evaluationGaps: conclusion.evaluationGaps,
-      coverage: { guardedTotal: 1, evaluated: 1 },
-      restrictionState: conclusion.restrictionState,
-      confirmationMethod: conclusion.confirmationMethod,
-      evidence,
+      ...conclusion, baseline, candidates: [candidate], coverage: { guardedTotal: 1, evaluated: 1 }, evidence,
     }),
   };
 }
@@ -484,13 +452,10 @@ function buildRestrictorRoute(
   target: Hex,
   candidate: RestrictionCandidate,
   guardianClass: { type: "safe" | "eoa" | "contract"; threshold: number | null; owners: number | null },
-  restrictionState: "restrictable" | "already_shut",
 ): ExitWindowRoute | null {
-  // Only an eoa/safe guardian is a proven zero-notice route. A contract guardian
-  // whose own delay we did not resolve is NOT asserted as immediate — that would
-  // be optimism in the wrong direction — so no route is injected and the finding
-  // stays visible in exitRestriction without claiming no_notice.
-  if (candidate.guardingPartyType === "contract" && restrictionState !== "already_shut") return null;
+  // EOAs have no controller contract; Safe notice is conditional on its own
+  // authorization succeeding. Unresolved contracts never earn an immediate route.
+  if (candidate.guardingPartyType === "contract" || candidate.noticeSeconds !== "0") return null;
   const party = candidate.guardingParty ?? target;
   return {
     label: "exit-restrictor:pauseGuardian",
@@ -508,7 +473,7 @@ function buildRestrictorRoute(
     confidence: "high",
     note: candidate.detail,
     confirmationMethod: "fork_confirmed",
-    restrictionState,
+    restrictionState: "restrictable",
   };
 }
 

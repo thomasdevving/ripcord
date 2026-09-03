@@ -19,7 +19,13 @@ const norm = (p) => {
   return JSON.stringify(json, null, 2) + "\n";
 };
 
-const files = readdirSync(a).filter((f) => f.endsWith(".json")).sort();
+const filesA = readdirSync(a).filter((f) => f.endsWith(".json"));
+const filesB = readdirSync(b).filter((f) => f.endsWith(".json"));
+const files = [...new Set([...filesA, ...filesB])].sort();
+if (files.length === 0) {
+  console.error("No reports to compare; an empty run cannot establish determinism.");
+  process.exit(1);
+}
 let bad = 0;
 for (const f of files) {
   let A, B;

@@ -1094,6 +1094,12 @@ stripping its `fork_confirmed`, each fails the build.
 
 ### The flagship, transaction by transaction
 
+This is the historical receipt-based experiment. Current rules require full
+position recovery and stricter causal checks; see [FORK_VALIDATION.md](FORK_VALIDATION.md).
+The historical Safe impersonation also bypasses signatures, guards and modules,
+so it assumes controller authorization succeeds. These records are not a fresh
+validation of the current rules.
+
 On the fork at block 25800000, for Comet cUSDCv3 (`0xc3d688B6…`):
 
 1. **Baseline (the control).** Fund a holder 100k USDC from a whale, `supply`

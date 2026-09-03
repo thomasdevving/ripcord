@@ -23,9 +23,10 @@
  * adding an interface is data, not a rewrite. Every interface added here must be
  * validated live before it is trusted — see docs/CALIBRATION.md.
  */
-import { encodeFunctionData, type Hex } from "viem";
+import { encodeFunctionData, toFunctionSelector, type Hex } from "viem";
 
-export const exitActionsVersion = "0.2.0";
+export const exitActionsVersion = "0.3.0";
+export const COMET_PAUSED_ERROR = toFunctionSelector("Paused()");
 
 /** A curated large holder of a base token, used to fund a fork baseline position by impersonation. */
 export interface TokenWhale {
@@ -56,6 +57,14 @@ const cometAbi = [
   { type: "function", name: "baseToken", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
   { type: "function", name: "pauseGuardian", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
   { type: "function", name: "isWithdrawPaused", stateMutability: "view", inputs: [], outputs: [{ type: "bool" }] },
+  ...["isSupplyPaused", "isTransferPaused", "isAbsorbPaused", "isBuyPaused"].map((name) => ({
+    type: "function" as const, name, stateMutability: "view" as const, inputs: [], outputs: [{ type: "bool" as const }],
+  })),
+  { type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "borrowBalanceOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "userBasic", stateMutability: "view", inputs: [{ type: "address" }], outputs: [
+    { type: "int104" }, { type: "uint64" }, { type: "uint64" }, { type: "uint16" }, { type: "uint8" },
+  ] },
   { type: "function", name: "supply", stateMutability: "nonpayable", inputs: [{ type: "address" }, { type: "uint256" }], outputs: [] },
   { type: "function", name: "withdraw", stateMutability: "nonpayable", inputs: [{ type: "address" }, { type: "uint256" }], outputs: [] },
   {
@@ -78,11 +87,11 @@ export const SELECTORS = {
 } as const;
 
 /** Builds `pause(supply,transfer,withdraw,absorb,buy)` calldata with withdraw-pause = true (the exit-restricting argument). */
-export function cometWithdrawPauseCalldata(): Hex {
+export function cometWithdrawPauseCalldata(otherFlags = { supply: false, transfer: false, absorb: false, buy: false }): Hex {
   return encodeFunctionData({
     abi: cometAbi,
     functionName: "pause",
-    args: [false, false, true, false, false],
+    args: [otherFlags.supply, otherFlags.transfer, true, otherFlags.absorb, otherFlags.buy],
   });
 }
 
@@ -118,8 +127,11 @@ export const EXIT_INTERFACES: ExitInterface[] = [
   {
     id: "compound-comet-base",
     label: "Compound III (Comet) base-asset supplier",
-    // supply + baseToken + isWithdrawPaused together are unique to Comet and
-    // cannot be confused with a plain ERC20 or an ERC4626 vault.
+    // This is an interface hypothesis, not proof of semantics. The engine must
+    // still demonstrate actual token recovery and a cleared base position.
+    // The pinned Comet dispatcher does not expose its terminal withdraw branch
+    // in the recovered selector set; do not equate an incomplete static list
+    // with a missing function. Its semantics must be established on the fork.
     fingerprint: [SELECTORS.cometSupply, SELECTORS.cometBaseToken, SELECTORS.cometIsWithdrawPaused],
     exitSignature: "withdraw(address,uint256)",
     exitSelector: SELECTORS.cometWithdraw,

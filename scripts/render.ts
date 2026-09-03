@@ -614,6 +614,7 @@ ${LIVE_STYLE}
           "Proof",
           proof.produced
             ? `<p class="statement">${escapeHtml(proof.headline)}</p>
+           <p class="note">Controller impersonation assumes it can authorize and submit the call. Signatures, transaction guards and modules were not executed.</p>
            <dl class="meta">
              ${kv("Archetype", escapeHtml(proof.archetype))}
              ${kv("Capability", escapeHtml(proof.capability ?? "—"))}
@@ -640,9 +641,9 @@ ${LIVE_STYLE}
             const er = report.exitRestriction;
             const stateLabel =
               er.restrictionState === "restrictable"
-                ? "OPEN now, but CLOSABLE — a party can shut the exit at any moment"
+                ? "The control withdrawal succeeded; a privileged mutation blocked it in simulation — notice and controller assumptions are shown per candidate"
                 : er.restrictionState === "already_shut"
-                  ? "ALREADY shut at the pinned block — the baseline exit reverts now"
+                  ? "The recorded baseline withdrawal reverted; that alone does not establish its cause or a privileged restriction"
                   : er.restrictionState === "none_found"
                     ? "no direct restrictor found among the registered candidates evaluated"
                     : "not determined";
@@ -652,7 +653,7 @@ ${LIVE_STYLE}
                 : er.outcome === "no_direct_restriction_found"
                   ? `<div class="banner"><strong>No direct exit restriction found — scoped, NOT a safety guarantee.</strong><p>Evaluated ${er.coverage.evaluated} registered candidate(s) against a baseline exit; none closed it. Other privileged functions, argument space and indirect/economic restrictions were not exhausted.</p></div>`
                   : er.outcome === "evaluation_inconclusive"
-                    ? `<div class="banner warn"><strong>The fork differential is inconclusive — no clean claim is allowed.</strong><p>A candidate did not positively return no-effect, or aggregate enumeration was incomplete. The report stays undetermined.</p></div>`
+                    ? `<div class="banner warn"><strong>The fork differential is inconclusive — no clean claim is allowed.</strong><p>A candidate did not positively return no-effect, or aggregate enumeration was incomplete. Independent adverse findings may still determine the overall verdict.</p></div>`
                   : `<div class="banner"><strong>Exit restriction not evaluated to a conclusion (${escapeHtml(er.outcome)}).</strong><p>${escapeHtml(er.baseline.note)}</p></div>`;
             const candRows = er.candidates.map((c) => [
               `<code>${escapeHtml(c.signature ?? c.selector)}</code>`,
@@ -676,6 +677,8 @@ ${LIVE_STYLE}
                 ];
               });
             return `${banner}
+             ${["0.1.0", "0.2.0"].includes(er.rulesVersion) ? `<div class="banner warn"><strong>Historical receipt-based experiment (${escapeHtml(er.rulesVersion)}).</strong><p>This record predates full-position recovery checks and stricter causal controls. It has not been revalidated under the current fork rules.</p></div>` : ""}
+             <p class="note">Controller impersonation assumes it can authorize and submit the call. Signatures, transaction guards and modules were not executed.</p>
              <dl class="meta">
                ${kv("Exit action", `${escapeHtml(er.exitAction.status)} — <code>${escapeHtml(er.exitAction.signature ?? "—")}</code> (${escapeHtml(er.exitAction.interfaceName)})`)}
                ${kv("Baseline", `${escapeHtml(er.baseline.status)} — ${escapeHtml(er.baseline.holderSource)}`)}
@@ -903,7 +906,11 @@ function renderIndex(pages: { label: string; report: Report }[]): string {
           report.timeToExit?.blockable.status === "currently_blocked"
             ? "HALTED at this block"
             : v?.timeToExitSeconds != null
-              ? humanSeconds(v.timeToExitSeconds)
+              ? v.timeToExitSeconds === "0"
+                ? "duration not established (no measured waiting period)"
+                : report.timeToExit?.tight
+                  ? humanSeconds(v.timeToExitSeconds)
+                  : `at least ${humanSeconds(v.timeToExitSeconds)}; remaining steps unmeasured`
               : "not established",
         )}</span>
       </a>`;

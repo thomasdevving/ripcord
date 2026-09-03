@@ -34,6 +34,9 @@ export interface ForkTransactionResult {
   blockHash: Hex;
   transactionIndex: number;
   gasUsed: bigint;
+  blockTimestamp: bigint;
+  baseFeePerGas: bigint | null;
+  effectiveGasPrice: bigint;
   /** Raw revert payload recovered by replaying a reverted transaction as eth_call in the same fork state. */
   revertData: Hex | null;
 }
@@ -79,6 +82,9 @@ export async function startAnvilFork(opts: StartForkOptions): Promise<ForkHandle
       opts.blockNumber.toString(),
       "--port",
       String(port),
+      // All actors are explicitly funded and impersonated. Avoid unrelated
+      // archive lookups for Anvil's default ten development accounts.
+      "--accounts", "0",
       "--silent",
     ],
     { stdio: ["ignore", "ignore", "pipe"] },
@@ -116,19 +122,13 @@ export async function startAnvilFork(opts: StartForkOptions): Promise<ForkHandle
     await new Promise((r) => setTimeout(r, 150));
   }
 
-  // Anvil otherwise timestamps every locally-mined block from wall-clock time.
-  // Protocols with time-dependent accounting (Comet accrues interest by
-  // timestamp) then consume different gas and produce different receipt block
-  // hashes across identical runs — which the point-7 evidence records verbatim,
-  // so two runs diverge. Pinning ONLY the first block (setNextBlockTimestamp) is
-  // not enough: every block after it, and every block mined after an evm_revert,
-  // drifts back to wall-clock. So instead every mined block's timestamp is
-  // assigned here from an explicit monotonic counter — deterministic BY
-  // CONSTRUCTION and revert-safe (the counter only ever advances, so a post-
-  // revert block still gets a fresh timestamp strictly greater than the block it
-  // reverted to), rather than by trusting Anvil's cross-revert timestamp policy.
+  // The clock is part of a snapshot. Both counterfactual branches must mine at
+  // the same timestamps; monotonicity applies within a branch, not across a
+  // revert. Anvil otherwise derives block timestamps from wall-clock time.
   const forkHead = await client.getBlock({ blockNumber: opts.blockNumber });
-  let nextBlockTimestamp = forkHead.timestamp; // incremented before each mined block
+  let nextBlockTimestamp = forkHead.timestamp;
+  const snapshotClocks = new Map<Hex, bigint>();
+  const gasPrice = (forkHead.baseFeePerGas ?? 0n) * 2n + 1_000_000_000n;
 
   const stop = async (): Promise<void> => {
     if (exited) return;
@@ -150,17 +150,21 @@ export async function startAnvilFork(opts: StartForkOptions): Promise<ForkHandle
     if (tx.value !== undefined) params.value = `0x${tx.value.toString(16)}`;
     // Always cap gas: we are executing adversarial-shaped logic.
     params.gas = `0x${(tx.gas ?? 3_000_000n).toString(16)}`;
-    // Pin the timestamp of the block this transaction mines, from a counter that
-    // only advances — so every receipt hash is deterministic across runs and
-    // across evm_revert boundaries. See the rationale where nextBlockTimestamp
-    // is declared.
+    // Anvil's automatic fee suggestion can retain history across evm_revert.
+    // Fixed fees keep otherwise identical transactions reproducible as well.
+    params.gasPrice = `0x${gasPrice.toString(16)}`;
+    // The snapshot restores this counter together with the EVM state.
     nextBlockTimestamp += 1n;
     await client.setNextBlockTimestamp({ timestamp: nextBlockTimestamp });
+    // Anvil also retains the next base fee across evm_revert. Freeze this
+    // simulation input so the control and mutation run under the same fees.
+    await client.setNextBlockBaseFeePerGas({ baseFeePerGas: forkHead.baseFeePerGas ?? 0n });
     const hash = (await client.request({
       method: "eth_sendTransaction" as never,
       params: [params] as never,
     })) as Hex;
     const receipt = await client.waitForTransactionReceipt({ hash });
+    const receiptBlock = await client.getBlock({ blockNumber: receipt.blockNumber });
     let revertData: Hex | null = null;
     if (receipt.status === "reverted") {
       try {
@@ -182,19 +186,33 @@ export async function startAnvilFork(opts: StartForkOptions): Promise<ForkHandle
       blockHash: receipt.blockHash,
       transactionIndex: receipt.transactionIndex,
       gasUsed: receipt.gasUsed,
+      blockTimestamp: receiptBlock.timestamp,
+      baseFeePerGas: receiptBlock.baseFeePerGas,
+      effectiveGasPrice: receipt.effectiveGasPrice,
       revertData,
     };
   };
 
   const snapshot: ForkHandle["snapshot"] = async () => {
-    return (await client.request({ method: "evm_snapshot" as never, params: [] as never })) as Hex;
+    const id = (await client.request({ method: "evm_snapshot" as never, params: [] as never })) as Hex;
+    snapshotClocks.set(id, nextBlockTimestamp);
+    return id;
   };
 
   const revert: ForkHandle["revert"] = async (id) => {
     // anvil returns true on success; a false here means the id was already
     // consumed, which is a bug in the caller's snapshot discipline — fail loud.
+    const clock = snapshotClocks.get(id);
+    if (clock === undefined) throw new Error(`evm_revert(${id}): no matching clock snapshot`);
     const ok = (await client.request({ method: "evm_revert" as never, params: [id] as never })) as boolean;
     if (!ok) throw new Error(`evm_revert(${id}) returned false — snapshot already consumed or invalid`);
+    nextBlockTimestamp = clock;
+    // evm_revert also invalidates snapshots taken after this one.
+    let discard = false;
+    for (const key of snapshotClocks.keys()) {
+      if (key === id) discard = true;
+      if (discard) snapshotClocks.delete(key);
+    }
   };
 
   return { client, rpcUrl, port, sendFrom, snapshot, revert, stop };

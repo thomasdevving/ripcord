@@ -147,14 +147,16 @@ describe("verdict: a fork-confirmed restrictor collapses the window", () => {
   it("no_notice statement carries the open-but-closable framing", () => {
     const v = composeVerdict(window({ status: "no_notice", confidence: "high", statement: "zero" }, [restrictorRoute]), timeToExit(), COMPLETE, er);
     expect(v.status).toBe("no_notice");
-    expect(v.statement).toContain("trapped at any moment");
+    expect(v.statement).toContain("OPEN in the control but CLOSABLE with zero notice");
+    expect(v.statement).toContain("guards and modules were not executed");
     expect(v.statement).not.toContain("already trapped\"");
   });
 
   it("distinguishes already-shut from closable", () => {
     const shut = exitRestriction({ ...er, restrictionState: "already_shut" });
     const v = composeVerdict(window({ status: "no_notice", confidence: "high", statement: "zero" }, [restrictorRoute]), timeToExit(), COMPLETE, shut);
-    expect(v.statement).toContain("ALREADY shut");
+    expect(v.statement).toContain("recorded baseline withdrawal failed");
+    expect(v.statement).not.toContain("baseline exit succeeded");
   });
 });
 
@@ -242,6 +244,14 @@ describe("exit-restriction schema invariants", () => {
 
 describe("candidate evaluation is fail-closed", () => {
   const candidate = exitRestriction().candidates[0]!;
+
+  it("does not treat an empty evaluation as a clean run", () => {
+    expect(classifyCandidateEvaluation([], COMPLETE).outcome).toBe("evaluation_inconclusive");
+  });
+
+  it("honors incomplete enumeration even without a populated gaps list", () => {
+    expect(classifyCandidateEvaluation([candidate], { ...COMPLETE, complete: false }).outcome).toBe("evaluation_inconclusive");
+  });
 
   it("maps an inconclusive candidate to evaluation_inconclusive", () => {
     const result = classifyCandidateEvaluation([{ ...candidate, result: "inconclusive", detail: "mutation reverted" }], COMPLETE);

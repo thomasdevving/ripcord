@@ -9,7 +9,9 @@ exercise legitimate on-chain power, without breaking any rule an audit
 checked. Ripcord makes on-chain power structures legible: who holds privileged
 capability over a contract, what that capability actually lets them do, and
 (later) how fast they could use it versus how fast a user could leave. Every
-fact is public and readable in advance; nobody automates reading it. The
+fact used by the tool is public and readable in advance. Its contribution is
+the integration of authority analysis and bounded fork evidence, without a
+claim of exclusive novelty. The
 audience is professional security auditors judging a hackathon demo — they
 will actively try to break the tool's credibility, so overclaiming is the
 single biggest risk to the project, worse than missing a case.
@@ -720,8 +722,8 @@ only via delegatecall and is usually uninitialized.
    LP positions, or staked principal is invisible and the headline is a FLOOR,
    never a ceiling (Decided approaches #10); and because anvil impersonation
    ignores signatures, a Safe-terminated authority path is impersonated at the
-   Safe ADDRESS directly, demonstrating "this Safe can if signers collude," not
-   "one key can" (the PAID demo impersonates a plain EOA, so it doesn't apply
+   Safe ADDRESS directly, assuming its own authorization succeeds. Signatures,
+   transaction guards and modules are not executed (the PAID demo impersonates a plain EOA, so it doesn't apply
    there, but must be stated for any Safe-terminated path).
 10. **Recursion resolves owner-of-owner but not arbitrary custom authority
     (day 3).** A contract power holder whose control is exposed only through a
@@ -1305,7 +1307,7 @@ only via delegatecall and is usually uninitialized.
     hardening is schema 0.13.0 / ruleset 0.12.0.
 
 38. **[PARTIALLY RESOLVED — candidate/enum fall-throughs are closed; candidate-
-    surface completeness and baseline causality remain.]** Day 7 established the confirmation direction end to end: Comet's
+    surface completeness and fresh mainnet validation remain.]** Day 7 established the confirmation direction end to end: Comet's
     baseline withdrawal succeeds, its registered guardian candidate closes the
     exit, and the identical withdrawal then reverts. That supports the current
     `no_notice` finding. It does NOT validate `no_direct_restriction_found`, which
@@ -1319,13 +1321,16 @@ only via delegatecall and is usually uninitialized.
     requires complete enumeration, exact candidate counts and every result equal
     to `no_effect`. A found restrictor deliberately survives incomplete enumeration.
 
-    Two broader gates remain before the clean direction is relied upon: (a) a
-    baseline withdrawal revert is classified `already_shut` without proving the
-    pause caused it, whereas an unestablished baseline should normally remain
-    undetermined, and (b) the engine covers the matched archetype's REGISTERED
-    candidates, currently one Comet pause function — never every privileged
-    selector in the bytecode. Until those gates land, present `restrict` as a
-    demonstrated Comet restrictor detector, not a calibrated absence detector.
+    Baseline and causal checks are hardened in ruleset 0.13.0 / exit actions
+    0.3.0: require actual token recovery, a full cleared base position and no debt;
+    require the pause transition and Paused() revert at matching block/time.
+    Failed controls are baseline_unestablished and cannot create an authority
+    route. Controller authorization remains an explicit impersonation assumption.
+    See docs/FORK_VALIDATION.md: regression and real local Anvil tests pass, but
+    a fresh historical Comet fork run needs an archive-capable RPC. Historical
+    fixtures are not evidence that the new rules have been validated on mainnet.
+    Candidate coverage still includes only the registered Comet pause function.
+    Present restrict as a bounded detector, not a calibrated absence detector.
 
 22. **The cleared-dependency registry is small, manual, and mainnet-only
     (consolidation pass).** `clearedRegistry.ts` documents design-not-bug

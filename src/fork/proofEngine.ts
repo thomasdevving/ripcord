@@ -321,7 +321,7 @@ export async function runProofEngine(req: ProofRequest): Promise<Proof> {
         args: [req.target],
       })) as bigint;
       const delta = h.before - after;
-      const priced = await priceDelta(fork, req.chainId, h.token, h.symbol, delta, h.decimals);
+      const priced = await priceDelta(fork, req.chainId, h.token, h.symbol, h.before, after, h.decimals, req.blockNumber, evidence);
       if (priced.usd === null) totalUsd = null;
       else if (totalUsd !== null) totalUsd += priced.usd;
       deltas.push(priced);
@@ -346,7 +346,7 @@ export async function runProofEngine(req: ProofRequest): Promise<Proof> {
       totalUsd,
     });
 
-    const usdStr = totalUsd === null ? "an undetermined USD amount (a price feed could not be read — see deltas)" : `$${totalUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+    const usdStr = totalUsd === null ? "an undetermined USD amount (a price feed could not be read — see deltas)" : `$${totalUsd.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
     // The notice clause is part of the headline, not a footnote. A drain proof
     // driven from a two-day-timelocked authority and one driven from a bare
     // EOA are different findings, and a reader who only reads the headline must
@@ -358,7 +358,7 @@ export async function runProofEngine(req: ProofRequest): Promise<Proof> {
         : notice.seconds === "0"
           ? " This authority is subject to NO notice period: the capability is available immediately, with no public warning."
           : ` This authority is subject to a proven-binding ${notice.seconds}s notice period, which the fork skips by impersonation — in reality the operation would be publicly visible for that long before it could execute.`;
-    const headline = `In simulation on a fork at block ${req.blockNumber}, the resolved upgrade authority ${controllerAddr} CAN move ${usdStr} of the tokens this contract holds, in one upgrade path.${noticeClause}`;
+    const headline = `In simulation on a fork at block ${req.blockNumber}, the resolved upgrade authority ${controllerAddr} CAN move ${usdStr} of the tokens this contract holds, in one upgrade path.${noticeClause} The controller is impersonated; its own transaction authorization, including any Safe signatures, guards or modules, was not executed.`;
 
     return {
       attempted: true,
@@ -385,53 +385,63 @@ export async function runProofEngine(req: ProofRequest): Promise<Proof> {
   }
 }
 
-async function priceDelta(
+export async function priceDelta(
   fork: Awaited<ReturnType<typeof startAnvilFork>>,
   chainId: number,
   token: Hex,
   symbol: string,
-  delta: bigint,
+  before: bigint,
+  after: bigint,
   decimals: number,
+  blockNumber: bigint,
+  evidence: Evidence[],
 ): Promise<ProofDelta> {
+  const delta = before - after;
   const feed = feedForToken(chainId, token);
   const base = {
     token,
     symbol,
     decimals,
-    balanceBefore: "", // filled by caller context below
-    balanceAfter: "",
+    balanceBefore: before.toString(),
+    balanceAfter: after.toString(),
     delta: delta.toString(),
   };
-  // balanceBefore/After are informative but the delta is the load-bearing
-  // number; record delta and derive the pair from it where the caller has them.
   if (!feed) {
-    return { ...base, balanceBefore: delta.toString(), balanceAfter: "0", usd: null, priceSource: `no Chainlink feed configured for ${symbol}` };
+    return { ...base, usd: null, priceSource: `no Chainlink feed configured for ${symbol}` };
   }
   try {
-    const [, answer] = (await fork.client.readContract({
+    const round = (await fork.client.readContract({
       address: feed.feed,
       abi: aggregatorV3,
       functionName: "latestRoundData",
+      blockNumber,
     })) as readonly [bigint, bigint, bigint, bigint, bigint];
     const feedDec = (await fork.client.readContract({
       address: feed.feed,
       abi: aggregatorV3,
       functionName: "decimals",
+      blockNumber,
     })) as number;
+    const [roundId, answer, startedAt, updatedAt, answeredInRound] = round;
+    const block = await fork.client.getBlock({ blockNumber });
+    evidence.push(ev({ read: "latestRoundData()", address: feed.feed },
+      [roundId, answer, startedAt, updatedAt, answeredInRound].map(String), blockNumber));
+    evidence.push(ev({ read: "decimals()", address: feed.feed }, feedDec, blockNumber));
+    // Explicit valuation policy, not a claim about a vendor's exact heartbeat.
+    // Age is measured relative to the historical report block, never wall time.
+    if (answer <= 0n || updatedAt <= 0n || updatedAt > block.timestamp || block.timestamp - updatedAt > 86_400n) {
+      return { ...base, usd: null, priceSource: `price unavailable: ${feed.note} has an invalid answer or timestamp, or exceeds the 24-hour valuation age limit at block ${blockNumber}` };
+    }
     const tokens = Number(delta) / 10 ** decimals;
     const price = Number(answer) / 10 ** feedDec;
     return {
       ...base,
-      balanceBefore: delta.toString(),
-      balanceAfter: "0",
-      usd: tokens * price,
+      usd: Number.isFinite(tokens * price) ? tokens * price : null,
       priceSource: `${feed.note} @ ${feed.feed}`,
     };
   } catch (err) {
     return {
       ...base,
-      balanceBefore: delta.toString(),
-      balanceAfter: "0",
       usd: null,
       priceSource: `price unavailable: ${feed.note} read failed (${err instanceof Error ? err.message : String(err)})`,
     };

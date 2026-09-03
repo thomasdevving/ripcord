@@ -136,10 +136,18 @@ function composeVerdictInner(
     exitRestriction && exitRestriction.confirmationMethod === "fork_confirmed" && exitRestriction.restrictors.length > 0
       ? exitRestriction.restrictors[0]
       : null;
+  const restrictorNotice = forkRestrictor?.noticeSeconds === null
+    ? "with an unestablished notice period"
+    : forkRestrictor?.noticeSeconds === "0"
+      ? "with zero notice"
+      : `with ${forkRestrictor?.noticeSeconds}s of notice`;
+  const controllerAssumption = forkRestrictor?.guardingPartyType === "safe" || forkRestrictor?.guardingPartyType === "contract"
+    ? " This assumes the impersonated controller can authorize and submit the call; its signatures, transaction guards and modules were not executed."
+    : "";
   const forkClause = forkRestrictor
     ? exitRestriction!.restrictionState === "already_shut"
-      ? ` This exit is ALREADY shut at the pinned block — the baseline withdrawal reverts now, fork-confirmed.`
-      : ` The exit is OPEN at the pinned block but CLOSABLE with zero notice: Ripcord ran the baseline exit on a fork, had ${forkRestrictor.guardingParty} call ${forkRestrictor.signature} with ${forkRestrictor.args}, and the identical exit then reverted. This is "you can be trapped at any moment," not "you are already trapped."`
+      ? " The recorded baseline withdrawal failed; this is not a successful control followed by a privileged mutation, and by itself establishes no zero-notice authority route."
+      : ` The tested withdrawal is OPEN in the control but CLOSABLE ${restrictorNotice}: Ripcord ran the baseline withdrawal on a fork, had ${forkRestrictor.guardingParty} call ${forkRestrictor.signature} with ${forkRestrictor.args}, and the identical withdrawal then reverted.${controllerAssumption} This demonstrates a restriction in the tested scenario, not that withdrawals were already blocked at the pinned block.`
     : "";
 
   if (!exitWindow) missing.push("the exit-window stage did not run (see errors[])");

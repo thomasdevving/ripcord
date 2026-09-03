@@ -27,12 +27,19 @@ export function applyExitRestriction(report: Report, result: ExitRestrictionResu
   const { exitRestriction, restrictorRoute } = result;
 
   let exitWindow: ExitWindow | null = report.exitWindow;
-  if (restrictorRoute && exitWindow) {
+  // A failed baseline is not a zero-notice authority route. Only attach a route
+  // evidenced by an established differential, matching this restrictor's party.
+  const matchingRestrictor = exitRestriction.restrictors.find((candidate) =>
+    candidate.result === "restrictor" && candidate.noticeSeconds === "0" &&
+    candidate.guardingParty?.toLowerCase() === restrictorRoute?.root.toLowerCase());
+  if (restrictorRoute && exitWindow && matchingRestrictor &&
+    exitRestriction.restrictionState === "restrictable" && exitRestriction.baseline.status === "established" &&
+    exitRestriction.confirmationMethod === "fork_confirmed" && restrictorRoute.noticeSeconds === "0") {
     const routes = [...exitWindow.routes, restrictorRoute];
     const assessment: ExitWindowAssessment = {
       status: "no_notice",
       confidence: "high",
-      statement: `Exit window is zero: a FORK-CONFIRMED exit restrictor (${restrictorRoute.label} → ${restrictorRoute.effectiveControllerType} ${restrictorRoute.effectiveController}) can close the exit with no notice at all. This was demonstrated, not inferred: the baseline exit succeeded, that party closed it, and the identical exit then reverted on the fork.`,
+      statement: `Exit window is zero on the demonstrated route (${restrictorRoute.label} → ${restrictorRoute.effectiveControllerType} ${restrictorRoute.effectiveController}): the baseline withdrawal succeeded and the identical withdrawal failed after the privileged mutation on the fork.${matchingRestrictor.guardingPartyType === "safe" || matchingRestrictor.guardingPartyType === "contract" ? " The controller was impersonated; this conclusion assumes it can authorize and submit the call. Its signatures, guards and modules were not executed." : ""}`,
     };
     exitWindow = { ...exitWindow, routes, assessment };
   }

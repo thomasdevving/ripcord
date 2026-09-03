@@ -10,7 +10,7 @@ Ripcord scans a deployed EVM contract at a pinned block and produces an evidence
 
 An audit answers *"is there a bug in this code."* It does not answer *"who holds the keys."* With an upgradeable proxy, the code an auditor reviewed is not necessarily the code that runs tomorrow: an admin can swap the implementation, or exercise some other entirely legitimate on-chain power, without breaking a single rule any audit checked. No exploit is required. The system works exactly as designed and the user's funds are gone anyway.
 
-The audience is anyone deciding whether to put money into a protocol and, more sharply, the security professionals who advise them. Every fact needed to see this coming is public, on-chain, and readable **before** you deposit — the proxy pattern, the admin address, whether it is an EOA or a 3-of-11 Safe, whether a timelock sits in between, how long that timelock is and who can shorten it. Nobody reads it, because nobody automates reading it.
+The audience is anyone evaluating a protocol's admin risk and the security professionals who advise them. Much of the relevant evidence is public and readable **before** a deposit: proxy structure, controller addresses, multisig configuration and timelock settings. Ripcord connects authority resolution, notice analysis and bounded fork experiments in a reproducible report. This describes its contribution; it does not claim that no other tool automates these tasks.
 
 ## Why it matters
 
@@ -74,7 +74,7 @@ nowhere in the calibration set; it must not be read as a third form of “safe�
 | **[viem](https://viem.sh)** | Ethereum RPC, ABI encode/decode, keccak. Also the source of every derived constant: storage slots and selectors are *computed from their preimages in code*, never hand-copied, and asserted in tests against independent reference values. |
 | **[zod](https://zod.dev)** | Runtime schema validation — and load-bearing, not decorative. The report's structural honesty invariants (discriminated unions, `z.literal(true)` witnesses) are enforced by zod. A report that fails its own schema is treated as a Ripcord bug, not a target problem. |
 | **[Foundry](https://book.getfoundry.sh) (`anvil`, `cast`)** | Ephemeral mainnet-fork EVM for the proof engine and exit-restriction differential, plus `cast run --trace` for the proof engine's human-readable call trace. The only non-npm dependency. |
-| **[vitest](https://vitest.dev)** | 275 unit tests, all network-free, so CI needs no RPC key. |
+| **[vitest](https://vitest.dev)** | Unit tests and a local Anvil integration test; no external network or RPC key. The integration test skips when Anvil is unavailable. |
 | **[gitleaks](https://github.com/gitleaks/gitleaks)** | Secret scanning over the full history, in CI on every push. |
 | **commander** | CLI argument parsing. |
 
@@ -96,7 +96,7 @@ git clone https://github.com/thomasdevving/ripcord.git
 cd ripcord
 pnpm install
 pnpm typecheck      # tsc --noEmit
-pnpm test           # 275 unit tests, network-free
+pnpm test           # no external network; local fork test requires Anvil
 pnpm verify:pages   # re-check every published page against its source report
 pnpm verify:claims  # re-check this README's claims against those reports
 pnpm verify:boundary # prove the live data layer cannot reach the pinned verdict
@@ -123,9 +123,9 @@ pnpm ripcord scan 0x1614f18fc94f47967a3fbe5ffcd46d4e7da3d787 --block 25800000 --
 pnpm ripcord restrict 0xc3d688B66703497DAA19211EEdff47f25384cdc3 --block 25800000 --chain 1
 ```
 
-The first comes back `no_notice`: both authority routes terminate at plain EOAs with no delay anywhere, so there is no interval to move inside — and `paused()` reads **`true`** at that block, so the exit is not slow, **it is shut**. The second also comes back `no_notice`, but for a sharper reason the tool *demonstrates* rather than asserts. Its upgrade path is timelocked, and the proof engine shows the scale of that authority: **$540,604,938.71** moved on an ephemeral fork by executing the admin's own upgrade path, against a **proven-binding 2-day notice**. But `ripcord restrict` then runs a fork **differential**: it funds a real supplier, confirms a baseline `withdraw` succeeds, has the `pauseGuardian()` (a 5-of-9 Safe) set `isWithdrawPaused = true`, and watches the identical `withdraw` **revert**. So the notice on a *rule change* is two days, but the *exit itself* can be closed with **zero** notice — the window is the minimum of the two. The exit is OPEN now but CLOSABLE: you can be trapped at any moment, not already trapped.
+The committed historical reports record `no_notice` for both cases. PAID's `paused()` reads **`true`** at the pinned block. Comet's upgrade proof records **$540,604,938.71** moved on a fork against a **proven-binding 2-day notice**. Its earlier restriction experiment records a successful partial withdrawal followed by a revert after the guardian's pause call. The guardian is a 5-of-9 Safe, impersonated at its contract address: the experiment assumes it can authorize the call and does not execute its signatures, guards or modules.
 
-That pair is the point. Same tool, same engines, both trapped — but one is already shut and one can be shut at will, and Ripcord tells the two apart on evidence. Every figure is capability, not intent: what a party CAN do, watched happening on a sandbox fork, never a claim that it will.
+Current fork rules are stricter: they require a full base-position withdrawal with token recovery and zero remaining principal or debt, matched branch timestamps, the pause transition, and the specific `Paused()` error. A failed control stays unestablished. These changes have regression and local Anvil coverage, but a fresh historical Comet run still requires an archive RPC; the committed reports are earlier evidence, not validation of these new rules. See [the fork validation record](docs/FORK_VALIDATION.md).
 
 To regenerate the whole published calibration set:
 
