@@ -116,6 +116,20 @@ export async function startAnvilFork(opts: StartForkOptions): Promise<ForkHandle
     await new Promise((r) => setTimeout(r, 150));
   }
 
+  // Anvil otherwise timestamps every locally-mined block from wall-clock time.
+  // Protocols with time-dependent accounting (Comet accrues interest by
+  // timestamp) then consume different gas and produce different receipt block
+  // hashes across identical runs — which the point-7 evidence records verbatim,
+  // so two runs diverge. Pinning ONLY the first block (setNextBlockTimestamp) is
+  // not enough: every block after it, and every block mined after an evm_revert,
+  // drifts back to wall-clock. So instead every mined block's timestamp is
+  // assigned here from an explicit monotonic counter — deterministic BY
+  // CONSTRUCTION and revert-safe (the counter only ever advances, so a post-
+  // revert block still gets a fresh timestamp strictly greater than the block it
+  // reverted to), rather than by trusting Anvil's cross-revert timestamp policy.
+  const forkHead = await client.getBlock({ blockNumber: opts.blockNumber });
+  let nextBlockTimestamp = forkHead.timestamp; // incremented before each mined block
+
   const stop = async (): Promise<void> => {
     if (exited) return;
     await new Promise<void>((resolve) => {
@@ -136,6 +150,12 @@ export async function startAnvilFork(opts: StartForkOptions): Promise<ForkHandle
     if (tx.value !== undefined) params.value = `0x${tx.value.toString(16)}`;
     // Always cap gas: we are executing adversarial-shaped logic.
     params.gas = `0x${(tx.gas ?? 3_000_000n).toString(16)}`;
+    // Pin the timestamp of the block this transaction mines, from a counter that
+    // only advances — so every receipt hash is deterministic across runs and
+    // across evm_revert boundaries. See the rationale where nextBlockTimestamp
+    // is declared.
+    nextBlockTimestamp += 1n;
+    await client.setNextBlockTimestamp({ timestamp: nextBlockTimestamp });
     const hash = (await client.request({
       method: "eth_sendTransaction" as never,
       params: [params] as never,

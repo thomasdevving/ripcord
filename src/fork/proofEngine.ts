@@ -27,7 +27,7 @@
  */
 import { execFile } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { promisify } from "node:util";
 import {
   decodeFunctionResult,
@@ -466,7 +466,12 @@ async function writeArtifacts(
       `# total moved   : ${summary.totalUsd === null ? "USD undetermined" : "$" + summary.totalUsd.toFixed(2)}\n` +
       `# NOTE: sandbox fork only. No mainnet tx, no key. Capability, not intent.\n\n`;
     await writeFile(path, header + stdout, "utf8");
-    traceArtifact = path;
+    // Store a cwd-RELATIVE path in the report. The absolute path is written to
+    // disk, but an absolute path in the report is machine-specific — it makes a
+    // regenerated report differ from a committed one across machines, which is a
+    // determinism regression against `compare-reports`. Relative-to-repo-root is
+    // both portable and stable.
+    traceArtifact = relative(process.cwd(), path);
   } catch {
     traceArtifact = null;
   }

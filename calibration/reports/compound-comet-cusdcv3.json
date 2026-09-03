@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.12.0",
   "rulesetVersion": "0.11.0",
-  "generatedAt": "2026-09-02T22:25:33.509Z",
+  "generatedAt": "2026-09-03T06:59:35.586Z",
   "chainId": 1,
   "block": {
     "number": "25800000",
@@ -1698,7 +1698,7 @@
     "failureReason": null,
     "sandboxNote": "Executed only on an ephemeral anvil mainnet fork pinned to the report block. No mainnet transaction was sent, no private key was used or held, no approval was requested. The figures describe what this authority CAN do in simulation — a capability, not a prediction of intent.",
     "reproduceCommand": "pnpm ripcord prove 0xc3d688B66703497DAA19211EEdff47f25384cdc3 --block 25800000 --chain 1",
-    "traceArtifact": null,
+    "traceArtifact": ".ripcord/proofs/0xc3d688B66703497DAA19211EEdff47f25384cdc3-25800000/trace.txt",
     "forkBlock": "25800000",
     "evidence": [
       {
@@ -2140,7 +2140,7 @@
             "receipt": {
               "status": "success",
               "blockNumber": "25800001",
-              "blockHash": "0x499023b41e1ce01e3d60629ba98da4c3ef233278df40a0d92992ae36c286cdfd",
+              "blockHash": "0x49e5ed0f6ce49263ac07a849cf59e822bf258b8cfc4bafe6ec5ce8a44d0675f5",
               "transactionIndex": 0,
               "gasUsed": "62044"
             },
@@ -2166,7 +2166,7 @@
             "receipt": {
               "status": "success",
               "blockNumber": "25800002",
-              "blockHash": "0xb7875e1b7e6d63b77a44d308ae12149564128b960c76dde39ef61625c0fadd33",
+              "blockHash": "0xb40a7980ddaf9f86ba528dfe040365c0a74ef5b06695755cdd55da94eebc843c",
               "transactionIndex": 0,
               "gasUsed": "55570"
             },
@@ -2192,7 +2192,7 @@
             "receipt": {
               "status": "success",
               "blockNumber": "25800003",
-              "blockHash": "0x1cbb8371941713fb52d899646e745a8813bd17060d5360ee9032ff222702d694",
+              "blockHash": "0x95d979e5ca168babf8a1f2ca36d047254970c4129ff6fa3bdfef414ab9c45029",
               "transactionIndex": 0,
               "gasUsed": "116111"
             },
@@ -2228,9 +2228,9 @@
             "receipt": {
               "status": "success",
               "blockNumber": "25800004",
-              "blockHash": "0xdf16a03690657b978aad4e15e7357516f8ec0fa75097fb33a3c412b08b153453",
+              "blockHash": "0x9c37314b3b18f2e6cc0a78acf4a33519a33a5b568c94b65ff87c3d05ad2c9af0",
               "transactionIndex": 0,
-              "gasUsed": "81316"
+              "gasUsed": "89416"
             },
             "revertData": null
           },
@@ -2273,7 +2273,7 @@
             "receipt": {
               "status": "success",
               "blockNumber": "25800004",
-              "blockHash": "0x0e1d99e2cce5e7d02a79474d3ab1b50d3e191f0de53baebf7f21747b1e5cf23c",
+              "blockHash": "0x9ce77de0ee83f2396ab88613bf28f430546258b5ef1b7546c5a430b0ee78419d",
               "transactionIndex": 0,
               "gasUsed": "37865"
             },
@@ -2299,7 +2299,7 @@
             "receipt": {
               "status": "reverted",
               "blockNumber": "25800005",
-              "blockHash": "0xa5827e0014300d30fdfba0140209adaf02cf59b3a14dfab8afb7fe1109836fac",
+              "blockHash": "0x90e000c9772cf4f8b78e20434ab5c0b43595aedec29f66b73a4ed7664063bfd7",
               "transactionIndex": 0,
               "gasUsed": "54882"
             },
@@ -2348,7 +2348,7 @@
               "receipt": {
                 "status": "success",
                 "blockNumber": "25800004",
-                "blockHash": "0x0e1d99e2cce5e7d02a79474d3ab1b50d3e191f0de53baebf7f21747b1e5cf23c",
+                "blockHash": "0x9ce77de0ee83f2396ab88613bf28f430546258b5ef1b7546c5a430b0ee78419d",
                 "transactionIndex": 0,
                 "gasUsed": "37865"
               },
@@ -2383,7 +2383,7 @@
               "receipt": {
                 "status": "reverted",
                 "blockNumber": "25800005",
-                "blockHash": "0xa5827e0014300d30fdfba0140209adaf02cf59b3a14dfab8afb7fe1109836fac",
+                "blockHash": "0x90e000c9772cf4f8b78e20434ab5c0b43595aedec29f66b73a4ed7664063bfd7",
                 "transactionIndex": 0,
                 "gasUsed": "54882"
               },
@@ -2424,7 +2424,7 @@
               "receipt": {
                 "status": "success",
                 "blockNumber": "25800004",
-                "blockHash": "0x0e1d99e2cce5e7d02a79474d3ab1b50d3e191f0de53baebf7f21747b1e5cf23c",
+                "blockHash": "0x9ce77de0ee83f2396ab88613bf28f430546258b5ef1b7546c5a430b0ee78419d",
                 "transactionIndex": 0,
                 "gasUsed": "37865"
               },
@@ -2459,7 +2459,7 @@
               "receipt": {
                 "status": "reverted",
                 "blockNumber": "25800005",
-                "blockHash": "0xa5827e0014300d30fdfba0140209adaf02cf59b3a14dfab8afb7fe1109836fac",
+                "blockHash": "0x90e000c9772cf4f8b78e20434ab5c0b43595aedec29f66b73a4ed7664063bfd7",
                 "transactionIndex": 0,
                 "gasUsed": "54882"
               },
@@ -2519,7 +2519,7 @@
           "receipt": {
             "status": "success",
             "blockNumber": "25800001",
-            "blockHash": "0x499023b41e1ce01e3d60629ba98da4c3ef233278df40a0d92992ae36c286cdfd",
+            "blockHash": "0x49e5ed0f6ce49263ac07a849cf59e822bf258b8cfc4bafe6ec5ce8a44d0675f5",
             "transactionIndex": 0,
             "gasUsed": "62044"
           },
@@ -2545,7 +2545,7 @@
           "receipt": {
             "status": "success",
             "blockNumber": "25800002",
-            "blockHash": "0xb7875e1b7e6d63b77a44d308ae12149564128b960c76dde39ef61625c0fadd33",
+            "blockHash": "0xb40a7980ddaf9f86ba528dfe040365c0a74ef5b06695755cdd55da94eebc843c",
             "transactionIndex": 0,
             "gasUsed": "55570"
           },
@@ -2571,7 +2571,7 @@
           "receipt": {
             "status": "success",
             "blockNumber": "25800003",
-            "blockHash": "0x1cbb8371941713fb52d899646e745a8813bd17060d5360ee9032ff222702d694",
+            "blockHash": "0x95d979e5ca168babf8a1f2ca36d047254970c4129ff6fa3bdfef414ab9c45029",
             "transactionIndex": 0,
             "gasUsed": "116111"
           },
@@ -2607,9 +2607,9 @@
           "receipt": {
             "status": "success",
             "blockNumber": "25800004",
-            "blockHash": "0xdf16a03690657b978aad4e15e7357516f8ec0fa75097fb33a3c412b08b153453",
+            "blockHash": "0x9c37314b3b18f2e6cc0a78acf4a33519a33a5b568c94b65ff87c3d05ad2c9af0",
             "transactionIndex": 0,
-            "gasUsed": "81316"
+            "gasUsed": "89416"
           },
           "revertData": null
         },
@@ -2652,7 +2652,7 @@
           "receipt": {
             "status": "success",
             "blockNumber": "25800004",
-            "blockHash": "0x0e1d99e2cce5e7d02a79474d3ab1b50d3e191f0de53baebf7f21747b1e5cf23c",
+            "blockHash": "0x9ce77de0ee83f2396ab88613bf28f430546258b5ef1b7546c5a430b0ee78419d",
             "transactionIndex": 0,
             "gasUsed": "37865"
           },
@@ -2678,7 +2678,7 @@
           "receipt": {
             "status": "reverted",
             "blockNumber": "25800005",
-            "blockHash": "0xa5827e0014300d30fdfba0140209adaf02cf59b3a14dfab8afb7fe1109836fac",
+            "blockHash": "0x90e000c9772cf4f8b78e20434ab5c0b43595aedec29f66b73a4ed7664063bfd7",
             "transactionIndex": 0,
             "gasUsed": "54882"
           },
