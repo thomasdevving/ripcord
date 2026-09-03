@@ -243,6 +243,94 @@ for (const [label, r] of Object.entries(reports)) {
   if (r.disclosure.publishable && !existsSync(page)) notes.push(`site: ${label} is publishable but has no page (rerun \`pnpm render\`)`);
 }
 
+// --- 7. The hero's example card is a QUOTATION, so it must still be true. ---
+//
+// The card on the product's first screen carries a verdict, an address, a block
+// and four figures. Nothing else checks them: verify-pages covers site/, and
+// this script's other checks read markdown. A TSX literal is exactly the place
+// KNOWN EDGE #34 happened — the tool stayed right while the story about it went
+// wrong — so the quotation is re-derived from its source here.
+//
+// It also enforces the rule the quotation depends on: the source report must be
+// PUBLISHABLE. Quoting a blocked report on a public page publishes what the
+// disclosure gate withholds.
+{
+  const heroPath = "web/src/components/Hero.tsx";
+  const doc = "hero";
+  if (!existsSync(heroPath)) {
+    fail(doc, `${heroPath} is missing — the example-card quotation cannot be verified`);
+  } else {
+    const src = readFileSync(heroPath, "utf8");
+    const block = src.match(/const EXAMPLE = \{([\s\S]*?)\} as const;/);
+    if (!block) {
+      fail(doc, "no `const EXAMPLE = { … } as const;` literal found — the quotation check cannot run");
+    } else {
+      const quoted = {};
+      for (const m of block[1].matchAll(/^\s*([A-Za-z]+):\s*"([^"]*)",/gm)) quoted[m[1]] = m[2];
+
+      const addr = (quoted.address ?? "").toLowerCase();
+      const src_report = byAddress[addr];
+      if (!src_report) {
+        fail(doc, `quotes address ${quoted.address ?? "(none)"} but no committed report has that target`);
+      } else {
+        const { label, r } = src_report;
+
+        if (!r.disclosure.publishable) {
+          fail(doc, `quotes ${label}, whose report is disclosure.publishable=false — the gate withholds it, so the first screen must not carry its figures`);
+        } else {
+          ok(doc, `quotes ${label}, which is publishable`);
+        }
+
+        const expect = (field, actual, want) => {
+          if (quoted[field] === undefined) return fail(doc, `EXAMPLE.${field} is missing`);
+          if (String(want) !== String(quoted[field])) {
+            fail(doc, `EXAMPLE.${field} says "${quoted[field]}" but ${label} ${actual} is "${want}"`);
+          } else {
+            ok(doc, `EXAMPLE.${field} = ${want} matches ${label}`);
+          }
+        };
+
+        const routes = r.exitWindow?.routes ?? [];
+        const maxNotice = routes.reduce((a, x) => Math.max(a, Number(x.noticeSeconds ?? 0)), 0);
+        const minNotice = routes.length ? routes.reduce((a, x) => Math.min(a, Number(x.noticeSeconds ?? 0)), Infinity) : 0;
+
+        expect("block", "block.number", Number(r.block.number).toLocaleString("en-US"));
+        expect("routes", "exitWindow.routes.length", routes.length);
+        expect("notice", "the longest route notice", `${maxNotice / 86400}D`);
+        expect("exitCloses", "the shortest route notice", `${minNotice}s`);
+        expect("timeToExit", "timeToExit.atLeastSeconds", `${Number(r.timeToExit?.atLeastSeconds ?? -1)}s`);
+
+        // Elsewhere in this script an abbreviated figure is skipped, because a
+        // "$540M" in prose is a rounding of an exact total stated nearby. On the
+        // card the abbreviation is ALL the reader gets, so it is a claim in its
+        // own right and is checked here. Floor and round are both accepted — the
+        // repo writes $540M for $540,604,938.71 and that is not an error — which
+        // still catches the drift that matters: a figure off by a million or by
+        // an order of magnitude, or one quoting a report with no proof at all.
+        const usd = Number(r.proof?.totalUsd ?? NaN);
+        if (!Number.isFinite(usd)) {
+          fail(doc, `EXAMPLE.proofUsd says "${quoted.proofUsd}" but ${label} produced no priced proof`);
+        } else {
+          const allowed = [Math.floor(usd / 1e6), Math.round(usd / 1e6)].map((n) => `$${n}M`);
+          if (allowed.includes(quoted.proofUsd)) ok(doc, `EXAMPLE.proofUsd = ${quoted.proofUsd} matches ${label} proof.totalUsd`);
+          else fail(doc, `EXAMPLE.proofUsd says "${quoted.proofUsd}" but ${label} proof.totalUsd is ${usd.toFixed(2)} (expected one of ${allowed.join(" or ")})`);
+        }
+
+        const status = String(r.verdict?.status ?? "");
+        expect("verdict", "verdict.status", status.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()));
+
+        // A card claiming a fork confirmed something must be quoting a report in
+        // which a fork actually did.
+        if (/fork-confirmed/.test(src) && r.exitRestriction?.confirmationMethod !== "fork_confirmed") {
+          fail(doc, `says "fork-confirmed" but ${label} exitRestriction.confirmationMethod is ${r.exitRestriction?.confirmationMethod ?? "null"}`);
+        } else if (/fork-confirmed/.test(src)) {
+          ok(doc, `"fork-confirmed" matches ${label} exitRestriction.confirmationMethod`);
+        }
+      }
+    }
+  }
+}
+
 console.log(`--- narrative claim audit over ${docs.length} document(s) against ${Object.keys(reports).length} reports ---\n`);
 console.log(`${checked.length} claim(s) mechanically verified`);
 if (notes.length) {

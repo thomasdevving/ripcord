@@ -9,17 +9,25 @@
  * past.
  *
  * THE EXAMPLE CARD IS A QUOTATION, NOT A PREVIEW, and that distinction is the
- * whole reason it is allowed to exist here. Everything in it is read from a
- * committed calibration report (calibration/reports/ethena-susde.json at block
- * 25,800,000) and carries the address and block it was measured at. It is
- * labelled EXAMPLE, it names its source, and it repeats that report's own
- * "not proven binding" language rather than upgrading a nominal delay into a
- * window. The same rule the presets follow: nothing on this screen may look
- * like a result the visitor's own run has not produced yet.
+ * whole reason it is allowed to exist here. Every figure is read from
+ * calibration/reports/compound-comet-cusdcv3.json at block 25,800,000, and the
+ * card carries the address and block it was measured at. The same rule the
+ * presets follow: nothing on this screen may look like a result the visitor's
+ * own run has not produced yet.
  *
- * The figures are hardcoded strings because that is what a quotation is. No
- * verdict is computed here — the browser still evaluates no risk logic, and
- * this component imports nothing from the engine.
+ * THE SOURCE REPORT MUST BE PUBLISHABLE, and that is not a detail. The first
+ * draft quoted Ethena's sUSDe, whose report the disclosure gate BLOCKS — it is
+ * absent from the listing and /api/reports returns 451 for it. Putting its
+ * verdict, address and figures on the product's front page would have published
+ * exactly what the gate withholds, through a surface nobody thought to check.
+ * Comet is publishable, so the card and the "See a sample report" link point at
+ * the same report a visitor is allowed to open.
+ *
+ * The figures are hardcoded strings because that is what a quotation is, and
+ * scripts/verify-claims.mjs re-derives every one of them from that report so the
+ * quotation cannot drift from its source. No verdict is computed here — the
+ * browser still evaluates no risk logic, and this component imports nothing from
+ * the engine.
  *
  * The background is a sparse authority graph: nodes are addresses, edges are
  * authority between nearby ones, and every few seconds a query walks a
@@ -40,19 +48,26 @@ const SUBHEAD: Record<View, string> = {
 };
 
 /**
- * Quoted verbatim from calibration/reports/ethena-susde.json. Changing any of
+ * Quoted from calibration/reports/compound-comet-cusdcv3.json. Changing any of
  * these means re-reading that report, not editing the string — the point of a
- * quotation is that somewhere a source says the same thing.
+ * quotation is that somewhere a source says the same thing, and
+ * scripts/verify-claims.mjs fails the build if one of them stops being true.
+ *
+ * The pair is the whole thesis in two numbers: the upgrade path carries two
+ * days of notice, and the exit itself can be shut with none. They are different
+ * routes, and the window is the minimum.
  */
 const EXAMPLE = {
-  address: "0x9D39A5DE30e57443BfF2A8307A4256c8797A3497",
+  protocol: "Compound III",
+  address: "0xc3d688B66703497DAA19211EEdff47f25384cdc3",
   block: "25,800,000",
-  notice: "1D",
-  exit: "1D",
-  margin: "0s",
-  noticeBasis: "nominal, not proven binding",
-  verdict: "Trapped",
-  statement: "leaving takes at least as long as the shortest notice.",
+  notice: "2D",
+  exitCloses: "0s",
+  proofUsd: "$540M",
+  timeToExit: "0s",
+  routes: "2",
+  verdict: "No notice",
+  statement: "a fork-confirmed restrictor can close the exit with no warning.",
 } as const;
 
 export function Hero({
@@ -64,6 +79,7 @@ export function Hero({
   onSubmit,
   liveDisabled,
   inputRef,
+  onOpenSample,
 }: {
   address: string;
   onAddressChange: (value: string) => void;
@@ -73,6 +89,11 @@ export function Hero({
   onSubmit: () => void;
   liveDisabled: boolean;
   inputRef: RefObject<HTMLInputElement | null>;
+  /**
+   * Null when this deployment has no publishable sample to open. The link is
+   * then not rendered at all — a dead "see a sample report" is worse than none.
+   */
+  onOpenSample: (() => void) | null;
 }): ReactElement {
   const [view, setView] = useState<View>("auditors");
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -407,9 +428,16 @@ export function Hero({
                   aria-describedby="addr-help"
                 />
                 <button className="hb-btn" type="button" disabled={!canSubmit} onClick={onSubmit}>
-                  {submitting ? "Starting…" : "Scan an address"}
+                  {submitting ? "Starting…" : "Scan an Address"}
                 </button>
               </div>
+              {onOpenSample && (
+                <p className="hb-secondary">
+                  <button className="hb-link" type="button" onClick={onOpenSample}>
+                    See a Sample Report
+                  </button>
+                </p>
+              )}
               <p className="hb-help" id="addr-help">
                 {address.length > 0 && !addressValid
                   ? "That is not a valid address — 0x followed by 40 hexadecimal characters."
@@ -422,28 +450,28 @@ export function Hero({
 
           <aside className="hb-card" aria-label="Example result, quoted from a committed report">
             <div className="hb-card-meta">
-              <span>Example · sUSDe</span>
+              <span>Example · {EXAMPLE.protocol}</span>
               <span>Block {EXAMPLE.block}</span>
             </div>
 
             <div className="hb-card-top">
               <p className="hb-figure">
-                {EXAMPLE.notice} <span className="hb-vs">vs</span> {EXAMPLE.exit}
+                {EXAMPLE.notice} <span className="hb-vs">vs</span> {EXAMPLE.exitCloses}
               </p>
-              <p className="hb-card-label">Notice window vs. time-to-exit</p>
+              <p className="hb-card-label">Notice on a rule change vs. notice before the exit closes</p>
 
               <div className="hb-stats">
                 <div className="hb-stat">
-                  <div className="hb-stat-v">{EXAMPLE.margin}</div>
-                  <div className="hb-stat-k">margin</div>
+                  <div className="hb-stat-v">{EXAMPLE.proofUsd}</div>
+                  <div className="hb-stat-k">moved on a fork</div>
                 </div>
                 <div className="hb-stat">
-                  <div className="hb-stat-v">1-day</div>
-                  <div className="hb-stat-k">cooldown</div>
+                  <div className="hb-stat-v">{EXAMPLE.timeToExit}</div>
+                  <div className="hb-stat-k">time-to-exit</div>
                 </div>
                 <div className="hb-stat">
-                  <div className="hb-stat-v">nominal</div>
-                  <div className="hb-stat-k">not proven</div>
+                  <div className="hb-stat-v">{EXAMPLE.routes}</div>
+                  <div className="hb-stat-k">routes</div>
                 </div>
               </div>
             </div>
@@ -456,8 +484,8 @@ export function Hero({
             </div>
 
             <p className="hb-card-source">
-              Quoted from a committed calibration report for <span className="mono">{EXAMPLE.address}</span>. The notice
-              figure is {EXAMPLE.noticeBasis}. Your own run produces its own numbers.
+              Quoted from a committed calibration report for <span className="mono">{EXAMPLE.address}</span>. The two
+              days are the upgrade path; the zero is a pause a fork confirmed. Your own run produces its own numbers.
             </p>
           </aside>
         </div>

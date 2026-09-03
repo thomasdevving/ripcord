@@ -1,9 +1,21 @@
 /*
  * Ripcord webapp styling.
  *
- * Continues the palette and typography of the existing rendered calibration
- * pages (scripts/render.ts) so the live app and the committed evidence look
- * like one product rather than two.
+ * ONE SHEET WITH THE HERO. The app used to be light-first with a dark override;
+ * it is now committed to the hero band's dark ground, so the band and the
+ * document below it read as one page instead of two. Every colour still comes
+ * from the token block below, which is why unifying the palette needed no
+ * change to a single component.
+ *
+ * DIVERGENCE, STATED RATHER THAN LEFT TO DRIFT: this stylesheet used to follow
+ * the palette of the rendered calibration pages (scripts/render.ts, output in
+ * site/). It no longer does — those pages are still light. The live app and the
+ * committed evidence therefore look like two products until the renderer is
+ * moved across, which is follow-up work, not something this change quietly did.
+ *
+ * PRINT IS THE EXCEPTION, at the bottom of this file: a report is a document,
+ * and printing the dark ground would waste ink and read worse than the thing it
+ * depicts, so print flips the tokens back to ink on white.
  *
  * The colour rules are semantic, not decorative, and one of them is load-bearing:
  *
@@ -20,48 +32,47 @@
  */
 
 :root {
-  --surface-1: #fcfcfb;
-  --plane: #f9f9f7;
-  --text-primary: #0b0b0b;
-  --text-secondary: #52514e;
-  --muted: #898781;
-  --grid: #e1e0d9;
-  --baseline: #c3c2b7;
-  --border: rgba(11, 11, 11, 0.1);
-  --series-1: #2a78d6;
-  --series-2: #eb6834;
-  --good: #0ca30c;
-  --warning: #fab219;
-  --critical: #d03b3b;
-  --good-ink: #006300;
-  --warn-ink: #7a5200;
-  --crit-ink: #9c2020;
-  --good-bg: #eef7ee;
-  --warn-bg: #fdf5e3;
-  --crit-bg: #fbeded;
-  --radius: 10px;
-  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
+  color-scheme: dark;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --surface-1: #1a1a19;
-    --plane: #0d0d0d;
-    --text-primary: #ffffff;
-    --text-secondary: #c3c2b7;
-    --muted: #898781;
-    --grid: #2c2c2a;
-    --baseline: #383835;
-    --border: rgba(255, 255, 255, 0.1);
-    --series-1: #3987e5;
-    --series-2: #d95926;
-    --good-ink: #0ca30c;
-    --warn-ink: #fab219;
-    --crit-ink: #e66767;
-    --good-bg: #12210f;
-    --warn-bg: #241d09;
-    --crit-bg: #2a1414;
-  }
+  /* Ground first, and it is the hero band's ground on purpose. */
+  --plane: #0f120e;
+  --surface-1: #181c17;
+  --surface-2: #1f241e;
+
+  --text-primary: #e7ede4;
+  --text-secondary: #9aa396;
+  --muted: #6b7568;
+
+  --grid: #293027;
+  --baseline: #3a4237;
+  --border: #293027;
+
+  /* CTA and links. Green is an ACCENT here — a control the reader can press —
+     never a verdict. The rule at the top of this file still holds. */
+  --accent: #4cc384;
+  --accent-lift: #5fd293;
+  --accent-ink: #0f120e;
+
+  /* Work in progress, and deliberately NOT the accent green: a running phase
+     and a finished phase must never read as the same colour. This is the blue
+     the hero's query pulse already uses, so it is not a new hue in the system. */
+  --series-1: #5b9dff;
+  --series-2: #dfa748;
+
+  --good: #4cc384;
+  --warning: #dfa748;
+  --critical: #ef7361;
+  --good-ink: #4cc384;
+  --warn-ink: #dfa748;
+  --crit-ink: #ef7361;
+  --good-bg: #16281e;
+  --warn-bg: #2a2216;
+  --crit-bg: #2c1917;
+
+  /* Flat. The hero is a security document, not a card UI, and a 10px radius on
+     every panel was the single biggest thing making the two look unrelated. */
+  --radius: 3px;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 * { box-sizing: border-box; }
@@ -76,14 +87,14 @@ body {
 
 code, pre, .mono { font-family: var(--mono); }
 
-a { color: var(--series-1); }
+a { color: var(--accent); }
 
 /* Keyboard focus must be visible everywhere. A demo driven from the keyboard
    with an invisible focus ring is a demo nobody can follow. */
 :focus-visible {
-  outline: 2px solid var(--series-1);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: 2px;
 }
 
 /* Animations follow real events and are short. Anyone who has asked their OS
@@ -143,11 +154,12 @@ section.card {
 h1 { font-size: 22px; margin: 0 0 10px; letter-spacing: -0.01em; }
 h2 { font-size: 17px; margin: 0 0 10px; }
 h3 {
-  font-size: 12px;
+  font-family: var(--mono);
+  font-size: 11px;
   margin: 20px 0 8px;
-  color: var(--text-secondary);
+  color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.14em;
 }
 h3:first-child { margin-top: 0; }
 
@@ -167,7 +179,7 @@ h3:first-child { margin-top: 0; }
 
 button, .btn {
   font: inherit;
-  border-radius: 8px;
+  border-radius: 3px;
   border: 1px solid var(--border);
   background: var(--surface-1);
   color: var(--text-primary);
@@ -178,17 +190,17 @@ button:hover:not(:disabled) { border-color: var(--baseline); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 button.primary {
-  background: var(--series-1);
-  border-color: var(--series-1);
-  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
   font-weight: 600;
 }
-button.primary:hover:not(:disabled) { filter: brightness(1.08); }
+button.primary:hover:not(:disabled) { background: var(--accent-lift); border-color: var(--accent-lift); }
 
 button.link {
   background: none;
   border: none;
-  color: var(--series-1);
+  color: var(--accent);
   padding: 0;
   text-decoration: underline;
 }
@@ -206,7 +218,7 @@ input[type="text"], select {
   min-width: 0;
   max-width: 100%;
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: 3px;
   border: 1px solid var(--baseline);
   background: var(--plane);
   color: var(--text-primary);
@@ -214,7 +226,16 @@ input[type="text"], select {
 input[type="text"].mono { font-family: var(--mono); font-size: 13px; }
 input:invalid { border-color: var(--critical); }
 
-label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 5px; font-weight: 500; }
+label {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  margin-bottom: 6px;
+  font-weight: 600;
+}
 
 .field { margin-bottom: 14px; }
 .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
@@ -225,7 +246,7 @@ label { display: block; font-size: 12px; color: var(--text-secondary); margin-bo
 
 .banner {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 3px;
   padding: 12px 14px;
   font-size: 13px;
   margin-bottom: 14px;
@@ -241,7 +262,7 @@ label { display: block; font-size: 12px; color: var(--text-secondary); margin-bo
   gap: 6px;
   font-size: 11.5px;
   padding: 3px 9px;
-  border-radius: 20px;
+  border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--plane);
   color: var(--text-secondary);
@@ -266,7 +287,7 @@ label { display: block; font-size: 12px; color: var(--text-secondary); margin-bo
   z-index: 15;
 }
 .runbar .item { display: flex; flex-direction: column; gap: 2px; }
-.runbar .k { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.runbar .k { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); }
 .runbar .v { font-size: 13px; font-family: var(--mono); }
 
 /* --- phase timeline ------------------------------------------------------- */
@@ -278,7 +299,7 @@ label { display: block; font-size: 12px; color: var(--text-secondary); margin-bo
   align-items: center;
   gap: 7px;
   padding: 6px 11px;
-  border-radius: 7px;
+  border-radius: 3px;
   border: 1px solid var(--border);
   background: var(--plane);
   font-size: 12px;
@@ -308,7 +329,7 @@ label { display: block; font-size: 12px; color: var(--text-secondary); margin-bo
      without fitView having to shrink the labels past readability. */
   height: 540px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 3px;
   background: var(--plane);
   position: relative;
 }
@@ -323,10 +344,10 @@ label { display: block; font-size: 12px; color: var(--text-secondary); margin-bo
   fill: var(--text-secondary);
 }
 .graph-wrap .react-flow__controls-button:hover { background: var(--plane); }
-.graph-wrap .react-flow__controls { box-shadow: none; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.graph-wrap .react-flow__controls { box-shadow: none; border: 1px solid var(--border); border-radius: 3px; overflow: hidden; }
 
 .node-box {
-  border-radius: 8px;
+  border-radius: 3px;
   border: 1px solid var(--baseline);
   background: var(--surface-1);
   padding: 8px 11px;
@@ -336,7 +357,7 @@ label { display: block; font-size: 12px; color: var(--text-secondary); margin-bo
   cursor: pointer;
 }
 .node-box.selected { border-color: var(--series-1); box-shadow: 0 0 0 2px color-mix(in srgb, var(--series-1) 30%, transparent); }
-.node-box .n-kind { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.node-box .n-kind { font-family: var(--mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); }
 .node-box .n-addr { font-family: var(--mono); font-size: 11px; margin: 2px 0; word-break: break-all; }
 .node-box .n-meta { font-size: 11px; color: var(--text-secondary); }
 
@@ -367,12 +388,12 @@ label { display: block; font-size: 12px; color: var(--text-secondary); margin-bo
 
 table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
-th { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
+th { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); font-weight: 600; }
 td.mono { font-family: var(--mono); font-size: 11.5px; }
 
 details {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 3px;
   padding: 10px 12px;
   margin-top: 8px;
   background: var(--plane);
@@ -383,7 +404,7 @@ details[open] > summary { margin-bottom: 10px; }
 pre.raw {
   background: var(--plane);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 3px;
   padding: 11px;
   overflow-x: auto;
   font-size: 11.5px;
@@ -395,7 +416,7 @@ pre.raw {
 
 .evidence-block {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 3px;
   padding: 16px;
   background: var(--plane);
   margin-bottom: 12px;
@@ -406,7 +427,7 @@ pre.raw {
   font-size: 11px;
   color: var(--muted);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 2px;
   padding: 1px 6px;
 }
 .evidence-block h4 { margin: 0; font-size: 14px; }
@@ -425,11 +446,13 @@ pre.raw {
 
 .verdict-badge {
   display: inline-block;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
   padding: 5px 12px;
-  border-radius: 6px;
+  border-radius: 3px;
   background: var(--plane);
   color: var(--text-secondary);
   margin-bottom: 10px;
@@ -445,7 +468,7 @@ pre.raw {
 .route {
   border: 1px solid var(--border);
   border-left: 3px solid var(--baseline);
-  border-radius: 7px;
+  border-radius: 3px;
   padding: 11px 13px;
   margin-bottom: 9px;
   background: var(--plane);
@@ -465,7 +488,7 @@ pre.raw {
 .preset-btn strong { display: block; font-size: 13px; margin-bottom: 3px; }
 .preset-btn span { font-size: 12px; color: var(--text-secondary); font-weight: 400; }
 
-.copy-btn { font-size: 11px; padding: 2px 8px; border-radius: 5px; }
+.copy-btn { font-size: 11px; padding: 2px 8px; border-radius: 2px; }
 
 /* The expanded evidence for one asset row. Constrained so a long address or a
    verbatim ceiling item cannot widen the table past its scroll container. */
@@ -482,15 +505,16 @@ pre.raw {
 }
 .coverage-detail {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 3px;
   background: var(--plane);
   padding: 14px;
 }
 .coverage-detail h4 {
   margin: 14px 0 6px;
-  font-size: 11px;
+  font-family: var(--mono);
+  font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.12em;
   color: var(--muted);
 }
 .coverage-detail h4:first-child { margin-top: 0; }
@@ -501,7 +525,7 @@ pre.raw {
 ul.plain { margin: 6px 0; padding-left: 18px; }
 ul.plain li { margin-bottom: 5px; font-size: 13px; color: var(--text-secondary); }
 
-.ceiling { background: var(--warn-bg); border-radius: 8px; padding: 12px 14px; font-size: 12.5px; color: var(--warn-ink); }
+.ceiling { background: var(--warn-bg); border-radius: 3px; padding: 12px 14px; font-size: 12.5px; color: var(--warn-ink); }
 .ceiling ul { margin: 6px 0 0; padding-left: 18px; }
 .ceiling li { margin-bottom: 6px; }
 
@@ -675,6 +699,26 @@ ul.plain li { margin-bottom: 5px; font-size: 13px; color: var(--text-secondary);
 
 .hb-help { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--hb-ink-faint); }
 
+.hb-secondary { margin: 2px 0 0; }
+
+/* A plain text link beside the button, not a second button: the two actions are
+   not equals, and drawing them as equals is how a page ends up with no primary. */
+.hb-link {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--hb-green);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  transition: color 0.18s ease;
+}
+.hb-link:hover { color: var(--hb-green-lift); }
+.hb-link:focus-visible { outline: 2px solid var(--hb-green); outline-offset: 3px; }
+
 /* --- example card --- */
 
 .hb-card { position: relative; z-index: 3; background: var(--hb-surface); border: 1px solid var(--hb-rule); border-radius: 3px; }
@@ -785,14 +829,55 @@ ul.plain li { margin-bottom: 5px; font-size: 13px; color: var(--text-secondary);
   .hb-btn { flex: 1 1 auto; }
 }
 
+/* --- print ----------------------------------------------------------------
+ *
+ * THE ONE PLACE THIS APP IS NOT DARK. A report is a document: it gets printed,
+ * exported to PDF, and pasted into a write-up. Printing the dark ground would
+ * flood a page with ink and read worse than the evidence it depicts, so print
+ * redefines the TOKENS rather than patching individual rules — the same reason
+ * the palette swap above needed no component change.
+ *
+ * The semantic hues survive the flip. A verdict that is amber on screen is
+ * amber on paper; only the ground and the neutrals move.
+ */
 @media print {
-  .hb-net, .hb-veil, .hb-segmented, .hb-form { display: none !important; }
-  .hb { background: #fff; color: #000; }
-}
+  :root {
+    color-scheme: light;
+    --plane: #ffffff;
+    --surface-1: #ffffff;
+    --surface-2: #f5f5f2;
+    --text-primary: #0b0b0b;
+    --text-secondary: #3a3a38;
+    --muted: #66665f;
+    --grid: #e1e0d9;
+    --baseline: #9a9a92;
+    --border: #cfcfc7;
+    --accent: #0a6b45;
+    --accent-lift: #0a6b45;
+    --accent-ink: #ffffff;
+    --series-1: #1f5fbf;
+    --good: #0a7a0a;
+    --warning: #a87400;
+    --critical: #b03030;
+    --good-ink: #0a6300;
+    --warn-ink: #7a5200;
+    --crit-ink: #9c2020;
+    --good-bg: #eef7ee;
+    --warn-bg: #fdf5e3;
+    --crit-bg: #fbeded;
+  }
 
-@media print {
+  body { background: #ffffff; color: #0b0b0b; }
+
+  /* The hero band is navigation and a quoted example, not evidence. Its graph,
+     its controls and its form carry nothing a printed report needs. */
+  .hb { background: #ffffff; color: #0b0b0b; border-bottom: 1px solid #cfcfc7; }
+  .hb-net, .hb-veil, .hb-segmented, .hb-form, .hb-card, .hb-footline { display: none !important; }
+  .hb-headline { color: #0b0b0b; font-size: 20px; }
+  .hb-setup, .hb-sub, .hb-eyebrow { color: #3a3a38; }
+
   .topbar, .runbar, button, .graph-wrap { display: none !important; }
-  section.card { break-inside: avoid; border: 1px solid #ccc; }
+  section.card { break-inside: avoid; border: 1px solid #cfcfc7; }
   details { break-inside: avoid; }
-  details:not([open]) > summary::after { content: " (collapsed in print)"; color: #888; }
+  details:not([open]) > summary::after { content: " (collapsed in print)"; color: #66665f; }
 }

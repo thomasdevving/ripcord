@@ -35,7 +35,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import type { ConfigResponse, RunMode } from "@shared/dto";
-import { createJob, ApiRequestError } from "../api.js";
+import { createJob, listReports, ApiRequestError } from "../api.js";
 import { navigate } from "../router.js";
 import { rememberControlToken } from "../control.js";
 import { Hero } from "../components/Hero.js";
@@ -69,10 +69,43 @@ export function StartScreen({ config }: { config: ConfigResponse | null }): Reac
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<{ message: string; hint: string | null } | null>(null);
   const addressInputRef = useRef<HTMLInputElement | null>(null);
+  const [sampleReportId, setSampleReportId] = useState<string | null>(null);
 
   useEffect(() => {
     if (config && block === "") setBlock(config.defaultBlock);
   }, [config, block]);
+
+  /**
+   * Resolve the hero's "See a Sample Report" target from the LISTING, never from
+   * a hardcoded id.
+   *
+   * The listing contains only publishable reports, so a target found here is by
+   * construction one the disclosure gate permits — a hardcoded id could point at
+   * a report the gate blocks, and the link would hand out a 451 while looking
+   * like an invitation. Preference goes to the report the hero's example card
+   * quotes, matched BY ADDRESS so a change to the id scheme cannot silently
+   * repoint the link at a different protocol; any other calibration report is an
+   * acceptable fallback. Nothing found means no link is rendered at all.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    listReports()
+      .then((res) => {
+        if (cancelled) return;
+        const quoted = res.reports.find(
+          (r) => r.address.toLowerCase() === "0xc3d688b66703497daa19211eedff47f25384cdc3",
+        );
+        setSampleReportId((quoted ?? res.reports.find((r) => r.origin === "calibration"))?.id ?? null);
+      })
+      // A sample link is a convenience. Failing to resolve one is not worth a
+      // banner on the first screen, and it must never block starting an analysis.
+      .catch(() => {
+        if (!cancelled) setSampleReportId(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const liveDisabled = config ? !config.liveRuns.enabled : true;
   const addressValid = ADDRESS_RE.test(address.trim());
@@ -128,6 +161,7 @@ export function StartScreen({ config }: { config: ConfigResponse | null }): Reac
         onSubmit={() => void submit()}
         liveDisabled={liveDisabled}
         inputRef={addressInputRef}
+        onOpenSample={sampleReportId ? () => navigate({ name: "report", reportId: sampleReportId }) : null}
       />
 
       <main className="container">
