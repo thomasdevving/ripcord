@@ -378,6 +378,16 @@ for (const file of readdirSync(reportsDir).filter((f) => f.endsWith(".json")).so
       console.log(`${label}`);
       fail(`a restrictor is recorded but confirmationMethod is "${er.confirmationMethod}", not fork_confirmed`);
     }
+    if (er.outcome === "evaluation_inconclusive") {
+      if ((er.evaluationGaps ?? []).length === 0 || er.restrictionState !== "undetermined" || er.confirmationMethod !== "not_confirmed") {
+        console.log(`${label}`);
+        fail(`evaluation_inconclusive must carry named gaps, restrictionState=undetermined and confirmationMethod=not_confirmed`);
+      }
+      if (REASSURING_VERDICT.has(verdictStatus)) {
+        console.log(`${label}`);
+        fail(`evaluation_inconclusive may not produce reassuring verdict "${verdictStatus}"`);
+      }
+    }
     // The weak positive tier is unreachable without a confidently identified
     // exit action, established baseline, and a positively clean result for every
     // candidate registered by the matched archetype.
@@ -385,6 +395,10 @@ for (const file of readdirSync(reportsDir).filter((f) => f.endsWith(".json")).so
       if (er.outcome !== "no_direct_restriction_found" || er.confirmationMethod !== "fork_confirmed") {
         console.log(`${label}`);
         fail(`verdict "no_direct_restriction_found" disagrees with outcome="${er.outcome}" / confirmation="${er.confirmationMethod}"`);
+      }
+      if ((er.evaluationGaps ?? []).length > 0) {
+        console.log(`${label}`);
+        fail(`verdict "no_direct_restriction_found" carries ${er.evaluationGaps.length} clean-outcome blocker(s)`);
       }
       if (er.exitAction?.status !== "identified" || er.baseline?.status !== "established") {
         console.log(`${label}`);

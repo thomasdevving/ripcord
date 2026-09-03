@@ -302,6 +302,7 @@ program
         blockNumber,
         target: addressArg as Hex,
         capabilities: withProof.capabilities,
+        enumeration: withProof.enumeration,
         exitWindow: withProof.exitWindow,
         authorityResolution: withProof.authorityResolution,
       });

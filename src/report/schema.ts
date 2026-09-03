@@ -7,8 +7,8 @@
  */
 import { z } from "zod";
 
-export const schemaVersion = "0.12.0";
-export const rulesetVersion = "0.11.0";
+export const schemaVersion = "0.13.0";
+export const rulesetVersion = "0.12.0";
 
 const hexString = z.string().regex(/^0x[0-9a-fA-F]*$/);
 const address = z.string().regex(/^0x[0-9a-fA-F]{40}$/);
@@ -1079,6 +1079,7 @@ export type RestrictionCandidate = z.infer<typeof restrictionCandidateSchema>;
 export const exitRestrictionOutcomeSchema = z.enum([
   "restrictor_found", // at least one candidate closed the baseline exit — decisive
   "no_direct_restriction_found", // exit ID'd, baseline established, all registered candidates evaluated, none closed it — the weak positive tier
+  "evaluation_inconclusive", // a candidate or aggregate-enumeration gap prevents the clean direction from concluding
   "exit_action_unconfident", // could not confidently identify the exit action → undetermined
   "baseline_unestablished", // could not establish a baseline exit on the fork → undetermined
   "no_candidates", // no guarded/restriction-family function to test
@@ -1097,6 +1098,8 @@ export const exitRestrictionSchema = z.object({
   candidates: z.array(restrictionCandidateSchema),
   /** The subset with result === "restrictor". Redundant with candidates, surfaced for the reader. */
   restrictors: z.array(restrictionCandidateSchema),
+  /** Every condition that blocks the deliberately weak clean outcome. Empty only when none exists. */
+  evaluationGaps: z.array(z.string()),
   coverage: z.object({
     /** Restriction candidates registered by the matched exit archetype. */
     guardedTotal: z.number().int().nonnegative(),
@@ -1118,6 +1121,38 @@ export const exitRestrictionSchema = z.object({
   ceiling: z.array(z.string()),
   reproduceCommand: z.string().nullable(),
   evidence: z.array(evidenceSchema),
+}).superRefine((value, ctx) => {
+  const issue = (message: string, path: (string | number)[] = []) =>
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message, path });
+
+  if (value.outcome === "no_direct_restriction_found") {
+    if (value.exitAction.status !== "identified") issue("a clean fork outcome requires an identified exit action", ["exitAction", "status"]);
+    if (value.baseline.status !== "established") issue("a clean fork outcome requires an established baseline", ["baseline", "status"]);
+    if (value.restrictors.length !== 0) issue("a clean fork outcome cannot contain restrictors", ["restrictors"]);
+    if (value.evaluationGaps.length !== 0) issue("a clean fork outcome cannot contain evaluation gaps", ["evaluationGaps"]);
+    if (value.coverage.guardedTotal === 0) issue("a clean fork outcome requires at least one registered candidate", ["coverage", "guardedTotal"]);
+    if (value.candidates.length !== value.coverage.guardedTotal) issue("candidate count must equal guardedTotal for a clean fork outcome", ["candidates"]);
+    if (value.coverage.evaluated !== value.coverage.guardedTotal) issue("every registered candidate must be evaluated for a clean fork outcome", ["coverage"]);
+    if (value.candidates.some((candidate) => candidate.result !== "no_effect")) issue("every candidate must positively return no_effect for a clean fork outcome", ["candidates"]);
+    if (value.restrictionState !== "none_found") issue("a clean fork outcome requires restrictionState=none_found", ["restrictionState"]);
+    if (value.confirmationMethod !== "fork_confirmed") issue("a clean fork outcome requires fork confirmation", ["confirmationMethod"]);
+  }
+
+  if (value.outcome === "evaluation_inconclusive") {
+    if (value.exitAction.status !== "identified") issue("an inconclusive evaluation requires an identified exit action", ["exitAction", "status"]);
+    if (value.baseline.status !== "established") issue("an inconclusive evaluation requires an established baseline", ["baseline", "status"]);
+    if (value.restrictors.length !== 0) issue("an inconclusive evaluation cannot contain a demonstrated restrictor", ["restrictors"]);
+    if (value.evaluationGaps.length === 0) issue("an inconclusive evaluation must name at least one evaluation gap", ["evaluationGaps"]);
+    if (value.restrictionState !== "undetermined") issue("an inconclusive evaluation requires restrictionState=undetermined", ["restrictionState"]);
+    if (value.confirmationMethod !== "not_confirmed") issue("an inconclusive evaluation cannot claim fork confirmation", ["confirmationMethod"]);
+  }
+
+  if (value.outcome === "restrictor_found") {
+    if (value.restrictors.length === 0) issue("restrictor_found requires at least one restrictor", ["restrictors"]);
+    if (value.restrictors.some((candidate) => candidate.result !== "restrictor")) issue("every recorded restrictor must have result=restrictor", ["restrictors"]);
+    if (value.confirmationMethod !== "fork_confirmed") issue("restrictor_found requires fork confirmation", ["confirmationMethod"]);
+    if (value.restrictionState !== "restrictable" && value.restrictionState !== "already_shut") issue("restrictor_found requires a restrictive state", ["restrictionState"]);
+  }
 });
 export type ExitRestriction = z.infer<typeof exitRestrictionSchema>;
 

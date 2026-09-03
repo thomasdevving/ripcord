@@ -44,6 +44,7 @@ import type { Evidence } from "../chain/client.js";
 import type {
   AuthorityResolution,
   CapabilitiesResult,
+  EnumerationCompleteness,
   ExitRestriction,
   ExitWindow,
   ExitWindowRoute,
@@ -77,6 +78,8 @@ export interface ExitRestrictionRequest {
   blockNumber: bigint;
   target: Hex;
   capabilities: CapabilitiesResult;
+  /** Aggregate, fail-closed witness over roles, authority recursion, dependencies and the privileged selector surface. */
+  enumeration: EnumerationCompleteness;
   exitWindow: ExitWindow | null;
   authorityResolution: AuthorityResolution | null;
 }
@@ -85,6 +88,44 @@ export interface ExitRestrictionResult {
   exitRestriction: ExitRestriction;
   /** A synthetic exit-window route for a fork-confirmed restrictor, for the caller to inject. Null otherwise. */
   restrictorRoute: ExitWindowRoute | null;
+}
+
+export interface CandidateEvaluationConclusion {
+  outcome: Extract<ExitRestriction["outcome"], "restrictor_found" | "no_direct_restriction_found" | "evaluation_inconclusive">;
+  restrictors: RestrictionCandidate[];
+  evaluationGaps: string[];
+  restrictionState: Extract<ExitRestriction["restrictionState"], "restrictable" | "none_found" | "undetermined">;
+  confirmationMethod: ExitRestriction["confirmationMethod"];
+}
+
+/**
+ * Pure, fail-closed composition of the candidate differential. A demonstrated
+ * restrictor wins even when enumeration is incomplete (unseen functions can
+ * only add more restrictors). The clean direction is the inverse: every
+ * candidate must positively say no_effect AND aggregate enumeration must be
+ * complete, otherwise the only honest outcome is evaluation_inconclusive.
+ */
+export function classifyCandidateEvaluation(
+  candidates: RestrictionCandidate[],
+  enumeration: EnumerationCompleteness,
+): CandidateEvaluationConclusion {
+  const restrictors = candidates.filter((candidate) => candidate.result === "restrictor");
+  const evaluationGaps = [
+    ...candidates
+      .filter((candidate) => candidate.result === "inconclusive" || candidate.result === "not_evaluated")
+      .map((candidate) => `candidate ${candidate.selector} returned ${candidate.result}: ${candidate.detail}`),
+    ...(!enumeration.complete
+      ? enumeration.gaps.map((gap) => `aggregate enumeration incomplete at ${gap.where}: ${gap.reason}`)
+      : []),
+  ];
+
+  if (restrictors.length > 0) {
+    return { outcome: "restrictor_found", restrictors, evaluationGaps, restrictionState: "restrictable", confirmationMethod: "fork_confirmed" };
+  }
+  if (evaluationGaps.length > 0) {
+    return { outcome: "evaluation_inconclusive", restrictors: [], evaluationGaps, restrictionState: "undetermined", confirmationMethod: "not_confirmed" };
+  }
+  return { outcome: "no_direct_restriction_found", restrictors: [], evaluationGaps: [], restrictionState: "none_found", confirmationMethod: "fork_confirmed" };
 }
 
 function ev(params: Record<string, unknown>, rawValue: unknown, block: bigint): Evidence {
@@ -159,6 +200,7 @@ function notRun(req: ExitRestrictionRequest, outcome: ExitRestriction["outcome"]
       baseline: { status: "not_attempted", holder: null, holderSource: reason, note: reason, evidence: [] },
       candidates: [],
       restrictors: [],
+      evaluationGaps: [],
       coverage: { guardedTotal: 0, evaluated: 0 },
       restrictionState: "undetermined",
       confirmationMethod: "not_confirmed",
@@ -394,23 +436,23 @@ async function runCometArchetype(
     };
   }
 
-  const restrictors = candidate.result === "restrictor" ? [candidate] : [];
-  const outcome: ExitRestriction["outcome"] = restrictors.length > 0 ? "restrictor_found" : "no_direct_restriction_found";
+  const conclusion = classifyCandidateEvaluation([candidate], req.enumeration);
   const restrictorRoute =
-    restrictors.length > 0
+    conclusion.restrictors.length > 0
       ? buildRestrictorRoute(target, candidate, guardianClass, "restrictable")
       : null;
 
   return {
     restrictorRoute,
     exitRestriction: mkRestriction(req, exitAction, {
-      outcome,
+      outcome: conclusion.outcome,
       baseline,
       candidates: [candidate],
-      restrictors,
+      restrictors: conclusion.restrictors,
+      evaluationGaps: conclusion.evaluationGaps,
       coverage: { guardedTotal: 1, evaluated: 1 },
-      restrictionState: restrictors.length > 0 ? "restrictable" : "none_found",
-      confirmationMethod: "fork_confirmed",
+      restrictionState: conclusion.restrictionState,
+      confirmationMethod: conclusion.confirmationMethod,
       evidence,
     }),
   };
@@ -420,7 +462,8 @@ async function runCometArchetype(
 function mkRestriction(
   req: ExitRestrictionRequest,
   exitAction: ExitRestriction["exitAction"],
-  parts: Pick<ExitRestriction, "outcome" | "baseline" | "candidates" | "restrictors" | "coverage" | "restrictionState" | "confirmationMethod" | "evidence">,
+  parts: Pick<ExitRestriction, "outcome" | "baseline" | "candidates" | "restrictors" | "coverage" | "restrictionState" | "confirmationMethod" | "evidence"> &
+    Partial<Pick<ExitRestriction, "evaluationGaps">>,
 ): ExitRestriction {
   return {
     rulesVersion: exitActionsVersion,
@@ -431,6 +474,7 @@ function mkRestriction(
     sandboxNote: SANDBOX_NOTE,
     ceiling: CEILING,
     reproduceCommand: `ripcord restrict ${req.target} --block ${req.blockNumber} --chain ${req.chainId}`,
+    evaluationGaps: [],
     ...parts,
   };
 }

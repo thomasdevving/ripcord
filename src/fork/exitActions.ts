@@ -25,7 +25,7 @@
  */
 import { encodeFunctionData, type Hex } from "viem";
 
-export const exitActionsVersion = "0.1.0";
+export const exitActionsVersion = "0.2.0";
 
 /** A curated large holder of a base token, used to fund a fork baseline position by impersonation. */
 export interface TokenWhale {

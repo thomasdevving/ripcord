@@ -471,8 +471,9 @@ only via delegatecall and is usually uninitialized.
   positive tier, never `can_exit_in_time`, always carrying its scope sentence and
   the count N — is intended to require an identified exit action, an established
   baseline and complete evaluation of the matched archetype's registered candidates.
-  It occurs nowhere in the current calibration set; see KNOWN EDGE #38 before relying
-  on the clean direction. schema 0.12.0 / ruleset 0.11.0.
+  It occurs nowhere in the current calibration set; candidate/enum fall-throughs
+  now fail closed, while candidate-surface completeness and baseline causality
+  remain bounded by KNOWN EDGE #38. schema 0.13.0 / ruleset 0.12.0.
 - **Authority PATH, not just a terminal holder (day 3).** `authorityResolution`
   carries a recursive `authorityNode` tree per depth-1 power holder plus a
   flattened `paths[]` projection ("upgrade -> ProxyAdmin -> EOA"). Confidence
@@ -1300,24 +1301,28 @@ only via delegatecall and is usually uninitialized.
     to run broadly; extending it to ERC-4626 redeem, a Lido withdrawal-queue claim
     behind PAUSE_ROLE, and pausable/blacklistable ERC20 transfer is the next step,
     each needing its own baseline mechanics + a live validation before it is trusted
-    — deliberately not rushed under the day-7 timebox. schema 0.12.0 / ruleset 0.11.0.
+    — deliberately not rushed under the day-7 timebox. The subsequent fail-closed
+    hardening is schema 0.13.0 / ruleset 0.12.0.
 
-38. **[OPEN — the Comet restriction is validated; the general fork-clean tier is
-    not.]** Day 7 established the confirmation direction end to end: Comet's
+38. **[PARTIALLY RESOLVED — candidate/enum fall-throughs are closed; candidate-
+    surface completeness and baseline causality remain.]** Day 7 established the confirmation direction end to end: Comet's
     baseline withdrawal succeeds, its registered guardian candidate closes the
     exit, and the identical withdrawal then reverts. That supports the current
     `no_notice` finding. It does NOT validate `no_direct_restriction_found`, which
     occurs nowhere in the calibration set.
 
-    Three cross-field gates must be hardened before that clean direction is relied
-    upon on another target: (a) a candidate whose privileged mutation is
-    `inconclusive` is currently counted as evaluated and can fall through to the
-    clean outcome; only candidates positively returning `no_effect` may support
-    it, (b) an incomplete enumeration currently appends its gaps to `missing[]`
-    without changing the positive verdict status in the CLI path, and (c) a
+    Two cross-field gates landed in schema 0.13.0 / ruleset 0.12.0: a candidate
+    returning `inconclusive` or `not_evaluated`, and any incomplete aggregate
+    enumeration site, now produce `evaluation_inconclusive` instead of falling
+    through to the clean outcome. The engine records named `evaluationGaps`, the
+    schema rejects inconsistent clean objects, and `composeVerdict` independently
+    requires complete enumeration, exact candidate counts and every result equal
+    to `no_effect`. A found restrictor deliberately survives incomplete enumeration.
+
+    Two broader gates remain before the clean direction is relied upon: (a) a
     baseline withdrawal revert is classified `already_shut` without proving the
     pause caused it, whereas an unestablished baseline should normally remain
-    undetermined. The engine also covers the matched archetype's REGISTERED
+    undetermined, and (b) the engine covers the matched archetype's REGISTERED
     candidates, currently one Comet pause function — never every privileged
     selector in the bytecode. Until those gates land, present `restrict` as a
     demonstrated Comet restrictor detector, not a calibrated absence detector.
@@ -1610,10 +1615,11 @@ which were genuinely privileged, report THAT percentage.
   base-withdrawal versus withdraw-pause — validated live),
   src/report/applyExitRestriction.ts (pure merge + re-compose).
   Schema gains `exitRestriction` + the verdict status + route confirmation fields;
-  schema 0.12.0 / ruleset 0.11.0. Predictions registered as CI assertions FIRST
+  subsequent candidate/enumeration hardening is schema 0.13.0 / ruleset 0.12.0.
+  Predictions registered as CI assertions FIRST
   (outcome-neutral, break-tested); exactly one verdict changed — Comet
   `undetermined → no_notice`, fork-confirmed via the pauseGuardian Safe — the true
-  negatives survived, and nothing moved toward reassurance. 267 tests green; the
+  negatives survived, and nothing moved toward reassurance. 275 tests green; the
   determinism gate (cold==warm) holds on the reproducible reports and on the
   Comet restrict report (two independent forks, byte-identical). The confirmation
   direction is architected to extend broadly to neighbour interfaces; that

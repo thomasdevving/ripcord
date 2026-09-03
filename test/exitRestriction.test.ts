@@ -14,7 +14,7 @@ import { toFunctionSelector } from "viem";
 import { identifyExitInterface, SELECTORS } from "../src/fork/exitActions.js";
 import { applyExitRestriction, type ExitRestrictionResult } from "../src/report/applyExitRestriction.js";
 import { composeVerdict } from "../src/report/verdict.js";
-import { runExitRestrictionEngine } from "../src/fork/exitRestriction.js";
+import { classifyCandidateEvaluation, runExitRestrictionEngine } from "../src/fork/exitRestriction.js";
 import type {
   EnumerationCompleteness,
   ExitRestriction,
@@ -24,6 +24,7 @@ import type {
   Report,
   TimeToExit,
 } from "../src/report/schema.js";
+import { exitRestrictionSchema } from "../src/report/schema.js";
 
 const COMPLETE: EnumerationCompleteness = { complete: true, gaps: [], note: "complete" };
 const INCOMPLETE: EnumerationCompleteness = {
@@ -52,15 +53,28 @@ function timeToExit(overrides: Partial<TimeToExit> = {}): TimeToExit {
   };
 }
 function exitRestriction(overrides: Partial<ExitRestriction> = {}): ExitRestriction {
+  const cleanCandidate: ExitRestriction["candidates"][number] = {
+    selector: SELECTORS.cometPause,
+    signature: "pause(bool,bool,bool,bool,bool)",
+    category: "ACCESS_RESTRICTION",
+    guardingParty: "0x000000000000000000000000000000000000dEaD",
+    guardingPartyType: "safe",
+    args: "withdraw-pause = true",
+    result: "no_effect",
+    noticeSeconds: "0",
+    detail: "candidate executed and the identical exit still succeeded",
+    evidence: [],
+  };
   return {
-    rulesVersion: "0.1.0",
+    rulesVersion: "0.2.0",
     attempted: true,
     archetype: "test",
     outcome: "no_direct_restriction_found",
     exitAction: { status: "identified", interfaceName: "compound-comet-base", signature: "withdraw(address,uint256)", selector: SELECTORS.cometWithdraw, confidence: "high", note: "", evidence: [] },
     baseline: { status: "established", holder: "0x000000000000000000000000000000000000abc1", holderSource: "funded", note: "", evidence: [] },
-    candidates: [],
+    candidates: [cleanCandidate],
     restrictors: [],
+    evaluationGaps: [],
     coverage: { guardedTotal: 1, evaluated: 1 },
     restrictionState: "none_found",
     confirmationMethod: "fork_confirmed",
@@ -177,11 +191,82 @@ describe("verdict: the graded positive tier is strictly gated", () => {
   });
 
   it("is withheld on an incomplete enumeration (an unevaluated surface withholds the reassuring tier)", () => {
-    // Enumeration incomplete → the positive tier must not stand; missing[] carries the gap.
+    // Enumeration incomplete → the positive tier must not stand in the verdict
+    // itself; this is no longer deferred to verify-pages.
     const v = composeVerdict(undeterminedWindow, timeToExit(), INCOMPLETE, exitRestriction());
-    // The tier still computes, but composeVerdict appends the enumeration gap to missing,
-    // and verify-pages treats no_direct_restriction_found as reassuring → blocked there.
+    expect(v.status).toBe("undetermined");
     expect(v.missing.some((m) => m.includes("capabilitySurface") || m.includes("could not be shown complete"))).toBe(true);
+  });
+
+  it("does NOT trust a no_direct outcome when any candidate is inconclusive", () => {
+    const inconsistent = exitRestriction({
+      candidates: [{ ...exitRestriction().candidates[0]!, result: "inconclusive", detail: "mutation reverted" }],
+    });
+    const v = composeVerdict(undeterminedWindow, timeToExit(), COMPLETE, inconsistent);
+    expect(v.status).toBe("undetermined");
+  });
+
+  it("surfaces an explicit evaluation_inconclusive outcome and its reason", () => {
+    const er = exitRestriction({
+      outcome: "evaluation_inconclusive",
+      candidates: [{ ...exitRestriction().candidates[0]!, result: "inconclusive", detail: "mutation reverted" }],
+      evaluationGaps: ["candidate mutation reverted"],
+      restrictionState: "undetermined",
+      confirmationMethod: "not_confirmed",
+    });
+    const v = composeVerdict(undeterminedWindow, timeToExit(), COMPLETE, er);
+    expect(v.status).toBe("undetermined");
+    expect(v.missing).toContain("candidate mutation reverted");
+  });
+});
+
+describe("exit-restriction schema invariants", () => {
+  it("rejects a clean outcome containing an inconclusive candidate", () => {
+    const er = exitRestriction({
+      candidates: [{ ...exitRestriction().candidates[0]!, result: "inconclusive", detail: "mutation reverted" }],
+    });
+    expect(exitRestrictionSchema.safeParse(er).success).toBe(false);
+  });
+
+  it("accepts a structurally honest inconclusive evaluation", () => {
+    const er = exitRestriction({
+      outcome: "evaluation_inconclusive",
+      candidates: [{ ...exitRestriction().candidates[0]!, result: "inconclusive", detail: "mutation reverted" }],
+      evaluationGaps: ["candidate mutation reverted"],
+      restrictionState: "undetermined",
+      confirmationMethod: "not_confirmed",
+    });
+    expect(exitRestrictionSchema.safeParse(er).success).toBe(true);
+  });
+});
+
+describe("candidate evaluation is fail-closed", () => {
+  const candidate = exitRestriction().candidates[0]!;
+
+  it("maps an inconclusive candidate to evaluation_inconclusive", () => {
+    const result = classifyCandidateEvaluation([{ ...candidate, result: "inconclusive", detail: "mutation reverted" }], COMPLETE);
+    expect(result.outcome).toBe("evaluation_inconclusive");
+    expect(result.confirmationMethod).toBe("not_confirmed");
+    expect(result.evaluationGaps[0]).toContain("mutation reverted");
+  });
+
+  it("maps a clean candidate under incomplete enumeration to evaluation_inconclusive", () => {
+    const result = classifyCandidateEvaluation([candidate], INCOMPLETE);
+    expect(result.outcome).toBe("evaluation_inconclusive");
+    expect(result.evaluationGaps.some((gap) => gap.includes("aggregate enumeration incomplete"))).toBe(true);
+  });
+
+  it("allows the weak clean outcome only for all-no_effect plus complete enumeration", () => {
+    const result = classifyCandidateEvaluation([candidate], COMPLETE);
+    expect(result.outcome).toBe("no_direct_restriction_found");
+    expect(result.evaluationGaps).toEqual([]);
+  });
+
+  it("preserves a demonstrated restrictor despite incomplete enumeration", () => {
+    const result = classifyCandidateEvaluation([{ ...candidate, result: "restrictor" }], INCOMPLETE);
+    expect(result.outcome).toBe("restrictor_found");
+    expect(result.restrictors).toHaveLength(1);
+    expect(result.evaluationGaps.length).toBeGreaterThan(0);
   });
 });
 
@@ -246,6 +331,7 @@ describe("engine refuses to run against an unidentified exit action", () => {
         needsManualVerification: [],
         evidence: [],
       },
+      enumeration: COMPLETE,
       exitWindow: null,
       authorityResolution: null,
     });

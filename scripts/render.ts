@@ -651,6 +651,8 @@ ${LIVE_STYLE}
                 ? `<div class="banner warn"><strong>A privileged party can close this exit — demonstrated on a fork.</strong><p>${escapeHtml(stateLabel)}. Capability, not intent: this is what the party CAN do, watched happening in simulation, not a claim that it will.</p></div>`
                 : er.outcome === "no_direct_restriction_found"
                   ? `<div class="banner"><strong>No direct exit restriction found — scoped, NOT a safety guarantee.</strong><p>Evaluated ${er.coverage.evaluated} registered candidate(s) against a baseline exit; none closed it. Other privileged functions, argument space and indirect/economic restrictions were not exhausted.</p></div>`
+                  : er.outcome === "evaluation_inconclusive"
+                    ? `<div class="banner warn"><strong>The fork differential is inconclusive — no clean claim is allowed.</strong><p>A candidate did not positively return no-effect, or aggregate enumeration was incomplete. The report stays undetermined.</p></div>`
                   : `<div class="banner"><strong>Exit restriction not evaluated to a conclusion (${escapeHtml(er.outcome)}).</strong><p>${escapeHtml(er.baseline.note)}</p></div>`;
             const candRows = er.candidates.map((c) => [
               `<code>${escapeHtml(c.signature ?? c.selector)}</code>`,
@@ -681,6 +683,7 @@ ${LIVE_STYLE}
                ${kv("Coverage", `${er.coverage.evaluated} / ${er.coverage.guardedTotal} registered candidate(s) evaluated`)}
              </dl>
              ${candRows.length ? table(["Function", "Result", "Guarding party", "Argument", "Detail"], candRows) : ""}
+             ${er.evaluationGaps.length ? `<h3>Why a clean outcome is blocked</h3><ul class="ceiling">${er.evaluationGaps.map((gap) => `<li>${escapeHtml(gap)}</li>`).join("")}</ul>` : ""}
              ${txRows.length ? `<h3>Fork transaction evidence</h3><p class="muted">These hashes exist only inside the ephemeral fork. Full sender, target, calldata, gas limit, receipt and revert payload are preserved in the JSON report.</p>${table(["Step", "Selector", "Fork tx hash", "Status", "Receipt block", "Gas used"], txRows)}` : ""}
              <h3>What this does NOT cover</h3>
              <ul class="ceiling">${er.ceiling.map((c) => `<li>${escapeHtml(c)}</li>`).join("")}</ul>

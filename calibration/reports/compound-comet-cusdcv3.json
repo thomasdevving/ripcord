@@ -1,7 +1,7 @@
 {
-  "schemaVersion": "0.12.0",
-  "rulesetVersion": "0.11.0",
-  "generatedAt": "2026-09-03T06:59:35.586Z",
+  "schemaVersion": "0.13.0",
+  "rulesetVersion": "0.12.0",
+  "generatedAt": "2026-09-03T09:01:02.509Z",
   "chainId": 1,
   "block": {
     "number": "25800000",
@@ -2073,7 +2073,7 @@
     ]
   },
   "exitRestriction": {
-    "rulesVersion": "0.1.0",
+    "rulesVersion": "0.2.0",
     "attempted": true,
     "archetype": "baseline exit vs. guarded restriction-family functions (Compound III / Comet base-withdrawal archetype)",
     "outcome": "restrictor_found",
@@ -2470,6 +2470,9 @@
         ]
       }
     ],
+    "evaluationGaps": [
+      "aggregate enumeration incomplete at capabilitySurface: 67 of 67 selector(s) are not in Ripcord's taxonomy and were never evaluated for privilege, while 2 privileged party/parties exist over this contract (proxy admin, governor()). An unevaluated selector is \"unclassified\", never \"not privileged\" — so a capability that restricts or halts the exit cannot be ruled out, and no reassuring assessment can rest on this surface. Evaluating those selectors requires their signatures, which Ripcord does not retrieve from any external source — see the README on why a block-explorer lookup would break the pinned-and-cached determinism model."
+    ],
     "coverage": {
       "guardedTotal": 1,
       "evaluated": 1
@@ -2787,7 +2790,7 @@
         "name": "exitRestriction.outcome",
         "value": "restrictor_found",
         "confidence": "high",
-        "source": "fork differential (rules 0.1.0), exit action identified, baseline established, 1/1 registered candidate(s) evaluated, 1 restrictor(s)"
+        "source": "fork differential (rules 0.2.0), exit action identified, baseline established, 1/1 registered candidate(s) evaluated, 1 restrictor(s), 1 clean-outcome blocker(s)"
       }
     ]
   },

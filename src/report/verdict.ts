@@ -196,8 +196,9 @@ function composeVerdictInner(
       name: "exitRestriction.outcome",
       value: exitRestriction.outcome,
       confidence: exitRestriction.exitAction.confidence,
-      source: `fork differential (rules ${exitRestriction.rulesVersion}), exit action ${exitRestriction.exitAction.status}, baseline ${exitRestriction.baseline.status}, ${exitRestriction.coverage.evaluated}/${exitRestriction.coverage.guardedTotal} registered candidate(s) evaluated, ${exitRestriction.restrictors.length} restrictor(s)`,
+      source: `fork differential (rules ${exitRestriction.rulesVersion}), exit action ${exitRestriction.exitAction.status}, baseline ${exitRestriction.baseline.status}, ${exitRestriction.coverage.evaluated}/${exitRestriction.coverage.guardedTotal} registered candidate(s) evaluated, ${exitRestriction.restrictors.length} restrictor(s), ${exitRestriction.evaluationGaps.length} clean-outcome blocker(s)`,
     });
+    if (exitRestriction.outcome === "evaluation_inconclusive") missing.push(...exitRestriction.evaluationGaps);
   }
 
   const undetermined = (reasons: string[], confidence: DepthConfidence, statement: string): Verdict => ({
@@ -255,8 +256,16 @@ function composeVerdictInner(
   if (
     exitRestriction &&
     exitRestriction.outcome === "no_direct_restriction_found" &&
+    enumeration.complete &&
     exitRestriction.exitAction.status === "identified" &&
     exitRestriction.baseline.status === "established" &&
+    exitRestriction.restrictionState === "none_found" &&
+    exitRestriction.confirmationMethod === "fork_confirmed" &&
+    exitRestriction.evaluationGaps.length === 0 &&
+    exitRestriction.restrictors.length === 0 &&
+    exitRestriction.coverage.guardedTotal > 0 &&
+    exitRestriction.candidates.length === exitRestriction.coverage.guardedTotal &&
+    exitRestriction.candidates.every((candidate) => candidate.result === "no_effect") &&
     exitRestriction.coverage.evaluated === exitRestriction.coverage.guardedTotal &&
     (exitWindow.assessment.status === "undetermined" || exitWindow.assessment.status === "not_proven_binding")
   ) {

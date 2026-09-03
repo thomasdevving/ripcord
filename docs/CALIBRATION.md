@@ -1137,12 +1137,19 @@ No calibration report exercises the clean direction: Comet finds its restrictor,
 and every other report is a plain `scan`/`prove`. The repository therefore makes
 an empirical claim about the demonstrated Comet restriction, not about the
 general reliability of `no_direct_restriction_found`. Before that tier is relied
-upon on additional interfaces, inconclusive candidates must fail closed and the
-clean outcome must be bound directly to the completeness witness.
+upon on additional interfaces, the registered-candidate surface itself still
+needs complete tested/excluded/unresolved accounting and a live negative control.
+Candidate execution and aggregate enumeration now fail closed in schema
+0.13.0 / ruleset 0.12.0: `inconclusive` or `not_evaluated`, or any incomplete
+enumeration site, produces `evaluation_inconclusive`; `composeVerdict` repeats
+the gates independently. This closes the live fall-through without claiming
+that the broader candidate registry is complete.
 
 ### Determinism
 
 The fork evaluation is deterministic at the pinned block: fixed sandbox holder,
 fixed whale, fixed amounts and arguments, deterministic nonces → deterministic
 results. Two independent `restrict` runs of Comet are byte-identical apart from
-`generatedAt`. schema 0.12.0 / ruleset 0.11.0.
+`generatedAt`. The schema 0.13.0 / ruleset 0.12.0 rerun preserves Comet's
+fork-confirmed restriction; its incomplete selector-surface enumeration is
+recorded as a clean-outcome blocker but cannot weaken that finding.
