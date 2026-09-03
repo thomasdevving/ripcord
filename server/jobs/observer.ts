@@ -1,3 +1,4 @@
+import { forkTransactions as extractForkTransactions } from "../shared/fork.js";
 /**
  * ENGINE OBSERVATIONS → TRANSPORT EVENTS, and the disclosure boundary that
  * governs which of them may leave the process early.
@@ -77,6 +78,7 @@ const OUTCOME_TO_STATUS: Record<StageEnd["outcome"], Extract<PhaseStatus, "compl
  * replaying a diff history it may have holes in.
  */
 export class TransportObserver implements RunObserver, ForkObserver {
+  private readonly authorityDepths = new Map<string, number>();
   private readonly nodes = new Map<string, StructuralNode>();
   private readonly edges: StructuralEdge[] = [];
   /** Parallel to `edges`: the identity key of each, so an edge can be upgraded in place. */
@@ -118,6 +120,7 @@ export class TransportObserver implements RunObserver, ForkObserver {
   private upsert(node: StructuralNode): void {
     const key = this.key(node.address);
     const existing = this.nodes.get(key);
+    if (node.kind === "authority" && existing?.kind !== "target") this.authorityDepths.set(key, node.depth);
     if (!existing) {
       this.nodes.set(key, node);
       return;
@@ -125,7 +128,7 @@ export class TransportObserver implements RunObserver, ForkObserver {
     this.nodes.set(key, {
       ...existing,
       kind: existing.kind === "unknown" ? node.kind : existing.kind,
-      accountType: existing.accountType ?? node.accountType,
+      accountType: (existing.accountType === "contract" || existing.accountType === "unknown") && node.accountType ? node.accountType : existing.accountType ?? node.accountType,
       safeThreshold: existing.safeThreshold ?? node.safeThreshold,
       safeOwners: existing.safeOwners ?? node.safeOwners,
       timelockDelaySeconds: existing.timelockDelaySeconds ?? node.timelockDelaySeconds,
@@ -137,7 +140,7 @@ export class TransportObserver implements RunObserver, ForkObserver {
       // the depth-1 row — drawing the chain shorter than it is. Live case: the
       // Comet timelock is BOTH the ProxyAdmin's owner (depth 2) and the address
       // the target's own governor() names (marker, depth 1).
-      depth: existing.kind === "authority" ? existing.depth : Math.min(existing.depth, node.depth),
+      depth: this.authorityDepths.get(key) ?? Math.min(existing.depth, node.depth),
     });
   }
 
@@ -169,7 +172,7 @@ export class TransportObserver implements RunObserver, ForkObserver {
     this.edges[index] = { from, to, label, resolution };
   }
 
-  private snapshot(): StructuralSnapshot {
+  snapshot(): StructuralSnapshot {
     return {
       nodes: [...this.nodes.values()],
       edges: [...this.edges],
@@ -196,17 +199,17 @@ export class TransportObserver implements RunObserver, ForkObserver {
     const phase = STAGE_TO_PHASE[end.stage];
     const status = OUTCOME_TO_STATUS[end.outcome];
     if (status === "degraded") {
-      this.emit({ type: "stage.degraded", phase, detail: end.detail ?? "the stage failed and a fallback value was substituted" });
+      this.emit({ type: "stage.degraded", phase, detail: "The stage failed and a fallback was used; inspect the report after publication review." });
       return;
     }
     if (status === "inconclusive") {
-      this.emit({ type: "stage.inconclusive", phase, detail: end.detail ?? "the stage ran but could not answer" });
+      this.emit({ type: "stage.inconclusive", phase, detail: "The stage ran but could not establish a complete answer." });
       return;
     }
     this.emit({
       type: "stage.completed",
       phase,
-      detail: end.detail,
+      detail: "The stage completed; detailed findings follow the publication review.",
       ...(end.metrics ? { metrics: this.safeMetrics(end.stage, end.metrics) } : {}),
     });
   }
@@ -221,7 +224,7 @@ export class TransportObserver implements RunObserver, ForkObserver {
    * somebody added a field upstream.
    */
   private safeMetrics(stage: EngineStage, metrics: Record<string, number | string | boolean | null>): Record<string, number | string | boolean | null> {
-    if (stage !== "capabilities") return metrics;
+    // Before publication, only numeric counts and booleans are released for every stage.
     const safe: Record<string, number | string | boolean | null> = {};
     for (const [k, v] of Object.entries(metrics)) {
       if (typeof v === "number" || typeof v === "boolean") safe[k] = v;
@@ -336,9 +339,10 @@ export class TransportObserver implements RunObserver, ForkObserver {
 
   onPowerHolders(holders: PowerHolder[]): void {
     for (const holder of holders) {
+      if (!this.nodes.has(this.key(holder.address))) continue; // capability-only holders remain gated
       this.upsert({
         address: holder.address,
-        relation: holder.viaCapabilities.length > 0 ? `guards ${holder.viaCapabilities.join(", ")}` : "power holder",
+        relation: "structurally observed holder",
         kind: "unknown",
         // `unknown` from the classifier means "we could not classify it", which
         // is not the same as "we have no opinion yet" — but as a node field the
@@ -358,14 +362,17 @@ export class TransportObserver implements RunObserver, ForkObserver {
 
   onAuthority(resolution: AuthorityResolution | null): void {
     if (!resolution) return;
-    for (const root of resolution.roots) this.walk(root, null);
+    for (const root of resolution.roots) {
+      if (!root.relation.startsWith("capability:")) this.walk(root, null);
+    }
     this.emitStructure();
   }
 
   private walk(node: AuthorityNode, parent: string | null): void {
+    if (node.relation.startsWith("capability:")) return;
     this.upsert({
       address: node.address,
-      relation: node.relation,
+      relation: this.relationLabel(node.relation),
       kind: "authority",
       accountType: node.type,
       safeThreshold: node.safe?.threshold ?? null,
@@ -398,7 +405,7 @@ export class TransportObserver implements RunObserver, ForkObserver {
     if (relation === "pendingOwner") return "is the pending owner of";
     if (relation.startsWith("accessControl:")) return `holds ${relation.slice("accessControl:".length)} on`;
     if (relation === "root") return "has authority over";
-    return `${relation} of`;
+    return "structural authority over";
   }
 
   onAuthorityIndirection(indirection: AuthorityIndirection | null): void {
@@ -459,7 +466,7 @@ export class TransportObserver implements RunObserver, ForkObserver {
     if (step.party) {
       this.upsert({
         address: step.party.address,
-        relation: `${step.party.relation} the target, via ${step.party.signature}`,
+        relation: step.party.confirmed ? `${step.party.relation} the target (fork-confirmed)` : "controller impersonated for a candidate call",
         kind: "authority",
         accountType: step.party.type,
         safeThreshold: step.party.safeThreshold,
@@ -474,7 +481,7 @@ export class TransportObserver implements RunObserver, ForkObserver {
       this.link(
         step.party.address,
         this.target,
-        step.party.confirmed ? `${step.party.relation} (fork-confirmed)` : step.party.relation,
+        step.party.confirmed ? `${step.party.relation} (fork-confirmed)` : "impersonated for candidate call on",
         step.party.confirmed ? "resolved" : "partial",
         // Stable identity across both emissions, so the confirmed edge REPLACES
         // the provisional one rather than sitting beside it.
@@ -491,11 +498,11 @@ export class TransportObserver implements RunObserver, ForkObserver {
     // fork transactions the engine actually recorded. Nothing here is derived:
     // status, gas, local block and timestamp are copied out of evidence.
     if (step.phase === "baseline") {
-      this.emit({ type: "fork.baseline.completed", established: step.outcome === "completed", detail: step.detail, transactions });
+      this.emit({ type: "fork.baseline.completed", established: step.outcome === "completed", detail: step.detail, transactions, evidence: [...step.evidence ?? []] });
     } else if (step.phase === "mutation") {
-      this.emit({ type: "fork.mutation.completed", detail: step.detail, transactions });
+      this.emit({ type: "fork.mutation.completed", detail: step.detail, transactions, evidence: [...step.evidence ?? []] });
     } else if (step.phase === "reexit") {
-      this.emit({ type: "fork.reexit.completed", detail: step.detail, transactions });
+      this.emit({ type: "fork.reexit.completed", detail: step.detail, transactions, evidence: [...step.evidence ?? []] });
     }
   }
 }
@@ -517,26 +524,4 @@ const FORK_PHASE_TO_ID: Record<ForkStep["phase"], PhaseId> = {
  * because a receipt fact the UI invented would be indistinguishable on screen
  * from one the fork produced.
  */
-export function extractForkTransactions(evidence: readonly unknown[]): ForkTxView[] {
-  const out: ForkTxView[] = [];
-  for (const entry of evidence) {
-    if (typeof entry !== "object" || entry === null) continue;
-    const params = (entry as { params?: Record<string, unknown> }).params;
-    const rawValue = (entry as { rawValue?: Record<string, unknown> }).rawValue;
-    if (!params || params.method !== "eth_sendTransaction" || !rawValue) continue;
-    const receipt = (rawValue as { receipt?: Record<string, unknown> }).receipt;
-    if (!receipt) continue;
-    out.push({
-      action: String(params.action ?? "transaction"),
-      from: String(params.from ?? ""),
-      to: params.to === null || params.to === undefined ? null : String(params.to),
-      selector: params.selector === null || params.selector === undefined ? null : String(params.selector),
-      status: receipt.status === "success" ? "success" : "reverted",
-      gasUsed: String(receipt.gasUsed ?? ""),
-      localBlock: String(receipt.blockNumber ?? ""),
-      localTimestamp: String(receipt.blockTimestamp ?? ""),
-      revertData: (rawValue as { revertData?: unknown }).revertData == null ? null : String((rawValue as { revertData: unknown }).revertData),
-    });
-  }
-  return out;
-}
+export { forkTransactions as extractForkTransactions } from "../shared/fork.js";

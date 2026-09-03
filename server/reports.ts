@@ -1,3 +1,4 @@
+import { publicValue } from "./sanitize.js";
 /**
  * THE READ SIDE OF REPORTS, and the single place the publication gate is
  * enforced for every outward transport.
@@ -52,6 +53,7 @@ export class ReportService {
   constructor(
     private readonly store: JobStore,
     private readonly calibrationDir: string,
+    private readonly secrets: string[] = [],
   ) {}
 
   /**
@@ -159,7 +161,7 @@ export class ReportService {
     if (calibrationEntry) {
       const parsed = JSON.parse(await readFile(calibrationEntry.path, "utf8")) as { disclosure?: { publishable?: boolean } };
       if (parsed.disclosure?.publishable !== true) return { ok: false, reason: "blocked" };
-      return { ok: true, value: { id, origin: "calibration", report: parsed } };
+      return { ok: true, value: { id, origin: "calibration", report: publicValue(parsed, this.secrets) } };
     }
 
     const meta = await this.store.loadReportMeta(id);
@@ -170,7 +172,7 @@ export class ReportService {
     const report = (await this.store.loadReport(id)) as { disclosure?: { publishable?: boolean } } | null;
     if (!report) return { ok: false, reason: "not_found" };
     if (report.disclosure?.publishable !== true) return { ok: false, reason: "blocked" };
-    return { ok: true, value: { id, origin: "live", report } };
+    return { ok: true, value: { id, origin: "live", report: publicValue(report, this.secrets) } };
   }
 }
 

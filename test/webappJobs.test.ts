@@ -238,11 +238,10 @@ describe("queueing and idempotency", () => {
     expect(manager.stats().active + manager.stats().queued).toBe(1);
   });
 
-  it("does not deduplicate the same key against DIFFERENT parameters", async () => {
+  it("rejects reuse of an idempotency key for different parameters", async () => {
     const first = await create(HANGS, { idempotencyKey: "abcdefgh1234" });
-    const second = await create(BLOCKED, { idempotencyKey: "abcdefgh1234" });
-    // Reusing a key for another address must not hand back the previous result.
-    expect(second.record.jobId).not.toBe(first.record.jobId);
+    await expect(create(BLOCKED, { idempotencyKey: "abcdefgh1234" })).rejects.toThrow(/different parameters/);
+    expect(first.record.address).toBe(HANGS);
   });
 
   it("gives a deliberate re-run (no key) a new execution id", async () => {

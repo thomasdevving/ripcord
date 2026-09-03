@@ -80,8 +80,8 @@ beforeEach(() => {
     }),
   };
 });
-async function run() {
-  const result = await runExitRestrictionEngine(req());
+async function run(observer?: import("../src/report/observer.js").ForkObserver) {
+  const result = await runExitRestrictionEngine({ ...req(), ...(observer ? { observer } : {}) });
   expect(exitRestrictionSchema.safeParse(result.exitRestriction).success).toBe(true);
   expect(h.fork.stop).toHaveBeenCalledOnce();
   return result;
@@ -127,6 +127,15 @@ describe("the actual engine's fork execution and failure paths", () => {
     const { exitRestriction: er } = await run();
     expect(er.candidates[0]?.result).toBe("inconclusive");
     expect(er.outcome).toBe("evaluation_inconclusive");
+  });
+  it.each(["clockDrift", "pauseNoop", "unrelatedRevert", "outOfGas"] as const)("does not announce a causal live result before verifying %s", async mode => {
+    config[mode] = true;
+    const steps: import("../src/report/observer.js").ForkStep[] = [];
+    const result = await run({ onForkStep: step => steps.push(step) });
+    const reexit = steps.find(step => step.phase === "reexit")!;
+    expect(reexit.outcome).toBe("inconclusive");
+    expect(reexit.detail).not.toContain("DIFFERENTIAL CONFIRMED");
+    expect(result.exitRestriction.outcome).toBe("evaluation_inconclusive");
   });
   it("requires economic recovery after the mutation too", async () => {
     config.ignorePause = true; config.withdrawalNoop = "after";

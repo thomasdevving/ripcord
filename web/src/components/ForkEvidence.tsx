@@ -41,12 +41,14 @@ function TxList({ transactions }: { transactions: ForkTxView[] }): ReactElement 
                 {tx.to && <> → {tx.to}</>}
                 {tx.selector && <> · {tx.selector}</>}
               </div>
+              {tx.transactionHash && <div className="tx-meta">fork tx: {tx.transactionHash}</div>}
+              {tx.calldata && <div className="tx-meta">calldata: {tx.calldata}</div>}
               {tx.revertData && <div className="tx-meta">revert data: {tx.revertData}</div>}
             </div>
             <div style={{ textAlign: "right" }}>
               <span className={`chip ${tx.status === "success" ? "good" : "crit"}`}>{tx.status}</span>
               <div className="tx-meta">
-                gas {tx.gasUsed} · fork block {tx.localBlock} · t={tx.localTimestamp}
+                gas {tx.gasUsed || "unavailable"} · fork block {tx.localBlock || "unavailable"} · t={tx.localTimestamp || "unavailable"}
               </div>
             </div>
           </div>
@@ -88,7 +90,17 @@ function Block({
           <p className="statement" style={{ marginTop: 0 }}>
             {view.detail}
           </p>
+          {view.legacy && <div className="banner warn">Legacy evidence — do not read this as a full-position economic proof under the current rules.</div>}
           <TxList transactions={view.transactions} />
+          {view.evidence && view.evidence.length > 0 && <details><summary>Exact reads, balances and position evidence (raw units)</summary>
+            <div className="scroll-x"><table><thead><tr><th>Phase / action</th><th>Read</th><th>Raw value</th><th>Fork block / time</th></tr></thead><tbody>
+              {view.evidence.map((entry, i) => { const e = entry as { params?: Record<string, unknown>; rawValue?: unknown }; const p = e.params ?? {};
+                if (p.method === "eth_sendTransaction") return null;
+                return <tr key={i}><td>{String(p.phase ?? p.action ?? "—")}</td><td className="mono">{String(p.read ?? p.method ?? "read")}</td><td className="mono">{JSON.stringify(e.rawValue)}</td><td>{String(p.localBlock ?? "unavailable")} / {String(p.localTimestamp ?? "unavailable")}</td></tr>;
+              })}
+            </tbody></table></div>
+            <pre>{JSON.stringify(view.evidence, null, 2)}</pre>
+          </details>}
         </>
       ) : (
         <p className="muted small" style={{ marginBottom: 0 }}>
@@ -116,24 +128,24 @@ export function ForkEvidence({
    */
   finished?: boolean;
 }): ReactElement {
-  const notRun = finished ? "Did not run. The reason is in the fork result above." : "Not run yet.";
+  const notRun = finished ? "No separate evidence for this step is available. See the recorded outcome and limitations." : "Waiting for recorded evidence.";
   return (
     <section className="card">
       <h2>The withdrawal experiment</h2>
       <p className="note" style={{ marginTop: 0, maxWidth: "76ch" }}>
-        Ripcord stops reasoning about whether an exit can be closed and tests it. A real withdrawal is established as a
-        control, the party the engine found is impersonated and calls its restriction candidate, and the identical
-        withdrawal is attempted again from the matching starting state at the same fork block and timestamp.
+        The experiment compares a control withdrawal with a withdrawal after a candidate mutation.
+        The recorded outcome states which economic, state and timing checks actually passed.
+        Older reports retain their original evidence and limitations.
       </p>
 
       <Block
         step="A"
         title="Baseline withdrawal"
-        subtitle="Fund a holder from a whale, supply into the protocol, then withdraw the full position. This must succeed before anything is mutated — without a control, no later failure can be attributed to anything."
+        subtitle="Recorded setup and control withdrawal. A successful receipt alone does not demonstrate recovery of the full position."
         view={fork.baseline}
         pendingText={
           finished
-            ? "Did not run, so no control exists. Nothing about this contract's exit is claimed from this experiment."
+            ? "No baseline evidence is available. Nothing about this contract's exit is claimed from an absent control."
             : "Not run yet. Nothing is claimed about the exit until this succeeds."
         }
       />
@@ -141,7 +153,7 @@ export function ForkEvidence({
       <Block
         step="B"
         title="Privileged mutation"
-        subtitle="The guarding party the engine identified is impersonated and calls its restriction candidate with the exit-restricting argument. Other pause flags are preserved, so any change in the exit is attributable to this one flag."
+        subtitle="The candidate call and observed state change. This step alone does not establish that an exit was closed."
         view={fork.mutation}
         pendingText={notRun}
       />
@@ -149,7 +161,7 @@ export function ForkEvidence({
       <Block
         step="C"
         title="The same withdrawal, again"
-        subtitle="The identical call, from the same starting balances and position, at the same fork block and timestamp as the control. Only the privileged mutation differs between the two branches."
+        subtitle="Recorded withdrawal after the candidate. Causality requires matching starting positions and times, verified economic recovery in A, and the expected cause of failure in C."
         view={fork.reexit}
         pendingText={notRun}
       />
@@ -157,7 +169,8 @@ export function ForkEvidence({
       {(fork.mutation || fork.reexit) && (
         <div className="banner info">
           <strong>The controller was impersonated on the fork.</strong> anvil ignores signatures, so where the guarding
-          party is a Safe or a contract this shows that it <em>can</em> close the exit if it authorises the call. Its own
+          party is a Safe or a contract, execution assumes that it can authorise the attempted call. Whether the exit
+          was restricted is stated only by the recorded differential outcome. Its own
           signature checks, transaction guards and modules were not executed, and no notice its own process might impose
           was modelled.
         </div>

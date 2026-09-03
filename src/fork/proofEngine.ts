@@ -83,6 +83,7 @@ export interface ProofRequest {
   chainId: number;
   rpcUrl: string;
   blockNumber: bigint;
+  expectedBlockHash?: Hex;
   target: Hex;
   proxy: ProxyResult;
   authorityResolution: AuthorityResolution | null;
@@ -234,7 +235,8 @@ export async function runProofEngine(req: ProofRequest): Promise<Proof> {
     });
   }
 
-  const fork = await startAnvilFork({ rpcUrl: req.rpcUrl, blockNumber: req.blockNumber, anvilExecutable });
+  const fork = await startAnvilFork({ rpcUrl: req.rpcUrl, blockNumber: req.blockNumber,
+      ...(req.expectedBlockHash ? { expectedBlockHash: req.expectedBlockHash } : {}), anvilExecutable });
   try {
     const evidence: Evidence[] = [];
 

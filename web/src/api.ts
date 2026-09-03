@@ -57,7 +57,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const getConfig = () => request<ConfigResponse>("/api/config");
 
-export const createJob = (body: { address: string; chainId: number; block: string; mode: RunMode; idempotencyKey?: string }) =>
+export const createJob = (body: { address: string; chainId: number; block: string; mode: RunMode; idempotencyKey?: string; controlToken?: string }) =>
   request<CreateJobResponse>("/api/jobs", { method: "POST", body: JSON.stringify(body) });
 
 export const getJob = (jobId: string) => request<JobSummary>(`/api/jobs/${encodeURIComponent(jobId)}`);
@@ -71,7 +71,7 @@ export const cancelJob = (jobId: string, controlToken: string) =>
 export const listReports = () => request<{ reports: SavedReportListItem[] }>("/api/reports");
 
 export const getReport = (id: string) =>
-  request<{ id: string; origin: "live" | "calibration"; report: unknown }>(`/api/reports/${encodeURIComponent(id)}`);
+  request<{ id: string; origin: "live" | "calibration"; report: unknown; structure: import("@shared/dto").StructuralSnapshot | null }>(`/api/reports/${encodeURIComponent(id)}`);
 
 export const pollEvents = (jobId: string, after: number) =>
   request<{ events: JobEvent[]; truncated: boolean; summary: JobSummary }>(
@@ -81,7 +81,8 @@ export const pollEvents = (jobId: string, after: number) =>
 export interface StreamHandlers {
   onEvent: (event: JobEvent) => void;
   /** The cursor fell off the retained history: the caller must re-snapshot rather than assume continuity. */
-  onResync: () => void;
+  onResync: () => Promise<boolean | void>;
+  onSnapshot?: (summary: JobSummary) => void;
   onTransport: (mode: "sse" | "polling" | "closed") => void;
 }
 
@@ -99,83 +100,71 @@ export interface StreamHandlers {
 export function streamJobEvents(jobId: string, getCursor: () => number, handlers: StreamHandlers): () => void {
   let closed = false;
   let source: EventSource | null = null;
-  let pollTimer: ReturnType<typeof setTimeout> | null = null;
-  let sseFailures = 0;
-
-  const startPolling = () => {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let lastActivity = Date.now();
+  let polling = false;
+  let delivery = Promise.resolve();
+  const terminal = (state: string) => ["completed", "failed", "cancelled", "timed_out", "interrupted"].includes(state);
+  const stop = () => {
     if (closed) return;
+    closed = true;
+    source?.close();
+    if (timer) clearTimeout(timer);
+    clearInterval(watchdog);
+    handlers.onTransport("closed");
+  };
+  const resync = async () => { if (!closed && await handlers.onResync()) stop(); };
+  const deliver = async (event: JobEvent) => {
+    if (closed || event.seq <= getCursor()) return;
+    handlers.onEvent(event);
+    if (event.type === "job.state" && terminal(event.state)) { await resync(); stop(); }
+  };
+  const startPolling = () => {
+    if (closed || polling) return;
+    polling = true;
+    source?.close(); source = null;
     handlers.onTransport("polling");
     const tick = async () => {
       if (closed) return;
       try {
-        const { events, truncated } = await pollEvents(jobId, getCursor());
-        if (truncated) handlers.onResync();
-        for (const event of events) handlers.onEvent(event);
-      } catch {
-        // A failed poll is a transient network condition, not a fact about the
-        // job. Keep the cadence and try again; the job is unaffected either way.
-      }
-      if (!closed) pollTimer = setTimeout(() => void tick(), 1500);
+        const { events, truncated, summary } = await pollEvents(jobId, getCursor());
+        if (closed) return;
+        await delivery;
+        if (truncated) await resync();
+        for (const event of events) await deliver(event);
+        if (!closed) handlers.onSnapshot?.(summary);
+        if (terminal(summary.state)) { await resync(); stop(); }
+      } catch { /* transient delivery failure: preserve the last measured state */ }
+      if (!closed) timer = setTimeout(() => { timer = null; void tick(); }, 1500);
     };
     void tick();
   };
-
-  const startSse = () => {
-    if (closed) return;
-    // `after` in the query string, because EventSource cannot set a
-    // Last-Event-ID header on its FIRST connect — only on its own automatic
-    // retries. Without it, a reconnect after a page refresh would replay from
-    // the beginning and duplicate every event.
-    source = new EventSource(`/api/jobs/${encodeURIComponent(jobId)}/events?after=${getCursor()}`);
-    handlers.onTransport("sse");
-
-    source.addEventListener("resync", () => handlers.onResync());
-
-    source.onmessage = (msg) => {
-      try {
-        handlers.onEvent(JSON.parse(msg.data) as JobEvent);
-      } catch {
-        // A frame we cannot parse is dropped rather than crashing the stream.
-        // It is the only case this catch covers: every frame the server sends
-        // is JSON.stringify'd, so this means a truncated delivery.
-      }
-    };
-    // Named event types arrive as their own listeners, not via onmessage.
-    for (const type of EVENT_TYPES) {
-      source.addEventListener(type, (msg) => {
-        try {
-          handlers.onEvent(JSON.parse((msg as MessageEvent).data) as JobEvent);
-        } catch {
-          // As above.
-        }
-      });
-    }
-
-    source.onerror = () => {
-      if (closed) return;
-      sseFailures++;
-      source?.close();
-      source = null;
-      // Two failures is enough to conclude the path is blocked rather than
-      // merely flaky — a buffering proxy fails consistently — and polling is
-      // strictly better than a stalled stream.
-      if (sseFailures >= 2) startPolling();
-      else setTimeout(startSse, 1000);
-    };
-  };
-
-  startSse();
-
-  return () => {
-    closed = true;
-    source?.close();
-    if (pollTimer) clearTimeout(pollTimer);
-    handlers.onTransport("closed");
-  };
+  // A proxy can buffer SSE forever without reporting an error. Named heartbeats
+  // make liveness measurable; a quiet engine is not mistaken for a dead stream.
+  const watchdog = setInterval(() => {
+    if (source && Date.now() - lastActivity > 35_000) startPolling();
+  }, 5000);
+  source = new EventSource(`/api/jobs/${encodeURIComponent(jobId)}/events?after=${getCursor()}`);
+  handlers.onTransport("sse");
+  source.addEventListener("heartbeat", () => { lastActivity = Date.now(); });
+  source.addEventListener("resync", () => {
+    lastActivity = Date.now();
+    delivery = delivery.then(resync).catch(startPolling);
+  });
+  for (const type of EVENT_TYPES) source.addEventListener(type, msg => {
+    lastActivity = Date.now();
+    delivery = delivery.then(async () => {
+      try { await deliver(JSON.parse((msg as MessageEvent).data) as JobEvent); }
+      catch { await resync(); }
+    }).catch(startPolling);
+  });
+  source.onerror = startPolling;
+  return stop;
 }
 
 /** Kept in sync with JobEvent's `type` union. A type missing here simply arrives via onmessage instead. */
 const EVENT_TYPES = [
+  "runtime.stats",
   "job.state",
   "stage.started",
   "stage.completed",

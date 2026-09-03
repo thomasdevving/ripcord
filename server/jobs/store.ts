@@ -79,6 +79,8 @@ export interface JobRecord {
   endedAt: string | null;
   phases: PhaseSnapshot[];
   structure: StructuralSnapshot | null;
+  fork?: import("../shared/dto.js").ForkBlocks;
+  runtimeStats?: import("../shared/dto.js").RuntimeStats;
   reportId: string | null;
   disclosure: { publishable: boolean; message: string } | null;
   error: { message: string; hint: string | null } | null;
@@ -174,8 +176,7 @@ export class JobStore {
     const out: JobRecord[] = [];
     for (const file of files) {
       const record = await this.readJson<JobRecord>(join(this.jobsDir, file));
-      // A record that will not parse is skipped rather than crashing the boot,
-      // but it is not silently deleted either — it stays on disk for inspection.
+      // Corrupt metadata fails loudly; it is never silently treated as an empty job.
       if (record?.jobId) out.push(record);
     }
     return out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -202,7 +203,7 @@ export class JobStore {
       // Any phase caught mid-flight is marked failed rather than left
       // `running` forever, so the timeline of a recovered job is readable and
       // does not imply work is still happening.
-      job.phases = job.phases.map((p) => (p.status === "running" ? { ...p, status: "failed" as const, detail: "interrupted by a service restart" } : p));
+      job.phases = job.phases.map(p => p.status === "running" ? { ...p, status: "failed" as const, detail: "interrupted by a service restart" } : p.status === "pending" ? { ...p, status: "skipped" as const, detail: "not reached before service restart" } : p);
       await this.saveJob(job);
       recovered++;
     }
@@ -339,6 +340,37 @@ export class JobStore {
       prunedReports++;
     }
     return { jobs: prunedJobs, reports: prunedReports };
+  }
+
+  /** Hash-isolated web cache buckets; never prune an active worker's namespace.
+   * Bounds: 16 completed block identities, seven days, 512 MiB (soft while a
+   * bucket is active or younger than one hour). CLI caches are separate.
+   */
+  async pruneCache(activeHashes: () => Set<string>): Promise<void> {
+    const sizeOf = async (path: string): Promise<number> => {
+      let size = 0;
+      for (const e of await readdir(path, { withFileTypes: true })) {
+        const child = join(path, e.name);
+        if (e.isDirectory()) size += await sizeOf(child);
+        else if (e.isFile()) size += (await stat(child)).size;
+      }
+      return size;
+    };
+    const buckets = [];
+    for (const entry of await readdir(this.cacheDir, { withFileTypes: true })) {
+      if (!entry.isDirectory() || !/^(?:0x[0-9a-f]{64}|[0-9]+)$/i.test(entry.name) || activeHashes().has(entry.name)) continue;
+      const path = join(this.cacheDir, entry.name);
+      const age = (await stat(path)).mtimeMs;
+      buckets.push({ path, hash: entry.name, age, bytes: await sizeOf(path) });
+    }
+    buckets.sort((a, b) => b.age - a.age);
+    let bytes = 0;
+    for (const [index, bucket] of buckets.entries()) {
+      bytes += bucket.bytes;
+      if (index < 16 && bytes <= 512 * 1024 * 1024 && Date.now() - bucket.age < 7 * 86400_000) continue;
+      if (activeHashes().has(bucket.hash) || Date.now() - bucket.age < 3600_000) continue;
+      await rm(bucket.path, { recursive: true, force: true });
+    }
   }
 
   async dataDirWritable(): Promise<boolean> {

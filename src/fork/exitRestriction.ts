@@ -79,6 +79,7 @@ export interface ExitRestrictionRequest {
   chainId: number;
   rpcUrl: string;
   blockNumber: bigint;
+  expectedBlockHash?: Hex;
   target: Hex;
   capabilities: CapabilitiesResult;
   /** Aggregate, fail-closed witness over roles, authority recursion, dependencies and the privileged selector surface. */
@@ -289,7 +290,8 @@ export async function runExitRestrictionEngine(req: ExitRestrictionRequest): Pro
     return notRun(req, "not_run", err instanceof Error ? err.message : String(err), exitAction);
   }
 
-  const fork = await startAnvilFork({ rpcUrl: req.rpcUrl, blockNumber: req.blockNumber, anvilExecutable });
+  const fork = await startAnvilFork({ rpcUrl: req.rpcUrl, blockNumber: req.blockNumber,
+      ...(req.expectedBlockHash ? { expectedBlockHash: req.expectedBlockHash } : {}), anvilExecutable });
   try {
     return await runCometArchetype(req, fork, exitAction);
   } finally {
@@ -471,17 +473,6 @@ async function runCometArchetype(
       const beforeMutationExit = await observe("before withdrawal after candidate");
       const afterWithdraw = await send("holder withdraw after candidate", HOLDER, withdrawTx);
       const afterMutationExit = await observe("after withdrawal after candidate");
-      notifyFork(req.observer, "onForkStep", {
-        phase: "reexit",
-        // Either way this step RAN AND ANSWERED. Which answer it gave is the
-        // differential's content, decided below — not this step's status.
-        outcome: "completed",
-        detail:
-          afterWithdraw.status === "reverted"
-            ? `The identical withdrawal, from the same starting position at the same fork block and timestamp, REVERTED${afterWithdraw.revertData ? ` with ${afterWithdraw.revertData}` : ""}. The holder's tokens and principal are unchanged.`
-            : `The identical withdrawal still succeeded after the mutation.`,
-        evidence: evidence.slice(reexitStart),
-      });
       const timesMatch = beforeBaseline.block === beforeMutationExit.block && beforeBaseline.timestamp === beforeMutationExit.timestamp &&
         afterBaseline.block === afterMutationExit.block && afterBaseline.timestamp === afterMutationExit.timestamp;
       const stateMatches = samePosition(beforeBaseline, beforeMutationExit);
@@ -505,6 +496,12 @@ async function runCometArchetype(
       } else {
         detail = "withdrawal receipt succeeded but recovery of the full base position did not match the control; no clean outcome is justified";
       }
+      notifyFork(req.observer, "onForkStep", {
+        phase: "reexit",
+        outcome: result === "inconclusive" ? "inconclusive" : "completed",
+        detail,
+        evidence: evidence.slice(reexitStart),
+      });
     }
   } finally {
     await fork.revert(diffSnap);

@@ -14,7 +14,7 @@
 #            frontend. It never sees an RPC key: `vite build` inlines any VITE_*
 #            variable into a public asset, so a build-time secret would ship to
 #            every visitor. THE IMAGE MUST BE BUILDABLE WITH NO RPC KEY AT ALL,
-#            and it is — verified by building this file with an empty environment.
+#            the CI image smoke test enforces this without credentials.
 #
 #   runtime  carries only production dependencies, the compiled output and the
 #            two Foundry binaries. It runs as a non-root user and starts the real
@@ -89,7 +89,7 @@ WORKDIR /app
 # Node, the manager's shutdown never runs, and a platform restart can leave an
 # anvil child holding a port for the next boot.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates tini \
+ && apt-get install -y --no-install-recommends ca-certificates tini gosu \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=foundry /foundry/anvil /usr/local/bin/anvil
@@ -110,7 +110,8 @@ COPY calibration/reports ./calibration/reports
 # mounts one, its ownership must match — see docs/RAILWAY.md, which explains how
 # to check it.
 RUN mkdir -p /data && chown -R node:node /data /app
-USER node
+COPY scripts/docker-entrypoint.sh /usr/local/bin/ripcord-entrypoint
+RUN chmod 755 /usr/local/bin/ripcord-entrypoint
 
 ENV NODE_ENV=production \
     PORT=8080 \
@@ -131,5 +132,5 @@ RUN test -f /app/dist-server/server/index.js \
 
 # tini reaps zombies and forwards signals; the CMD is the real production
 # entrypoint, never the Vite dev server.
-ENTRYPOINT ["/usr/bin/tini", "--"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/ripcord-entrypoint"]
 CMD ["node", "dist-server/server/index.js"]

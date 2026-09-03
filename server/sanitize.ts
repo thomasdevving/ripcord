@@ -138,3 +138,37 @@ export function classify(err: unknown, jobId?: string): ApiError {
 export function safeLogValue(value: unknown): string {
   return typeof value === "string" ? redact(value) : sanitize(value);
 }
+
+/** Public transport projection. Never mutates the pinned internal artifact.
+ * URLs and configured credentials are removed everywhere, including raw provider
+ * error values. Hex evidence is deliberately preserved; redact() is for logs.
+ */
+export function publicValue<T>(value: T, secrets: readonly string[] = []): T {
+  const clean = (v: unknown): unknown => {
+    if (typeof v === "string") {
+      let text = v;
+      for (const secret of secrets) if (secret.length >= 4) text = text.split(secret).join("[redacted]");
+      return text.replace(/\b(?:https?|wss?):\/\/[^\s"'<>)\]},]+/gi, "[redacted-url]")
+        .replace(/((?:api[_-]?key|authorization|bearer|password|secret)\s*[:=]\s*)[^\s,;"'}]+/gi, "$1[redacted]")
+        .replace(/(?:^|\s)(\/(?:[A-Za-z0-9._-]+\/){2,}[A-Za-z0-9._-]*)/g, " [redacted-path]");
+    }
+    if (Array.isArray(v)) return v.map(clean);
+    if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, val]) => [k, clean(val)]));
+    return v;
+  };
+  return clean(value) as T;
+}
+
+export function rpcSecrets(urls: Iterable<string>): string[] {
+  const secrets: string[] = [];
+  for (const url of urls) {
+    secrets.push(url);
+    try {
+      const u = new URL(url);
+      for (const part of [u.username, u.password, ...u.pathname.split("/"), ...u.searchParams.values()]) {
+        if (part.length >= 8) secrets.push(part, decodeURIComponent(part));
+      }
+    } catch { /* invalid configuration is handled at startup */ }
+  }
+  return secrets;
+}

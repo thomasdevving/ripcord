@@ -104,3 +104,24 @@ jobs:
           echo "history: $COMMITS commits"
           test "$COMMITS" -gt 0
           gitleaks detect --source . --config .gitleaks.toml --redact -v
+
+  docker-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build without credentials
+        run: docker build --build-arg TARGETARCH=amd64 -t ripcord-smoke .
+      - name: Boot with a root-owned persistent volume
+        run: |
+          docker volume create ripcord-smoke-data
+          docker run -d --name ripcord-smoke -p 127.0.0.1:8080:8080 -v ripcord-smoke-data:/data -e RIPCORD_ENABLE_LIVE_RUNS=false ripcord-smoke
+          trap 'docker logs ripcord-smoke; docker rm -f ripcord-smoke; docker volume rm ripcord-smoke-data' EXIT
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/healthz > /tmp/health.json; then break; fi
+            sleep 1
+          done
+          node -e 'const h=require("/tmp/health.json"); if(h.status!=="ok") process.exit(1)'
+          curl -fsS http://127.0.0.1:8080/api/reports > /tmp/reports.json
+          node -e 'const r=require("/tmp/reports.json"); if(!r.reports.length) process.exit(1)'
+          docker exec ripcord-smoke sh -c 'test -w /data && test -f /app/dist-web/index.html'
+          docker exec ripcord-smoke sh -c 'grep -l "^Uid:[[:space:]]*1000" /proc/[0-9]*/status | head -1 | xargs test -f'

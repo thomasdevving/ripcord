@@ -31,7 +31,7 @@ import { JobManager } from "./jobs/manager.js";
 import { ReportService } from "./reports.js";
 import { registerRoutes } from "./routes.js";
 import { checkAnvilAvailable } from "../src/fork/preflight.js";
-import { safeLogValue } from "./sanitize.js";
+import { safeLogValue, rpcSecrets } from "./sanitize.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -87,7 +87,7 @@ async function main(): Promise<void> {
   const store = new JobStore(config.dataDir);
   await store.init();
 
-  const reports = new ReportService(store, config.calibrationDir);
+  const reports = new ReportService(store, config.calibrationDir, rpcSecrets(config.rpcUrls.values()));
   const indexed = await reports.init();
 
   const manager = new JobManager(config, store, resolveWorkerPath());
@@ -153,7 +153,8 @@ async function main(): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
     console.log(`[ripcord] ${signal} received — stopping workers and closing the server`);
-    await manager.shutdown();
+    try { await manager.shutdown(); }
+    catch (err) { console.error(`[ripcord] shutdown incomplete: ${safeLogValue(err)}`); process.exitCode = 1; return; }
     await app.close();
     process.exit(0);
   };

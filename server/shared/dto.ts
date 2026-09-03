@@ -196,6 +196,8 @@ export interface PhaseSnapshot {
  * See docs/WEBAPP.md "What may stream early".
  */
 export interface StructuralNode {
+  /** Available after publication; empty before the gate. */
+  evidence?: unknown[];
   address: string;
   /** How this address entered the graph. */
   relation: string;
@@ -239,11 +241,26 @@ export interface ForkTxView {
   from: string;
   to: string | null;
   selector: string | null;
-  status: "success" | "reverted";
+  status: "success" | "reverted" | "unknown";
+  transactionHash?: string | null;
+  calldata?: string | null;
   gasUsed: string;
   localBlock: string;
   localTimestamp: string;
   revertData: string | null;
+}
+
+export interface ForkBlockView {
+  established: boolean | null;
+  detail: string;
+  transactions: ForkTxView[];
+  evidence?: unknown[];
+  legacy?: boolean;
+}
+export interface ForkBlocks {
+  baseline: ForkBlockView | null;
+  mutation: ForkBlockView | null;
+  reexit: ForkBlockView | null;
 }
 
 // --- events ------------------------------------------------------------------
@@ -262,7 +279,10 @@ export interface JobEventBase {
   at: string;
 }
 
+export interface RuntimeStats { scanReadOperations: number; scanCacheHits: number }
+
 export type JobEvent =
+  | (JobEventBase & { type: "runtime.stats"; stats: RuntimeStats })
   | (JobEventBase & { type: "job.state"; state: JobState; queuePosition: number | null; message: string | null })
   | (JobEventBase & { type: "stage.started"; phase: PhaseId })
   | (JobEventBase & { type: "stage.completed"; phase: PhaseId; detail: string | null; metrics?: Record<string, number | string | boolean | null> })
@@ -271,9 +291,9 @@ export type JobEvent =
   | (JobEventBase & { type: "stage.failed"; phase: PhaseId; detail: string })
   | (JobEventBase & { type: "stage.skipped"; phase: PhaseId; detail: string })
   | (JobEventBase & { type: "structure"; snapshot: StructuralSnapshot })
-  | (JobEventBase & { type: "fork.baseline.completed"; established: boolean; detail: string; transactions: ForkTxView[] })
-  | (JobEventBase & { type: "fork.mutation.completed"; detail: string; transactions: ForkTxView[] })
-  | (JobEventBase & { type: "fork.reexit.completed"; detail: string; transactions: ForkTxView[] })
+  | (JobEventBase & { type: "fork.baseline.completed"; established: boolean; detail: string; transactions: ForkTxView[]; evidence?: unknown[] })
+  | (JobEventBase & { type: "fork.mutation.completed"; detail: string; transactions: ForkTxView[]; evidence?: unknown[] })
+  | (JobEventBase & { type: "fork.reexit.completed"; detail: string; transactions: ForkTxView[]; evidence?: unknown[] })
   | (JobEventBase & { type: "report.ready"; reportId: string; publishable: boolean; verdictStatus: string | null })
   | (JobEventBase & { type: "job.error"; message: string; hint: string | null });
 
@@ -309,6 +329,8 @@ export interface CreateJobRequest {
    * omits it (or sends a new one) and gets a new execution id.
    */
   idempotencyKey?: string;
+  /** Client-generated cancellation capability, retained across a lost submit response. */
+  controlToken?: string;
 }
 
 export interface CreateJobResponse {
@@ -347,6 +369,8 @@ export interface JobSummary {
   endedAt: string | null;
   phases: PhaseSnapshot[];
   structure: StructuralSnapshot | null;
+  fork?: ForkBlocks;
+  runtimeStats?: RuntimeStats;
   /** Set once the report exists AND is publishable. Null otherwise — including when a report exists but is blocked. */
   reportId: string | null;
   /** Present whenever a report was produced, publishable or not. */
@@ -410,6 +434,7 @@ export interface SavedReportListItem {
  * the report routes, and only after `disclosure.publishable` was checked there.
  */
 export interface ReportEnvelope {
+  structure?: StructuralSnapshot | null;
   id: string;
   origin: "live" | "calibration";
   /** The full schema-valid Report. Typed as unknown here so the browser cannot
@@ -431,6 +456,8 @@ export interface BlockedReportResponse {
  * key included — see server/sanitize.ts).
  */
 export type ApiErrorCode =
+  | "idempotency_conflict"
+  | "submission_rate_limited"
   | "invalid_address"
   | "invalid_block"
   | "unsupported_chain"

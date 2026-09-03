@@ -15,6 +15,7 @@
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  resolve: { alias: { "@shared": new URL("./server/shared", import.meta.url).pathname } },
   test: {
     root: ".",
     include: ["test/**/*.test.ts"],

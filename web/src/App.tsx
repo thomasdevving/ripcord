@@ -67,8 +67,8 @@ export function App(): ReactElement {
       )}
 
       {route.name === "home" && <StartScreen config={config} />}
-      {route.name === "analysis" && <AnalysisScreen jobId={route.jobId} />}
-      {route.name === "report" && <ReportScreen reportId={route.reportId} />}
+      {route.name === "analysis" && <AnalysisScreen key={route.jobId} jobId={route.jobId} />}
+      {route.name === "report" && <ReportScreen key={route.reportId} reportId={route.reportId} />}
       {route.name === "saved" && <SavedReportsScreen />}
     </div>
   );

@@ -31,6 +31,8 @@ export interface ValidatedRequest {
   blockSource: "explicit" | "resolved_latest";
   mode: RunMode;
   idempotencyKey: string | undefined;
+  controlToken?: string;
+  blockHash?: string;
 }
 
 export type ValidationResult = { ok: true; value: ValidatedRequest } | { ok: false; error: ApiError };
@@ -42,6 +44,7 @@ const fail = (code: ApiError["code"], message: string, hint: string | null): { o
 
 export interface ValidationContext {
   supportedChainIds: number[];
+  blockIdentity?: (chainId: number, block: bigint) => Promise<string>;
   availableModes: RunMode[];
   /** Resolves the chain head. Injected so the validator is unit-testable without a network. */
   resolveLatestBlock: (chainId: number) => Promise<bigint>;
@@ -118,8 +121,10 @@ export async function validateCreateJob(body: unknown, ctx: ValidationContext): 
   // Contract code at THAT block, not at the head. An address can hold code now
   // and none at a historical block; analysing the second as if it were the
   // first would report an empty power map for a contract that did not yet exist.
+  let blockHash: string | undefined;
   let codeSize: number;
   try {
+    blockHash = await ctx.blockIdentity?.(chainId, block);
     codeSize = await ctx.codeSizeAt(chainId, address, block);
   } catch (err) {
     return { ok: false, error: classify(err) };
@@ -135,5 +140,8 @@ export async function validateCreateJob(body: unknown, ctx: ValidationContext): 
   const idempotencyKey =
     typeof raw.idempotencyKey === "string" && /^[A-Za-z0-9_-]{8,64}$/.test(raw.idempotencyKey) ? raw.idempotencyKey : undefined;
 
-  return { ok: true, value: { address, chainId, block, blockSource, mode, idempotencyKey } };
+  if (raw.controlToken !== undefined && (typeof raw.controlToken !== "string" || !/^[A-Za-z0-9_-]{32,128}$/.test(raw.controlToken))) {
+    return fail("forbidden", "Invalid cancellation capability format.", null);
+  }
+  return { ok: true, value: { address, chainId, block, blockSource, mode, idempotencyKey, ...(blockHash ? { blockHash } : {}), ...(raw.controlToken ? { controlToken: raw.controlToken } : {}) } };
 }

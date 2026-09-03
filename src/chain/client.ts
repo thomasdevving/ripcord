@@ -253,6 +253,8 @@ export class PinnedChain implements ChainReader {
     this.cache = new DiskCache(opts.cacheDir, opts.cacheEnabled);
   }
 
+  get cacheHitCount(): number { return this.cache.hits; }
+
   get networkCallCount(): number {
     return this.networkCallsMade;
   }
@@ -262,8 +264,10 @@ export class PinnedChain implements ChainReader {
       { chainId: this.chainId, blockNumber: this.blockNumber, method: "getBlock", params: {} },
       async () => {
         this.networkCallsMade++;
-        const block = await this.client.getBlock({ blockNumber: this.blockNumber });
-        return block.hash;
+        try {
+          const block = await this.client.getBlock({ blockNumber: this.blockNumber });
+          return block.hash;
+        } catch (err) { throw new ChainReadError("getBlock", `block header at ${this.blockNumber} could not be read`, err); }
       },
     );
     return value;

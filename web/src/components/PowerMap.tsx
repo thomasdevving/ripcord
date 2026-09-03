@@ -26,8 +26,8 @@
  * queue elapsing) is not something a line on a diagram can establish, which is
  * why the labels describe the relation and never the outcome.
  */
-import { useCallback, useMemo } from "react";
-import { ReactFlow, Background, Controls, Handle, MarkerType, Position, type Edge, type Node, type NodeProps } from "@xyflow/react";
+import { useCallback, useMemo, useEffect, useRef } from "react";
+import { ReactFlow, Background, Controls, Handle, MarkerType, Position, type Edge, type Node, type NodeProps, type ReactFlowInstance } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type { StructuralEdge, StructuralNode, StructuralSnapshot } from "@shared/dto";
 import type { ReactElement } from "react";
@@ -106,7 +106,13 @@ export function PowerMap({
   selected: string | null;
   onSelect: (address: string | null) => void;
 }): ReactElement {
+  const flow = useRef<ReactFlowInstance | null>(null);
+  const userMoved = useRef(false);
   const { nodes, edges } = useMemo(() => layout(snapshot, selected), [snapshot, selected]);
+
+  useEffect(() => {
+    if (!userMoved.current) void flow.current?.fitView({ padding: 0.18, maxZoom: 1, duration: 150 });
+  }, [nodes.length, edges.length]);
 
   const onNodeClick = useCallback(
     (_: unknown, node: Node) => onSelect(String(node.id)),
@@ -128,17 +134,16 @@ export function PowerMap({
     <>
       <div className="graph-wrap">
         <ReactFlow
-          key={`rf-${nodes.length}-${edges.length}`}
           nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}
+          onInit={instance => { flow.current = instance; }}
+          onMoveStart={event => { if (event) userMoved.current = true; }}
           onNodeClick={onNodeClick}
           onPaneClick={() => onSelect(null)}
           fitView
-          // Padding so node boxes and their edge labels are not flush against
-          // the frame. `key` below re-fits when the graph GROWS during a live
-          // run: without it a node arriving after the initial fit lands
-          // outside the viewport and is simply never seen.
+          // Growth fits the graph until the viewer manually pans or zooms.
+          // Selection and viewport state survive because ReactFlow stays mounted.
           fitViewOptions={{ padding: 0.18, maxZoom: 1 }}
           // The layout is authoritative; dragging a node would suggest position
           // is cosmetic when it encodes authority depth.
@@ -160,7 +165,7 @@ export function PowerMap({
           <i className="sw solid" /> resolved relation
         </span>
         <span>
-          <i className="sw dashed" /> implementation (supplies code — holds no power)
+          <i className="sw dashed" /> partially resolved relation
         </span>
         <span>
           <i className="sw dotted" /> unresolved / not followed
@@ -175,7 +180,7 @@ export function PowerMap({
  * Layered layout: depth determines the row, address ordering determines the
  * column. Pure and total — same input, same picture, every time.
  */
-function layout(snapshot: StructuralSnapshot | null, selected: string | null): { nodes: Node[]; edges: Edge[] } {
+export function layout(snapshot: StructuralSnapshot | null, selected: string | null): { nodes: Node[]; edges: Edge[] } {
   if (!snapshot) return { nodes: [], edges: [] };
 
   const byDepth = new Map<number, StructuralNode[]>();
@@ -191,15 +196,14 @@ function layout(snapshot: StructuralSnapshot | null, selected: string | null): {
   for (const depth of depths) {
     // Stable ordering inside a row, so an arriving node never reshuffles the
     // ones already drawn.
-    const row = (byDepth.get(depth) ?? []).slice().sort((a, b) => a.address.toLowerCase().localeCompare(b.address.toLowerCase()));
-    const rowWidth = row.length * (NODE_W + X_GAP) - X_GAP;
+    const row = byDepth.get(depth) ?? [];
     row.forEach((node, index) => {
       nodes.push({
-        id: node.address,
+        id: node.address.toLowerCase(),
         type: "ripcord",
         // Depth 0 (the target) at the bottom; authority rises above it, which
         // is how the chain reads in the report text too.
-        position: { x: index * (NODE_W + X_GAP) - rowWidth / 2, y: -depth * Y_GAP },
+        position: { x: (index % 2 === 0 ? index / 2 : -(index + 1) / 2) * (NODE_W + X_GAP), y: -depth * Y_GAP },
         data: { node, selected: selected?.toLowerCase() === node.address.toLowerCase() },
         width: NODE_W,
         height: NODE_H,
@@ -215,8 +219,8 @@ function layout(snapshot: StructuralSnapshot | null, selected: string | null): {
     .filter((e) => present.has(e.from.toLowerCase()) && present.has(e.to.toLowerCase()))
     .map((e: StructuralEdge, i) => ({
       id: `e${i}-${e.from}-${e.to}-${e.label}`,
-      source: e.from,
-      target: e.to,
+      source: e.from.toLowerCase(),
+      target: e.to.toLowerCase(),
       label: e.label,
       labelStyle: { fontSize: 10, fill: "var(--text-secondary)" },
       labelBgStyle: { fill: "var(--surface-1)", fillOpacity: 0.95 },

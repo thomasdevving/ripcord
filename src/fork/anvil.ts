@@ -60,6 +60,7 @@ function pickPort(seed: bigint): number {
 export interface StartForkOptions {
   rpcUrl: string;
   blockNumber: bigint;
+  expectedBlockHash?: Hex;
   /** Executable resolved by the preflight (PATH or Foundry's default install directory). */
   anvilExecutable?: string;
   /** Readiness timeout, ms. */
@@ -80,6 +81,7 @@ export async function startAnvilFork(opts: StartForkOptions): Promise<ForkHandle
       opts.rpcUrl,
       "--fork-block-number",
       opts.blockNumber.toString(),
+      "--host", "127.0.0.1",
       "--port",
       String(port),
       // All actors are explicitly funded and impersonated. Avoid unrelated
@@ -91,9 +93,10 @@ export async function startAnvilFork(opts: StartForkOptions): Promise<ForkHandle
   );
 
   let stderr = "";
-  proc.stderr?.on("data", (d) => (stderr += String(d)));
+  proc.stderr?.on("data", (d) => (stderr = (stderr + String(d)).slice(-8192)));
   let exited = false;
   proc.on("exit", () => (exited = true));
+  proc.on("error", () => { exited = true; stderr = "anvil process could not be spawned"; });
 
   const client = createTestClient({
     mode: "anvil",
@@ -102,6 +105,15 @@ export async function startAnvilFork(opts: StartForkOptions): Promise<ForkHandle
   })
     .extend(publicActions)
     .extend(walletActions);
+
+  const stop = async (): Promise<void> => {
+    if (exited) return;
+    await new Promise<void>((resolve) => {
+      const backstop = setTimeout(() => { if (!exited) proc.kill("SIGKILL"); }, 2000);
+      proc.once("exit", () => { clearTimeout(backstop); resolve(); });
+      proc.kill("SIGTERM");
+    });
+  };
 
   // Poll until the fork answers, or fail loud with anvil's stderr.
   const deadline = Date.now() + timeoutMs;
@@ -116,7 +128,7 @@ export async function startAnvilFork(opts: StartForkOptions): Promise<ForkHandle
       // not up yet
     }
     if (Date.now() > deadline) {
-      proc.kill("SIGKILL");
+      await stop();
       throw new Error(`anvil did not become ready within ${timeoutMs}ms. stderr:\n${stderr}`);
     }
     await new Promise((r) => setTimeout(r, 150));
@@ -125,23 +137,20 @@ export async function startAnvilFork(opts: StartForkOptions): Promise<ForkHandle
   // The clock is part of a snapshot. Both counterfactual branches must mine at
   // the same timestamps; monotonicity applies within a branch, not across a
   // revert. Anvil otherwise derives block timestamps from wall-clock time.
-  const forkHead = await client.getBlock({ blockNumber: opts.blockNumber });
+  const forkHead = await (async () => {
+    try {
+      const head = await client.getBlock({ blockNumber: opts.blockNumber });
+      if (exited) throw new Error("anvil exited during fork initialization");
+      if (opts.expectedBlockHash && head.hash.toLowerCase() !== opts.expectedBlockHash.toLowerCase()) {
+        throw new Error("anvil fork block identity differs from the pinned report block");
+      }
+      return head;
+    } catch (err) { await stop(); throw err; }
+  })();
   let nextBlockTimestamp = forkHead.timestamp;
   const snapshotClocks = new Map<Hex, bigint>();
   const gasPrice = (forkHead.baseFeePerGas ?? 0n) * 2n + 1_000_000_000n;
 
-  const stop = async (): Promise<void> => {
-    if (exited) return;
-    await new Promise<void>((resolve) => {
-      proc.once("exit", () => resolve());
-      proc.kill("SIGTERM");
-      // Hard backstop: if SIGTERM is ignored, SIGKILL shortly after.
-      setTimeout(() => {
-        if (!exited) proc.kill("SIGKILL");
-        resolve();
-      }, 2000);
-    });
-  };
 
   const sendFrom: ForkHandle["sendFrom"] = async (from, tx) => {
     const params: Record<string, string> = { from };

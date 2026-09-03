@@ -1,3 +1,4 @@
+import { verifyBlockIdentity } from "./identity.js";
 /**
  * The HTTP surface.
  *
@@ -23,11 +24,13 @@
  *    opposite of what a health check is for. Whether live analysis can run is a
  *    separate, explicitly separate, field in /api/config.
  */
+import { reportStructure } from "./report-structure.js";
+import type { Report } from "../src/report/schema.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { createPublicClient, http } from "viem";
 import type { ServerConfig } from "./config.js";
 import { availableModes, liveRunsBlockedReason, providerHostFor, rpcUrlFor } from "./config.js";
-import { JobManager, QueueFullError } from "./jobs/manager.js";
+import { JobManager, QueueFullError, IdempotencyConflictError, SubmissionRateError } from "./jobs/manager.js";
 import { ReportService, BLOCKED_MESSAGE } from "./reports.js";
 import { validateCreateJob } from "./validate.js";
 import { classify } from "./sanitize.js";
@@ -121,42 +124,46 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
       });
     }
 
-    const validation = await validateCreateJob(req.body, {
-      supportedChainIds: [...config.rpcUrls.keys()],
-      availableModes: availableModes(config, anvil.available),
-      resolveLatestBlock: async (chainId) => {
-        const client = clientFor(chainId);
-        if (!client) throw new Error("no RPC configured for this chain");
-        return client.getBlockNumber();
-      },
-      codeSizeAt: async (chainId, address, block) => {
-        const client = clientFor(chainId);
-        if (!client) throw new Error("no RPC configured for this chain");
-        const code = await client.getCode({ address: address as `0x${string}`, blockNumber: block });
-        return code && code !== "0x" ? (code.length - 2) / 2 : 0;
-      },
-    });
-
-    if (!validation.ok) {
-      const status = validation.error.code === "no_contract_code" ? 422 : 400;
-      return sendError(reply, status, validation.error);
-    }
-
     try {
-      const outcome = await manager.createJob(
-        {
-          address: validation.value.address,
-          chainId: validation.value.chainId,
-          block: validation.value.block.toString(),
-          mode: validation.value.mode,
-          ...(validation.value.idempotencyKey ? { idempotencyKey: validation.value.idempotencyKey } : {}),
-        },
-        validation.value.block,
-        validation.value.blockSource,
-      );
+      const outcome = await manager.admit(req.body, async () => {
+        const validation = await validateCreateJob(req.body, {
+          supportedChainIds: [1],
+          blockIdentity: async (chainId, blockNumber) => {
+            const client = clientFor(chainId);
+            if (!client) throw new Error("no RPC configured");
+            return verifyBlockIdentity(client, chainId, blockNumber);
+          },
+          availableModes: availableModes(config, anvil.available),
+          resolveLatestBlock: async chainId => {
+            const client = clientFor(chainId);
+            if (!client) throw new Error("no RPC configured for this chain");
+            return client.getBlockNumber();
+          },
+          codeSizeAt: async (chainId, address, block) => {
+            const client = clientFor(chainId);
+            if (!client) throw new Error("no RPC configured for this chain");
+            const code = await client.getCode({ address: address as `0x${string}`, blockNumber: block });
+            return code && code !== "0x" ? (code.length - 2) / 2 : 0;
+          },
+        });
+        if (!validation.ok) throw new RequestValidationError(validation.error);
+        return manager.createJob(
+          {
+            address: validation.value.address,
+            chainId: validation.value.chainId,
+            block: validation.value.blockSource === "resolved_latest" ? "latest" : validation.value.block.toString(),
+            ...(validation.value.controlToken ? { controlToken: validation.value.controlToken } : {}),
+            mode: validation.value.mode,
+            ...(validation.value.idempotencyKey ? { idempotencyKey: validation.value.idempotencyKey } : {}),
+          },
+          validation.value.block,
+          validation.value.blockSource,
+          validation.value.blockHash ?? null,
+        );
+      });
       const body: CreateJobResponse = {
         jobId: outcome.record.jobId,
-        // Returned exactly once, to the submitter. Only its hash is stored.
+        // Only its hash is stored. A retry recovers a supplied client capability.
         controlToken: outcome.controlToken,
         state: outcome.record.state,
         queuePosition: manager.toSummary(outcome.record).queuePosition,
@@ -164,6 +171,9 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
       };
       return reply.status(202).send(body);
     } catch (err) {
+      if (err instanceof IdempotencyConflictError) return sendError(reply, 409, { code: "idempotency_conflict", message: err.message, hint: "Use a new key for a different analysis." });
+      if (err instanceof SubmissionRateError) return sendError(reply, 429, { code: "submission_rate_limited", message: err.message, hint: "Existing analyses continue; this deployment admits at most 12 new requests per minute." });
+      if (err instanceof RequestValidationError) return sendError(reply, err.api.code === "no_contract_code" ? 422 : 400, err.api);
       if (err instanceof QueueFullError) {
         return sendError(reply, 429, {
           code: "queue_full",
@@ -235,7 +245,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     // A comment frame every 15s keeps intermediaries from timing the
     // connection out during the long, quiet phases (a role reconstruction on a
     // range-capped provider is minutes with nothing to say).
-    const heartbeat = setInterval(() => reply.raw.write(`: heartbeat\n\n`), 15_000);
+    const heartbeat = setInterval(() => reply.raw.write(`event: heartbeat\ndata: {}\n\n`), 15_000);
 
     const cleanup = () => {
       clearInterval(heartbeat);
@@ -281,7 +291,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
       }
       return sendError(reply, 404, { code: "not_found", message: "No such report.", hint: null });
     }
-    return reply.send({ id: loaded.value.id, origin: loaded.value.origin, report: loaded.value.report });
+    return reply.send({ id: loaded.value.id, origin: loaded.value.origin, report: loaded.value.report, structure: reportStructure(loaded.value.report as Report) });
   });
 
   app.get("/api/reports/:id/download", async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
@@ -290,13 +300,13 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
       if (loaded.reason === "blocked") return reply.status(451).send({ blocked: true, message: BLOCKED_MESSAGE });
       return sendError(reply, 404, { code: "not_found", message: "No such report.", hint: null });
     }
-    // The report itself is the download. It contains no provider URL, no server
-    // path and no control token by construction — evidence records only the
-    // node's raw values, never the endpoint they came from (see anvil.ts on why
-    // revert BYTES are stored rather than provider error text).
+    // loadPublishable checks disclosure and applies the public projection for
+    // both routes, including nested errors that can contain a provider URL.
     return reply
       .header("Content-Type", "application/json")
       .header("Content-Disposition", `attachment; filename="ripcord-${loaded.value.id}.json"`)
       .send(loaded.value.report);
   });
 }
+
+class RequestValidationError extends Error { constructor(public readonly api: ApiError) { super(api.message); } }

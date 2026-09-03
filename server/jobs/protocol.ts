@@ -30,6 +30,7 @@ export interface StartMessage {
   chainId: number;
   /** Already resolved and pinned by the parent. The worker never re-resolves "latest". */
   blockNumber: string;
+  blockHash?: string | null;
   mode: RunMode;
   /** Server-side configuration. Never sourced from the HTTP request. */
   rpcUrl: string;

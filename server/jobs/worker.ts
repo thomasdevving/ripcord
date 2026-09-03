@@ -1,3 +1,4 @@
+import { verifyBlockIdentity } from "../identity.js";
 /**
  * THE JOB WORKER — a forked child process that runs the real engine.
  *
@@ -30,14 +31,14 @@
  * §11 exists to catch.
  */
 import { resolve } from "node:path";
-import type { Hex } from "viem";
+import { createPublicClient, http, type Hex } from "viem";
 import { PinnedChain } from "../../src/chain/client.js";
 import { buildReport } from "../../src/report/build.js";
 import { reportSchema, type Report } from "../../src/report/schema.js";
 import { runProofEngine } from "../../src/fork/proofEngine.js";
 import { runExitRestrictionEngine } from "../../src/fork/exitRestriction.js";
 import { applyExitRestriction } from "../../src/report/applyExitRestriction.js";
-import { classify, sanitize } from "../sanitize.js";
+import { classify, sanitize, publicValue, rpcSecrets } from "../sanitize.js";
 import { TransportObserver } from "./observer.js";
 import type { ParentMessage, StartMessage, WorkerEventPayload, WorkerMessage } from "./protocol.js";
 
@@ -74,7 +75,12 @@ function sendAndFlush(message: WorkerMessage): Promise<void> {
   });
 }
 
-const emit = (payload: WorkerEventPayload): void => send({ type: "event", payload });
+let secrets: string[] = [];
+let activeChain: PinnedChain | null = null;
+const emit = (payload: WorkerEventPayload): void => {
+  send({ type: "event", payload: publicValue(payload, secrets) });
+  if (activeChain && payload.type.startsWith("stage.") && payload.type !== "stage.started") send({ type: "event", payload: { type: "runtime.stats", stats: { scanReadOperations: activeChain.networkCallCount, scanCacheHits: activeChain.cacheHitCount } } });
+};
 
 /** Cooperative cancellation. The engine has no cancellation token, so we stop at phase boundaries and the parent's SIGTERM covers the rest. */
 let cancelled = false;
@@ -88,20 +94,24 @@ function throwIfCancelled(): void {
 }
 
 async function run(msg: StartMessage): Promise<void> {
+  secrets = rpcSecrets([msg.rpcUrl]);
   const target = msg.address as Hex;
   const blockNumber = BigInt(msg.blockNumber);
+  const identityClient = createPublicClient({ transport: http(msg.rpcUrl) });
+  const verifyIdentity = (expected?: string | null) => verifyBlockIdentity(identityClient, msg.chainId, blockNumber, expected);
+  const blockHash = await verifyIdentity(msg.blockHash);
 
   const chain = new PinnedChain({
     chainId: msg.chainId,
     rpcUrl: msg.rpcUrl,
     blockNumber,
-    // The existing (chainId, block, method, params) cache key semantics are
-    // untouched — only the directory moves under the server's data dir, so a
-    // warm cache built by the CLI is a valid hit here and vice versa.
-    cacheDir: resolve(msg.cacheDir),
+    // Hash namespace prevents cache reuse across a different canonical block.
+    // The CLI's internal key format and determinism semantics remain unchanged.
+    cacheDir: resolve(msg.cacheDir, blockHash),
     cacheEnabled: true,
   });
 
+  activeChain = chain;
   const observer = new TransportObserver(msg.address, emit);
 
   emit({ type: "stage.started", phase: "preflight" });
@@ -146,20 +156,21 @@ async function run(msg: StartMessage): Promise<void> {
   let report: Report = baseReport;
 
   // --- optional: the day-3 upgrade drain proof ------------------------------
-  if (msg.mode === "scan_withdrawal_test_upgrade_proof") {
+  if (baseReport.disclosure.publishable && msg.mode === "scan_withdrawal_test_upgrade_proof") {
     throwIfCancelled();
     emit({ type: "stage.started", phase: "upgradeProof" });
     const proof = await runProofEngine({
       chainId: msg.chainId,
       rpcUrl: msg.rpcUrl,
       blockNumber,
+      expectedBlockHash: blockHash,
       target,
       proxy: report.proxy,
       authorityResolution: report.authorityResolution,
       exitWindow: report.exitWindow,
       artifactDir: resolve(msg.artifactDir, "proofs"),
     });
-    report = reportSchema.parse({ ...report, proof });
+    report = reportSchema.parse({ ...report, proof: { ...proof, traceArtifact: proof.traceArtifact ? `proofs/${target}-${blockNumber}/trace.txt` : null } });
     if (proof.produced) {
       emit({
         type: "stage.completed",
@@ -175,12 +186,13 @@ async function run(msg: StartMessage): Promise<void> {
   }
 
   // --- optional: the day-7 withdrawal differential --------------------------
-  if (msg.mode !== "scan") {
+  if (baseReport.disclosure.publishable && msg.mode !== "scan") {
     throwIfCancelled();
     const result = await runExitRestrictionEngine({
       chainId: msg.chainId,
       rpcUrl: msg.rpcUrl,
       blockNumber,
+      expectedBlockHash: blockHash,
       target,
       capabilities: report.capabilities,
       enumeration: report.enumeration,
@@ -194,11 +206,13 @@ async function run(msg: StartMessage): Promise<void> {
     report = reportSchema.parse(applyExitRestriction(report, result));
   }
 
+  await verifyIdentity(blockHash);
+  if (report.block.hash !== blockHash) throw new Error("Report block identity could not be verified");
   await sendAndFlush({
     type: "done",
-    report: JSON.stringify(report),
+    report: JSON.stringify(publicValue(report, secrets)),
     publishable: report.disclosure.publishable,
-    verdictStatus: report.verdict?.status ?? null,
+    verdictStatus: report.disclosure.publishable ? report.verdict?.status ?? null : null,
     hasExitRestriction: report.exitRestriction !== null,
     generatedAt: report.generatedAt,
     schemaVersion: report.schemaVersion,
@@ -234,4 +248,8 @@ process.on("message", (raw: ParentMessage) => {
 
 // A worker with no parent is a leaked process. Exiting on channel loss is what
 // guarantees an anvil child cannot outlive the request that started it.
-process.on("disconnect", () => process.exit(0));
+process.on("disconnect", () => {
+  // Production workers are group leaders; a lost parent must not orphan anvil.
+  if (process.platform !== "win32") { try { process.kill(-process.pid, "SIGTERM"); } catch { /* group already gone */ } }
+  process.exit(0);
+});

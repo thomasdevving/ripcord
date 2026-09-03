@@ -149,7 +149,7 @@ say more and claim less.
 
 ### Cancellation needs its own token
 
-`POST /api/jobs/:id/cancel` requires the `controlToken` returned once at submit.
+`POST /api/jobs/:id/cancel` requires the `controlToken`. The browser generates it before submitting and retains it through retries; clients that omit it receive a server-generated token once.
 A job id travels in shareable links; if the id sufficed, anyone with a link could
 kill someone else's run. Only a SHA-256 of the token is stored, and it is
 compared in constant time.
@@ -158,7 +158,7 @@ compared in constant time.
 
 A resubmit with the same `idempotencyKey` **and the same parameters** returns the
 existing job rather than queueing a second heavyweight scan. Reusing a key
-against a different address does *not* deduplicate. A deliberate re-run simply
+against different parameters is rejected. A deliberate re-run simply
 omits the key and gets a new execution id.
 
 ---
@@ -193,9 +193,17 @@ events/     JSON-lines event logs  artifacts/  per-job fork artifacts
 rpc-cache/  the pinned RPC cache — existing key semantics untouched
 ```
 
-The RPC cache keeps its `(chainId, blockNumber, method, params)` key exactly as
-before, so a warm cache built by the CLI is a valid hit for the server and vice
-versa. Only its directory moves.
+The web worker places the existing `(chainId, blockNumber, method, params)` cache
+inside a block-hash namespace. Admission verifies `eth_chainId` and a block hash;
+the worker checks that identity before and after all work, and each Anvil fork
+checks its initial block hash. A changed identity refuses publication. The CLI
+cache behavior is unchanged. Hash buckets are retained for up to seven days,
+16 completed block identities or 512 MiB; active buckets and buckets younger than
+one hour are protected, so those limits are soft during active work.
+Jobs and event histories are bounded in memory as well as on disk (200 jobs,
+500 reports). Shared report links can expire after report retention. Cache writes
+use a temporary file and atomic rename so cancellation cannot leave a partial
+JSON entry that a later run treats as chain state.
 
 **Ids from URLs never become paths.** `safeJoin` validates against a strict
 character class *and* checks the resolved path is still inside its directory.
@@ -230,11 +238,11 @@ every time.
 ```sh
 pnpm install
 
-# One terminal: the API (tsx watch)
-pnpm dev:server
+# One command starts both the compiling API watcher and Vite on its own port.
+pnpm dev:webapp
 
-# Another: the frontend with a proxy to :8080
-pnpm build:web && pnpm dev:webapp   # or just `vite`
+# Alternatively: pnpm dev:server in one terminal, pnpm exec vite in another.
+# Do not start dev:server separately alongside dev:webapp.
 ```
 
 Production build and run:
@@ -280,3 +288,35 @@ new chain and no new exit archetype. The withdrawal differential covers what the
 engine actually supports — one exit archetype, one registered restriction
 candidate — and any other interface reports honestly why the experiment did not
 run, with the scan still fully usable.
+
+## Review hardening
+
+- Before publication, graph edges use structural sources only; capability-derived
+  holders and relations stay gated. Blocked scans do not execute the optional
+  proof or withdrawal stages, and no detailed verdict is emitted for them.
+- Every report response/download and progress event uses a public projection
+  that removes provider URLs, configured credentials and infrastructure paths.
+  Public addresses, hashes, calldata and raw amounts remain intact. The download
+  is a sanitized projection, not a byte-identical internal artifact.
+- Admission, duplicate intents and job writes are serialized. A lost response
+  can be retried with the same key and client cancellation capability without
+  resolving `latest` again or starting another scan. Capacity is checked before
+  expensive RPC validation, with at most 12 new attempts per minute. Error responses never discard the browser's token.
+- Workers own detached process groups on Linux/macOS. Every terminal path sends
+  SIGTERM to that group, then SIGKILL if it remains alive. A signal-sent flag is
+  never treated as proof of exit; queue capacity is released after worker exit.
+- Job snapshots include A/B/C fork blocks, exact raw reads, phase timing and
+  scan read-operation/cache-hit counts. These counts exclude fork traffic and
+  transport-level retries. Named SSE heartbeats switch a buffered stream to
+  polling after 35 seconds; terminal jobs detach listeners.
+- Saved reports use the same transaction projector as live events. Historical
+  reports are explicitly marked legacy when current full-position checks or
+  receipt timestamps are unavailable. A receipt is never presented as an
+  economic proof; candidate calls are never presented as confirmed closure.
+- Public report pages include the power map and inspectable evidence. Token
+  amounts use exact decimal formatting, with raw base units available alongside.
+
+The Docker smoke job builds without credentials, mounts a fresh root-owned data
+volume, and checks boot and saved-report access. This checks deployment mechanics;
+it does not validate an archive RPC or a live mainnet fork. Before presenting,
+run the chosen target on the deployed service and record a backup demo.

@@ -49,7 +49,9 @@ function useElapsed(startedAt: string | null, endedAt: string | null): string {
 
 export function AnalysisScreen({ jobId }: { jobId: string }): ReactElement {
   const job = useJob(jobId);
+  const [cancelError, setCancelError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [publishedStructure, setPublishedStructure] = useState<import("@shared/dto").StructuralSnapshot | null>(null);
   const [report, setReport] = useState<Report | null>(null);
   const [reportError, setReportError] = useState<string | null>(null);
   const elapsed = useElapsed(job.summary?.startedAt ?? null, job.summary?.endedAt ?? null);
@@ -59,6 +61,7 @@ export function AnalysisScreen({ jobId }: { jobId: string }): ReactElement {
     if (!job.reportId) return;
     getReport(job.reportId)
       .then((res) => {
+        setPublishedStructure(res.structure);
         const parsed = asReport(res.report);
         if (parsed) setReport(parsed);
         else setReportError("The report was returned in a shape this page does not recognise.");
@@ -108,11 +111,15 @@ export function AnalysisScreen({ jobId }: { jobId: string }): ReactElement {
           </span>
         </div>
         <div className="item">
-          <span className="k">Data source</span>
+          <span className="k">Progress channel</span>
           {/* Whether the progress channel is streaming or polling is an
               infrastructure fact, kept visibly separate from anything the
               analysis concluded. */}
           <span className="v">{job.transport === "sse" ? "live stream" : job.transport === "polling" ? "polling" : job.transport}</span>
+        </div>
+        <div className="item">
+          <span className="k">Scan reads / cache hits</span>
+          <span className="v">{summary?.runtimeStats ? `${summary.runtimeStats.scanReadOperations} / ${summary.runtimeStats.scanCacheHits}` : "not measured"}</span>
         </div>
         <div className="item">
           <span className="k">Elapsed</span>
@@ -131,8 +138,8 @@ export function AnalysisScreen({ jobId }: { jobId: string }): ReactElement {
             className="shrink"
             type="button"
             onClick={async () => {
-              await cancelJob(jobId, controlToken).catch(() => undefined);
-              forgetControlToken(jobId);
+              try { await cancelJob(jobId, controlToken); forgetControlToken(jobId); setCancelError(null); }
+              catch { setCancelError("Cancellation was not confirmed. Your control token is retained; retry if the analysis is still running."); }
             }}
           >
             Cancel
@@ -141,6 +148,7 @@ export function AnalysisScreen({ jobId }: { jobId: string }): ReactElement {
       </div>
 
       <main className="container wide">
+        {cancelError && <div className="banner warn">{cancelError}</div>}
         {summary?.error && (
           <div className="banner danger">
             <strong>{summary.error.message}</strong>
@@ -182,9 +190,9 @@ export function AnalysisScreen({ jobId }: { jobId: string }): ReactElement {
               Every node comes from a read Ripcord performed. An edge records an observed relation — it is not evidence
               that the holder can pass its own authorisation.
             </p>
-            <PowerMap snapshot={job.structure} selected={selected} onSelect={setSelected} />
+            <PowerMap snapshot={publishedStructure ?? job.structure} selected={selected} onSelect={setSelected} />
           </section>
-          <DetailPanel snapshot={job.structure} selected={selected} onClose={() => setSelected(null)} />
+          <DetailPanel snapshot={publishedStructure ?? job.structure} selected={selected} onClose={() => setSelected(null)} />
         </div>
 
         {forkMode &&

@@ -1,3 +1,4 @@
+import { formatTokenUnits } from "../report-types.js";
 /**
  * The finished report.
  *
@@ -460,7 +461,7 @@ export function ReportView({
                       {report.proof.deltas.map((delta, i) => (
                         <tr key={i}>
                           <td>{delta.symbol}</td>
-                          <td className="mono">{delta.delta}</td>
+                          <td className="mono">{formatTokenUnits(delta.delta, delta.decimals)}<details><summary>Raw units</summary>{delta.delta}</details></td>
                           <td className="mono">{delta.usd === null ? "undetermined" : `$${delta.usd.toFixed(2)}`}</td>
                           <td className="small">{delta.priceSource}</td>
                         </tr>
@@ -586,7 +587,7 @@ export function ReportView({
             <button className="shrink" type="button" onClick={() => window.print()}>
               Print / save as PDF
             </button>
-            <CopyButton value={window.location.href} label="Copy link to this report" />
+            <CopyButton value={new URL(`/report/${reportId}`, window.location.origin).href} label="Copy link to this report" />
           </div>
         )}
       </section>

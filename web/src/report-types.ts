@@ -78,3 +78,13 @@ export const VERDICT_GLOSS: Record<string, string> = {
   undetermined:
     "The analysis completed but could not settle the question. What is missing is listed below — an undetermined result is an outcome, not a failure to run.",
 };
+
+/** Lossless base units → tokens, including values above Number.MAX_SAFE_INTEGER. */
+export function formatTokenUnits(raw: string, decimals: number | null | undefined): string {
+  if (!/^-?\d+$/.test(raw) || !Number.isInteger(decimals) || decimals == null || decimals < 0 || decimals > 255) return `${raw} raw units`;
+  const negative = raw.startsWith("-");
+  const digits = (negative ? raw.slice(1) : raw).replace(/^0+(?=\d)/, "").padStart(decimals + 1, "0");
+  const integer = decimals ? digits.slice(0, -decimals) : digits;
+  const fraction = decimals ? digits.slice(-decimals).replace(/0+$/, "") : "";
+  return `${negative ? "-" : ""}${integer}${fraction ? `.${fraction}` : ""}`;
+}

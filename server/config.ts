@@ -47,8 +47,8 @@ export class ConfigError extends Error {
   }
 }
 
-function intVar(name: string, fallback: number, min: number, max: number): number {
-  const raw = process.env[name];
+function intVar(env: NodeJS.ProcessEnv, name: string, fallback: number, min: number, max: number): number {
+  const raw = env[name];
   if (raw === undefined || raw === "") return fallback;
   const value = Number(raw);
   if (!Number.isInteger(value)) throw new ConfigError(name, `expected an integer, got "${raw}"`);
@@ -61,8 +61,8 @@ function intVar(name: string, fallback: number, min: number, max: number): numbe
  * quietly mean `false` — the operator would see "live runs disabled" and go
  * hunting for an RPC problem that does not exist.
  */
-function boolVar(name: string, fallback: boolean): boolean {
-  const raw = process.env[name];
+function boolVar(env: NodeJS.ProcessEnv, name: string, fallback: boolean): boolean {
+  const raw = env[name];
   if (raw === undefined || raw === "") return fallback;
   const normalized = raw.trim().toLowerCase();
   if (["true", "1", "yes", "on"].includes(normalized)) return true;
@@ -71,9 +71,9 @@ function boolVar(name: string, fallback: boolean): boolean {
 }
 
 /** Collects every `RPC_URL_<chainId>` present in the environment. */
-function collectRpcUrls(): Map<number, string> {
+function collectRpcUrls(env: NodeJS.ProcessEnv): Map<number, string> {
   const urls = new Map<number, string>();
-  for (const [key, value] of Object.entries(process.env)) {
+  for (const [key, value] of Object.entries(env)) {
     const match = /^RPC_URL_(\d+)$/.exec(key);
     if (!match || !value) continue;
     const chainId = Number(match[1]);
@@ -90,22 +90,22 @@ function collectRpcUrls(): Map<number, string> {
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
-  const rpcUrls = collectRpcUrls();
+  const rpcUrls = collectRpcUrls(env);
   const dataDir = resolve(env.RIPCORD_DATA_DIR ?? ".ripcord-data");
 
   const config: ServerConfig = {
     nodeEnv: env.NODE_ENV ?? "development",
     // Railway (and most platforms) inject PORT. 8080 is only the local default.
-    port: intVar("PORT", 8080, 1, 65535),
+    port: intVar(env, "PORT", 8080, 1, 65535),
     // 0.0.0.0 so the container is reachable from the platform's proxy. Anvil,
     // by contrast, binds loopback only and is never exposed — see fork/anvil.ts.
     host: "0.0.0.0",
     dataDir,
     rpcUrls,
-    enableLiveRuns: boolVar("RIPCORD_ENABLE_LIVE_RUNS", false),
-    maxActiveJobs: intVar("RIPCORD_MAX_ACTIVE_JOBS", 1, 1, 4),
-    maxQueuedJobs: intVar("RIPCORD_MAX_QUEUED_JOBS", 3, 0, 50),
-    jobTimeoutMs: intVar("RIPCORD_JOB_TIMEOUT_MS", 600_000, 10_000, 3_600_000),
+    enableLiveRuns: boolVar(env, "RIPCORD_ENABLE_LIVE_RUNS", false),
+    maxActiveJobs: intVar(env, "RIPCORD_MAX_ACTIVE_JOBS", 1, 1, 4),
+    maxQueuedJobs: intVar(env, "RIPCORD_MAX_QUEUED_JOBS", 3, 0, 50),
+    jobTimeoutMs: intVar(env, "RIPCORD_JOB_TIMEOUT_MS", 600_000, 10_000, 3_600_000),
     defaultBlock: 0n,
     webDistDir: env.RIPCORD_WEB_DIST ? resolve(env.RIPCORD_WEB_DIST) : null,
     calibrationDir: resolve(env.RIPCORD_CALIBRATION_DIR ?? "calibration/reports"),
@@ -135,8 +135,8 @@ export function liveRunsBlockedReason(config: ServerConfig): string | null {
   if (!config.enableLiveRuns) {
     return "Live analysis is turned off for this deployment (RIPCORD_ENABLE_LIVE_RUNS=false). Saved reports remain fully readable.";
   }
-  if (config.rpcUrls.size === 0) {
-    return "No RPC endpoint is configured on the server, so no chain can be read. Saved reports remain fully readable.";
+  if (!config.rpcUrls.has(1)) {
+    return "No Ethereum Mainnet RPC endpoint is configured on the server. Saved reports remain fully readable.";
   }
   return null;
 }

@@ -1,3 +1,6 @@
+import { PowerMap } from "../components/PowerMap.js";
+import { DetailPanel } from "../components/DetailPanel.js";
+import type { StructuralSnapshot } from "@shared/dto";
 /**
  * A stored report at a shareable URL.
  *
@@ -20,12 +23,15 @@ import { forkBlocksFromReport } from "../fork-blocks.js";
 import type { ReactElement } from "react";
 
 export function ReportScreen({ reportId }: { reportId: string }): ReactElement {
+  const [structure, setStructure] = useState<StructuralSnapshot | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
   const [report, setReport] = useState<Report | null>(null);
   const [error, setError] = useState<{ message: string; blocked: boolean } | null>(null);
 
   useEffect(() => {
     getReport(reportId)
       .then((res) => {
+        setStructure(res.structure);
         const parsed = asReport(res.report);
         if (parsed) setReport(parsed);
         else setError({ message: "That report was returned in a shape this page does not recognise.", blocked: false });
@@ -66,10 +72,12 @@ export function ReportScreen({ reportId }: { reportId: string }): ReactElement {
   return (
     <main className="container wide">
       <div className="banner info">
-        This is a stored report, read as it was written. It describes chain state at block{" "}
+        This is a stored report, with infrastructure details redacted for publication. It describes chain state at block{" "}
         <span className="mono">{report.block.number}</span> and was generated on {report.generatedAt.slice(0, 10)} under
         ruleset {report.rulesetVersion}. No chain read happens when you open this page.
       </div>
+      <PowerMap snapshot={structure} selected={selected} onSelect={setSelected} />
+      <DetailPanel snapshot={structure} selected={selected} onClose={() => setSelected(null)} />
       <ReportView
         report={report}
         reportId={reportId}

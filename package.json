@@ -31,7 +31,7 @@
     "build:webapp": "pnpm build:server && pnpm build:web",
     "start:webapp": "node dist-server/server/index.js",
     "dev:webapp": "concurrently -n server,web -c blue,green \"pnpm dev:server\" \"vite\"",
-    "dev:server": "tsx watch server/index.ts",
+    "dev:server": "node scripts/dev-server.mjs",
     "verify:webapp": "node scripts/verify-webapp.mjs"
   },
   "dependencies": {

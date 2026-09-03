@@ -8,7 +8,7 @@
  * Verified day 4 by wiping the cache and re-running all eight fixtures.
  */
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 export interface CacheKey {
@@ -81,6 +81,7 @@ export function normalizeToCachedShape<T>(value: T): T {
 }
 
 export class DiskCache {
+  hits = 0;
   constructor(
     private readonly cacheDir: string,
     private readonly enabled: boolean,
@@ -118,7 +119,9 @@ export class DiskCache {
       (_k, v) => (typeof v === "bigint" ? v.toString() : v),
       2,
     );
-    await writeFile(path, serialized, "utf8");
+    const temporary = `${path}.${process.pid}.${crypto.randomUUID()}.tmp`;
+    await writeFile(temporary, serialized, "utf8");
+    await rename(temporary, path);
   }
 
   /**
@@ -155,7 +158,7 @@ export class DiskCache {
    */
   async wrap<T>(key: CacheKey, fetchFn: () => Promise<T>): Promise<{ value: T; fromCache: boolean }> {
     const cached = await this.get<T>(key);
-    if (cached.hit) return { value: cached.value, fromCache: true };
+    if (cached.hit) { this.hits++; return { value: cached.value, fromCache: true }; }
     const value = await fetchFn();
     await this.set(key, value);
     return { value: normalizeToCachedShape(value), fromCache: false };

@@ -55,3 +55,15 @@ paths = [
 description = "Public AccessControl role hashes in Ripcord's own relation labels"
 regexTarget = "line"
 regexes = ['''accessControl:0x[0-9a-f]{64}''']
+
+[[allowlists]]
+description = "Synthetic idempotency fixture in webapp job tests (including history)"
+condition = "AND"
+paths = ['''^test/webappJobs\.test\.ts$''']
+regexes = ['''^abcdefgh1234$''']
+
+[[allowlists]]
+description = "Synthetic provider credential in the redaction regression (including history)"
+condition = "AND"
+paths = ['''^test/webappValidation\.test\.ts$''']
+regexes = ['''^AbCdEf0123456789AbCdEf0123456789AbCd$''']

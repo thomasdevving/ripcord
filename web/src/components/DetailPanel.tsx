@@ -142,6 +142,7 @@ export function DetailPanel({
           </ul>
         </>
       )}
+      {node.evidence?.length ? <details><summary>Recorded reads ({node.evidence.length})</summary><pre>{JSON.stringify(node.evidence, null, 2)}</pre></details> : <p className="note small">Exact reads become available after the report passes publication review.</p>}
     </section>
   );
 }

@@ -25,11 +25,11 @@ create the project or deploy on your behalf.
 
 Add a volume mounted at **`/data`**.
 
-The image sets `RIPCORD_DATA_DIR=/data` and creates that directory owned by the
-`node` user (uid 1000), which is who the container runs as. If Railway mounts a
-volume owned by root, the app fails at startup with a clear write-probe error
-rather than silently later — that failure is deliberate. If you see it, the fix
-is on the platform side (volume ownership), not in the app.
+The image sets `RIPCORD_DATA_DIR=/data`. Its entrypoint prepares the mounted
+volume as root, changes ownership only under `/data`, then immediately starts
+the service as the unprivileged `node` user (uid 1000). This supports a fresh
+Railway volume owned by root. The application still checks writability at boot.
+Use one replica; the queue and process-group ownership are local to that service.
 
 Without a volume the app still runs; job records and produced reports simply do
 not survive a redeploy. Committed calibration reports are baked into the image
@@ -95,9 +95,10 @@ Two further considerations:
 
 ## 6. Timeouts and the fork sandbox
 
-`RIPCORD_JOB_TIMEOUT_MS` is a ceiling, not a target. A warm-cache Comet
-`scan + withdrawal test` completes in seconds; a cold scan of a deep-history
-AccessControl contract on a range-capped provider can take minutes.
+`RIPCORD_JOB_TIMEOUT_MS` is a ceiling, not a target. Measure the exact demo on
+your deployed RPC before choosing it. A warm static-scan cache still needs live
+fork reads, while deep-history reconstruction can take minutes. No completion
+time is guaranteed by a warm cache.
 
 The image carries a pinned `anvil` and `cast` (Foundry **v1.8.1**, downloaded in
 a build stage and verified against a checksum written into the `Dockerfile`).

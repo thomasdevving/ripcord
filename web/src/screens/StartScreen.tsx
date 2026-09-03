@@ -75,7 +75,16 @@ export function StartScreen({ config }: { config: ConfigResponse | null }): Reac
     setSubmitting(true);
     setError(null);
     try {
+      const fingerprint = JSON.stringify([address.trim().toLowerCase(), blockMode, block.trim(), mode]);
+      let intent: { fingerprint: string; idempotencyKey: string; controlToken: string } | null = null;
+      try { intent = JSON.parse(sessionStorage.getItem("ripcord-submit-intent") ?? "null"); } catch { /* no valid saved intent */ }
+      if (intent?.fingerprint !== fingerprint) {
+        intent = { fingerprint, idempotencyKey: crypto.randomUUID(), controlToken: crypto.randomUUID() + crypto.randomUUID() };
+        sessionStorage.setItem("ripcord-submit-intent", JSON.stringify(intent));
+      }
       const res = await createJob({
+        idempotencyKey: intent.idempotencyKey,
+        controlToken: intent.controlToken,
         address: address.trim(),
         chainId: 1,
         block: blockMode === "latest" ? "latest" : block.trim(),
@@ -83,7 +92,8 @@ export function StartScreen({ config }: { config: ConfigResponse | null }): Reac
       });
       // Held in this tab only. It is the capability to cancel, and a job id
       // alone must not confer that — see docs/WEBAPP.md.
-      rememberControlToken(res.jobId, res.controlToken);
+      if (res.controlToken) rememberControlToken(res.jobId, res.controlToken);
+      sessionStorage.removeItem("ripcord-submit-intent");
       navigate({ name: "analysis", jobId: res.jobId });
     } catch (err) {
       if (err instanceof ApiRequestError) setError({ message: err.api.message, hint: err.api.hint });
