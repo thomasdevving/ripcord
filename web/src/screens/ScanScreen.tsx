@@ -113,7 +113,7 @@ export function ScanScreen({ config }: { config: ConfigResponse | null }): React
   };
 
   return (
-    <main className="container">
+    <main className="container scan-page">
       <section className="card">
         <p className="crumb">
           <button

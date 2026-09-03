@@ -10,7 +10,10 @@
  * and in exchange the form is no longer squeezed to stay under a headline and
  * the headline is no longer squeezed to stay above a form.
  *
- * Nothing else was added. The page is a hero and one short section, and it ends.
+ * Below the hero, three editorial sections answer the obvious trust questions:
+ * what the analysis asks, how it reaches an answer, and what it refuses to
+ * claim. They share rules rather than separate dashboard cards so this reads as
+ * one explanation, not as three unrelated product panels.
  */
 import { useEffect, useState } from "react";
 import type { ConfigResponse } from "@shared/dto";
@@ -102,29 +105,42 @@ export function HomeScreen({ config }: { config: ConfigResponse | null }): React
         liveDisabledReason={config?.liveRuns.reason ?? null}
       />
 
-      <main className="container">
-        <section className="card">
-          <h3>What the analysis answers</h3>
-          <p className="statement" style={{ marginTop: 0, maxWidth: "68ch" }}>
-            Does an upgrade delay also protect your withdrawal?
-          </p>
-          <p className="note" style={{ maxWidth: "70ch" }}>
-            Those are two different routes. A timelock on the upgrade path says nothing about a pause function reachable
-            with no notice at all, and Ripcord reports them separately rather than letting the reassuring one stand in for
-            the other. Where the fork experiment runs, the answer comes from a withdrawal that succeeded, a privileged
-            call, and the same withdrawal attempted again.
-          </p>
+      <main className="container home-content">
+        <section className="home-answer" aria-labelledby="home-question">
+          <div>
+            <p className="section-label">The core question</p>
+            <h2 className="home-question" id="home-question">
+              Does an upgrade delay also protect your withdrawal?
+            </h2>
+          </div>
+          <div className="home-answer-copy">
+            <p>
+              Those are two different routes. A timelock on the upgrade path says nothing about a pause function reachable
+              with no notice at all. Ripcord reports them separately instead of letting the reassuring route stand in for
+              the fastest one.
+            </p>
+            <div className="fork-sequence" aria-label="Fork experiment sequence">
+              <span>Exit succeeds</span>
+              <span aria-hidden="true">→</span>
+              <span>Privilege executes</span>
+              <span aria-hidden="true">→</span>
+              <span>Same exit repeats</span>
+            </div>
+          </div>
         </section>
 
         {/* Numbered because this genuinely is a sequence: each step consumes what
             the one before it established, and the last two cannot run without the
             addresses the first three resolved. */}
-        <section className="card">
-          <h3>How a run works</h3>
-          <p className="note" style={{ marginTop: 0, maxWidth: "70ch" }}>
-            Six stages, in order, every one of them pinned to a single block so the whole run describes one moment on
-            chain and can be repeated exactly.
-          </p>
+        <section className="home-method" aria-labelledby="method-title">
+          <header className="home-section-heading">
+            <p className="section-label">The method</p>
+            <h2 id="method-title">How a run works</h2>
+            <p>
+              Six stages, in order, pinned to one block so the complete run describes one moment onchain and can be
+              repeated exactly.
+            </p>
+          </header>
 
           <ol className="steps">
             {STEPS.map((step, i) => (
@@ -139,27 +155,27 @@ export function HomeScreen({ config }: { config: ConfigResponse | null }): React
           </ol>
         </section>
 
-        <section className="card">
-          <h3>What it will not tell you</h3>
-          <p className="note" style={{ marginTop: 0, maxWidth: "70ch" }}>
-            The limits are part of the output, not a disclaimer under it. Each of these is enforced in the report's own
-            shape rather than left to wording.
-          </p>
-          <ul className="plain" style={{ maxWidth: "70ch" }}>
+        <section className="home-limits" aria-labelledby="limits-title">
+          <header className="home-section-heading">
+            <p className="section-label">The boundaries</p>
+            <h2 id="limits-title">What it will not tell you</h2>
+            <p>The limits are part of the output, not a disclaimer underneath it.</p>
+          </header>
+          <ul className="limit-grid">
             <li>
-              <strong>That a contract is safe.</strong> There is no such verdict. The strongest positive result is that
+              <strong>No safety verdict.</strong> The strongest positive result is that
               no restriction was found among the paths actually tested, carrying the count of what was tested.
             </li>
             <li>
-              <strong>That nobody will act.</strong> Findings describe what a privileged address is technically able to
+              <strong>No prediction of intent.</strong> Findings describe what a privileged address is technically able to
               do. Intent is not observable on chain and is never claimed.
             </li>
             <li>
-              <strong>That silence means nothing is there.</strong> A read that failed is recorded as unknown, not as an
+              <strong>No false absence.</strong> A read that failed is recorded as unknown, not as an
               absence. A delay that could not be proven binding never appears as a notice period.
             </li>
             <li>
-              <strong>Whether you could actually sell.</strong> Market depth is not modelled, and the report says so as a
+              <strong>No liquidity promise.</strong> Market depth is not modelled, and the report says so as a
               field rather than a footnote. For a large position the real time to exit is longer than reported, never
               shorter.
             </li>

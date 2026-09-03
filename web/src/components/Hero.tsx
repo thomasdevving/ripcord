@@ -46,9 +46,9 @@ type View = "auditors" | "depositors";
 
 const SUBHEAD: Record<View, string> = {
   auditors:
-    "Ripcord maps every privileged address over a contract, proves on a sandbox fork what that power can actually move, and measures the notice you would get against the time it takes you to leave.",
+    "Ripcord traces privileged authority over a contract, tests on a sandbox fork what that power can actually move, and compares the shortest notice route with the time it takes users to leave.",
   depositors:
-    "Ripcord reads which keys are still held over the vault you are in, shows on a sandbox fork what those keys can close, and tells you whether your withdrawal clears before the rules can change.",
+    "Ripcord traces who can still change the vault you are in, tests on a sandbox fork whether they can close its exit, and compares their fastest route with your time to leave.",
 };
 
 /**
@@ -380,7 +380,7 @@ export function Hero({
       <div className="hb-frame">
         <div className="hb-top">
           <p className="hb-eyebrow">
-            <b>Ripcord</b> · Security + Sovereignty
+            <b>Privilege-path analysis</b> · Ethereum
           </p>
           <div className="hb-segmented" role="group" aria-label="Point of view">
             {(["auditors", "depositors"] as const).map((v) => (
@@ -400,19 +400,19 @@ export function Hero({
         <div className="hb-stage">
           <div className="hb-copy">
             <h1 className="hb-headline" id="hb-headline">
-              <span className="hb-setup">Everyone checks if the code has bugs.</span>{" "}
-              Almost no one checks who still has the keys.
+              <span className="hb-setup">Audits check the code.</span>{"\u00a0"}
+              Ripcord checks who can close the exit.
             </h1>
 
             <p className="hb-sub">{SUBHEAD[view]}</p>
 
             <div className="hb-actions">
               <button className="hb-btn" type="button" onClick={onScan}>
-                Scan an Address
+                Scan an address
               </button>
               {onOpenSample && (
                 <button className="hb-link" type="button" onClick={onOpenSample}>
-                  See a Sample Report
+                  See a sample report
                 </button>
               )}
             </div>

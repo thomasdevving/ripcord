@@ -160,10 +160,12 @@ and run the Comet preset through the UI end to end.
 
 ## 8. After deploying
 
-1. Open the service URL. The address field and **Analyze contract** are on the
-   first screen.
-2. Check the banner: with `RIPCORD_ENABLE_LIVE_RUNS=false` it says plainly why
-   Analyze is unavailable, and saved reports still open.
+1. Open the service URL. The home page offers one primary **Scan an address**
+   action; it opens `/scan`, where the address, run mode and pinned block stay
+   together.
+2. On `/scan`, check the banner: with `RIPCORD_ENABLE_LIVE_RUNS=false` it says
+   plainly why **Analyze contract** is unavailable, and saved reports still
+   open.
 3. Set `RIPCORD_ENABLE_LIVE_RUNS=true`, redeploy, and run the **Compound III
    (Comet)** preset in **Scan + withdrawal test** mode.
 4. Refresh mid-run: the page reconnects to the same job and continues. Closing

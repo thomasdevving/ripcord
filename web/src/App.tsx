@@ -45,20 +45,39 @@ export function App(): ReactElement {
             navigate({ name: "home" });
           }}
         >
-          RIPCORD
-          <span>Who holds power over a contract — and can you leave before they use it?</span>
+          <span className="brand-mark" aria-hidden="true">
+            <img src="/ripcord-mark.png" alt="" />
+          </span>
+          <span className="brand-copy">
+            <span className="brand-name">RIPCORD</span>
+            <span className="brand-tagline">Privilege-path analyzer</span>
+          </span>
         </a>
         <div className="topbar-spacer" />
-        <a
-          href="/saved"
-          className="chip"
-          onClick={(e) => {
-            e.preventDefault();
-            navigate({ name: "saved" });
-          }}
-        >
-          Saved reports
-        </a>
+        <nav className="topbar-nav" aria-label="Primary navigation">
+          <a
+            href="/scan"
+            className={`topbar-link ${route.name === "scan" ? "active" : ""}`}
+            aria-current={route.name === "scan" ? "page" : undefined}
+            onClick={(e) => {
+              e.preventDefault();
+              navigate({ name: "scan" });
+            }}
+          >
+            New analysis
+          </a>
+          <a
+            href="/saved"
+            className={`topbar-link ${route.name === "saved" || route.name === "report" ? "active" : ""}`}
+            aria-current={route.name === "saved" ? "page" : undefined}
+            onClick={(e) => {
+              e.preventDefault();
+              navigate({ name: "saved" });
+            }}
+          >
+            Reports
+          </a>
+        </nav>
       </header>
 
       {configError && (

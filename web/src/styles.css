@@ -33,6 +33,7 @@
 
 :root {
   color-scheme: dark;
+  --topbar-height: 64px;
 
   /* Ground first, and it is the hero band's ground on purpose. */
   --plane: #0f120e;
@@ -115,26 +116,72 @@ a { color: var(--accent); }
 .topbar {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 10px 20px;
+  gap: 20px;
+  min-height: var(--topbar-height);
+  padding: 0 max(20px, calc((100vw - 1240px) / 2 + 20px));
   border-bottom: 1px solid var(--border);
-  background: var(--surface-1);
+  background: color-mix(in srgb, var(--surface-1) 94%, transparent);
+  backdrop-filter: blur(12px);
   position: sticky;
   top: 0;
   z-index: 20;
-  flex-wrap: wrap;
 }
 
 .brand {
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
   color: var(--text-primary);
   text-decoration: none;
+  min-width: 0;
 }
-.brand span { color: var(--muted); font-weight: 500; letter-spacing: 0.02em; margin-left: 10px; }
+
+.brand-mark {
+  display: block;
+  width: 40px;
+  height: 40px;
+  flex: none;
+}
+.brand-mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: invert(1);
+  opacity: 0.94;
+}
+
+.brand-copy { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.brand-name {
+  font-family: var(--mono);
+  font-weight: 700;
+  letter-spacing: 0.19em;
+  font-size: 11.5px;
+  line-height: 1.2;
+}
+.brand-tagline {
+  font-family: var(--mono);
+  color: var(--muted);
+  font-size: 9.5px;
+  letter-spacing: 0.055em;
+  line-height: 1.3;
+}
 
 .topbar-spacer { flex: 1; }
+
+.topbar-nav { display: flex; align-items: center; gap: 4px; }
+.topbar-link {
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 7px 10px;
+  color: var(--text-secondary);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.topbar-link:hover { color: var(--text-primary); border-color: var(--border); }
+.topbar-link.active { color: var(--accent); background: var(--good-bg); border-color: var(--border); }
 
 .container { width: 100%; max-width: 1200px; margin: 0 auto; padding: 20px; }
 /* Belt to the braces above: nothing inside the page shell may exceed it. */
@@ -343,7 +390,7 @@ label {
   background: var(--surface-1);
   border-bottom: 1px solid var(--border);
   position: sticky;
-  top: 41px;
+  top: var(--topbar-height);
   z-index: 15;
 }
 .runbar .item { display: flex; flex-direction: column; gap: 2px; }
@@ -585,9 +632,123 @@ pre.raw {
 .step-title { margin: 0 0 4px; font-size: 13.5px; font-weight: 600; }
 .step-text { margin: 0; font-size: 13px; line-height: 1.62; color: var(--text-secondary); max-width: 72ch; }
 
+/* --- home editorial -------------------------------------------------------
+ *
+ * The hero makes the claim; this area earns it. Long explanatory copy is laid
+ * out as one document separated by rules, rather than as a stack of dashboard
+ * cards. The left column supplies the question or section premise and the right
+ * column carries the evidence and sequence.
+ */
+
+.home-content { padding-top: 0; padding-bottom: 72px; }
+.home-content > section {
+  padding: clamp(34px, 5vw, 64px) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.section-label {
+  margin: 0 0 12px;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.home-answer {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.85fr) minmax(360px, 1.15fr);
+  gap: clamp(36px, 7vw, 96px);
+  align-items: start;
+}
+.home-question {
+  max-width: 18ch;
+  margin: 0;
+  font-size: clamp(1.65rem, 3vw, 2.55rem);
+  line-height: 1.12;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+.home-answer-copy > p {
+  max-width: 64ch;
+  margin: 2px 0 22px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.fork-sequence {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  max-width: max-content;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font-family: var(--mono);
+  font-size: 10.5px;
+}
+.fork-sequence span:nth-child(even) { color: var(--accent); }
+
+.home-method,
+.home-limits {
+  display: grid;
+  grid-template-columns: minmax(220px, 290px) minmax(0, 1fr);
+  gap: clamp(36px, 7vw, 96px);
+  align-items: start;
+}
+.home-section-heading h2 {
+  margin: 0 0 10px;
+  font-size: clamp(1.4rem, 2.2vw, 1.9rem);
+  line-height: 1.18;
+  letter-spacing: -0.02em;
+}
+.home-section-heading > p:last-child {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.65;
+}
+.home-method .steps { margin-top: -14px; }
+.home-method .step { padding: 16px 0; }
+
+.limit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 24px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+.limit-grid li {
+  min-width: 0;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.62;
+}
+.limit-grid strong { display: block; margin-bottom: 4px; color: var(--text-primary); font-weight: 600; }
+
+.scan-page { max-width: 960px; padding-top: 30px; padding-bottom: 56px; }
+.scan-page section.card { padding: clamp(20px, 3vw, 34px); }
+
+@media (max-width: 760px) {
+  .home-answer,
+  .home-method,
+  .home-limits { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .home-method .steps { margin-top: 0; }
+}
+
 @media (max-width: 560px) {
   .step { grid-template-columns: minmax(0, 1fr); gap: 4px; }
   .step-n { padding-top: 0; }
+  .limit-grid { grid-template-columns: minmax(0, 1fr); }
+  .fork-sequence { align-items: flex-start; flex-direction: column; max-width: none; }
+  .fork-sequence span:nth-child(even) { transform: rotate(90deg); margin-left: 7px; }
 }
 
 /* --- misc ----------------------------------------------------------------- */
@@ -641,10 +802,10 @@ ul.plain li { margin-bottom: 5px; font-size: 13px; color: var(--text-secondary);
 
 /* --- hero band ------------------------------------------------------------
  *
- * A committed dark band, whatever theme the rest of the app is in. Its tokens
- * are scoped to `.hb` and never touch the app's, so the light and dark
- * stylesheets above are unaffected and a theme switch cannot leave this band
- * half-repainted.
+ * The hero and application shell deliberately share one dark palette. Its
+ * local tokens remain scoped to `.hb`, keeping the canvas and example card
+ * independently tunable without letting their component names leak into report
+ * styles.
  *
  * The palette is the design's own, with one rule carried over from the top of
  * this file: GREEN IS NOT A SAFETY COLOUR. Here it marks the exit concept, the
@@ -703,6 +864,7 @@ ul.plain li { margin-bottom: 5px; font-size: 13px; color: var(--text-secondary);
 .hb-frame {
   position: relative;
   z-index: 2;
+  min-width: 0;
   max-width: 1240px;
   margin: 0 auto;
   padding: clamp(18px, 2.6vw, 28px) clamp(20px, 4vw, 44px) clamp(20px, 2.6vw, 30px);
@@ -748,7 +910,7 @@ ul.plain li { margin-bottom: 5px; font-size: 13px; color: var(--text-secondary);
   align-items: end;
 }
 
-.hb-copy { display: flex; flex-direction: column; gap: clamp(16px, 1.8vw, 24px); max-width: 44rem; }
+.hb-copy { display: flex; flex-direction: column; gap: clamp(16px, 1.8vw, 24px); max-width: 44rem; min-width: 0; }
 
 .hb-headline {
   margin: 0;
@@ -803,7 +965,7 @@ ul.plain li { margin-bottom: 5px; font-size: 13px; color: var(--text-secondary);
 
 /* --- example card --- */
 
-.hb-card { position: relative; z-index: 3; background: var(--hb-surface); border: 1px solid var(--hb-rule); border-radius: 3px; }
+.hb-card { position: relative; z-index: 3; min-width: 0; background: var(--hb-surface); border: 1px solid var(--hb-rule); border-radius: 3px; }
 
 .hb-card-meta {
   display: flex;
@@ -905,10 +1067,22 @@ ul.plain li { margin-bottom: 5px; font-size: 13px; color: var(--text-secondary);
 }
 
 @media (max-width: 560px) {
-  .hb-card { max-width: none; }
+  :root { --topbar-height: 58px; }
+  .topbar { gap: 10px; padding-inline: 12px; }
+  .brand { gap: 8px; }
+  .brand-mark { width: 34px; height: 34px; }
+  .brand-tagline { display: none; }
+  .topbar-nav { gap: 0; }
+  .topbar-link { padding-inline: 7px; font-size: 9.5px; }
+  .hb-frame { padding-inline: 20px; }
+  .hb-headline { font-size: clamp(2rem, 10.5vw, 2.55rem); }
+  .hb-actions { flex-direction: column; align-items: stretch; gap: 14px; }
+  .hb-btn { width: 100%; flex: none; }
+  .hb-link { align-self: flex-start; }
+  .hb-card { width: 100%; max-width: none; }
+  .hb-card-meta { align-items: flex-start; flex-direction: column; gap: 3px; }
   .hb-stat { padding: 10px 9px; }
   .hb-stat:first-child { padding-left: 16px; }
-  .hb-btn { flex: 1 1 auto; }
 }
 
 /* --- print ----------------------------------------------------------------
