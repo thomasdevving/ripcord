@@ -1,7 +1,7 @@
 /**
  * A ~40-line router.
  *
- * There are four routes. Pulling in a routing library for four routes would add
+ * There are five routes. Pulling in a routing library for five routes would add
  * more bundle and more API surface than it removes, and the History API does
  * exactly what is needed here.
  *
@@ -15,6 +15,7 @@ import { useEffect, useState } from "react";
 
 export type Route =
   | { name: "home" }
+  | { name: "scan" }
   | { name: "analysis"; jobId: string }
   | { name: "report"; reportId: string }
   | { name: "saved" };
@@ -23,6 +24,7 @@ export function parseRoute(pathname: string): Route {
   const parts = pathname.split("/").filter(Boolean);
   if (parts[0] === "analysis" && parts[1]) return { name: "analysis", jobId: parts[1] };
   if (parts[0] === "report" && parts[1]) return { name: "report", reportId: parts[1] };
+  if (parts[0] === "scan") return { name: "scan" };
   if (parts[0] === "saved") return { name: "saved" };
   return { name: "home" };
 }
@@ -33,6 +35,8 @@ export function toPath(route: Route): string {
       return `/analysis/${route.jobId}`;
     case "report":
       return `/report/${route.reportId}`;
+    case "scan":
+      return "/scan";
     case "saved":
       return "/saved";
     default:

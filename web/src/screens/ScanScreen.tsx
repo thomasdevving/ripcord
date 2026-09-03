@@ -1,25 +1,14 @@
 /**
- * The first screen IS the product.
+ * The scan form, on its own page.
  *
- * An address field and an Analyze button, above the fold, with two sentences of
- * context. No marketing page in front of the tool: the audience is a technical
- * reviewer with three minutes, and the fastest way to lose them is to make them
- * scroll past a value proposition to reach the thing that does the work.
+ * The home screen states the thesis and offers one button. Everything that
+ * configures a run lives here: the address, what to run, the block, and the
+ * presets that fill all three in. Splitting them this way keeps a promise the
+ * old single screen could not: the landing page no longer has to be both an
+ * argument and a control panel, and the control panel no longer has to stay
+ * short enough to sit under a headline.
  *
- * THE HERO DOES NOT WEAKEN THAT RULE, IT IS HOW THE RULE IS KEPT. The address
- * field and the button now live INSIDE the hero band (components/Hero.tsx), so
- * the thesis and the control that acts on it occupy the same fold. Nothing was
- * put in front of the tool; the tool was given a first line. This card keeps
- * what remains — what to run, and at which block — and no longer owns the
- * address input, which would otherwise appear twice on one screen.
- *
- * The hero's example card quotes a committed calibration report, names the
- * address and block it was measured at, and repeats that report's own
- * "not proven binding" wording. That is the same rule the presets below follow:
- * nothing on this screen may look like a result the visitor's run has not
- * produced yet.
- *
- * Two details that look cosmetic and are not:
+ * Two details that look cosmetic and are not, carried over from that screen:
  *
  *  - THE BLOCK IS ALWAYS VISIBLE, including when a preset filled it in. The
  *    Comet preset pins block 25,800,000, which is historical. An experiment run
@@ -32,13 +21,19 @@
  *    Anything shown next to a preset before the run would be a claim the run has
  *    not yet supported, and the first thing a reviewer checks is whether what
  *    appeared on screen actually came from the analysis.
+ *
+ * WHAT TO RUN IS A LIST OF OPTIONS, NOT A DROPDOWN. The three modes differ in
+ * what they actually DO to reach an answer — one reads, one forks, one forks
+ * twice — and each carries a sentence explaining that. A <select> hides two of
+ * the three behind a click and gives the explanation nowhere to live, so the
+ * reader picks by title alone. The choice is the most consequential control on
+ * the page; it should be readable without opening anything.
  */
 import { useEffect, useRef, useState } from "react";
 import type { ConfigResponse, RunMode } from "@shared/dto";
-import { createJob, listReports, ApiRequestError } from "../api.js";
+import { createJob, ApiRequestError } from "../api.js";
 import { navigate } from "../router.js";
 import { rememberControlToken } from "../control.js";
-import { Hero } from "../components/Hero.js";
 import type { ReactElement } from "react";
 
 const ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
@@ -60,7 +55,7 @@ const MODE_LABELS: Record<RunMode, { label: string; detail: string }> = {
   },
 };
 
-export function StartScreen({ config }: { config: ConfigResponse | null }): ReactElement {
+export function ScanScreen({ config }: { config: ConfigResponse | null }): ReactElement {
   const [address, setAddress] = useState("");
   const [mode, setMode] = useState<RunMode>("scan_withdrawal_test");
   const [blockMode, setBlockMode] = useState<"pinned" | "latest">("pinned");
@@ -69,43 +64,10 @@ export function StartScreen({ config }: { config: ConfigResponse | null }): Reac
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<{ message: string; hint: string | null } | null>(null);
   const addressInputRef = useRef<HTMLInputElement | null>(null);
-  const [sampleReportId, setSampleReportId] = useState<string | null>(null);
 
   useEffect(() => {
     if (config && block === "") setBlock(config.defaultBlock);
   }, [config, block]);
-
-  /**
-   * Resolve the hero's "See a Sample Report" target from the LISTING, never from
-   * a hardcoded id.
-   *
-   * The listing contains only publishable reports, so a target found here is by
-   * construction one the disclosure gate permits — a hardcoded id could point at
-   * a report the gate blocks, and the link would hand out a 451 while looking
-   * like an invitation. Preference goes to the report the hero's example card
-   * quotes, matched BY ADDRESS so a change to the id scheme cannot silently
-   * repoint the link at a different protocol; any other calibration report is an
-   * acceptable fallback. Nothing found means no link is rendered at all.
-   */
-  useEffect(() => {
-    let cancelled = false;
-    listReports()
-      .then((res) => {
-        if (cancelled) return;
-        const quoted = res.reports.find(
-          (r) => r.address.toLowerCase() === "0xc3d688b66703497daa19211eedff47f25384cdc3",
-        );
-        setSampleReportId((quoted ?? res.reports.find((r) => r.origin === "calibration"))?.id ?? null);
-      })
-      // A sample link is a convenience. Failing to resolve one is not worth a
-      // banner on the first screen, and it must never block starting an analysis.
-      .catch(() => {
-        if (!cancelled) setSampleReportId(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const liveDisabled = config ? !config.liveRuns.enabled : true;
   const addressValid = ADDRESS_RE.test(address.trim());
@@ -151,26 +113,23 @@ export function StartScreen({ config }: { config: ConfigResponse | null }): Reac
   };
 
   return (
-    <>
-      <Hero
-        address={address}
-        onAddressChange={setAddress}
-        addressValid={addressValid}
-        canSubmit={canSubmit}
-        submitting={submitting}
-        onSubmit={() => void submit()}
-        liveDisabled={liveDisabled}
-        inputRef={addressInputRef}
-        onOpenSample={sampleReportId ? () => navigate({ name: "report", reportId: sampleReportId }) : null}
-      />
-
-      <main className="container">
+    <main className="container">
       <section className="card">
-        <h2>Run settings</h2>
+        <p className="crumb">
+          <button
+            className="link"
+            type="button"
+            onClick={() => navigate({ name: "home" })}
+          >
+            ← Back
+          </button>
+        </p>
+
+        <h1>Scan an address</h1>
         <p className="note" style={{ maxWidth: "70ch", marginTop: 0 }}>
           Ripcord reads who holds privileged power over a deployed contract, what that power lets them do, and how much
           notice exists before the rules can change. Then it tests, on a sandbox fork, whether a holder's exit can
-          actually be closed. Every figure below comes from a read or a transaction it performed at a pinned block.
+          actually be closed. Every figure it reports comes from a read or a transaction it performed at a pinned block.
         </p>
 
         {config && liveDisabled && (
@@ -180,19 +139,56 @@ export function StartScreen({ config }: { config: ConfigResponse | null }): Reac
         )}
 
         <div className="field">
-          <label htmlFor="mode">What to run</label>
-          <select id="mode" value={mode} onChange={(e) => setMode(e.target.value as RunMode)} disabled={liveDisabled}>
+          <label htmlFor="addr">Contract address — Ethereum Mainnet</label>
+          <input
+            id="addr"
+            ref={addressInputRef}
+            className="mono"
+            type="text"
+            placeholder="0x…"
+            spellCheck={false}
+            autoComplete="off"
+            autoFocus
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && canSubmit) void submit();
+            }}
+            aria-invalid={address.length > 0 && !addressValid}
+            aria-describedby="addr-help"
+          />
+          <div id="addr-help" className="note small" style={{ marginTop: 5 }}>
+            {address.length > 0 && !addressValid
+              ? "That is not a valid address — 0x followed by 40 hexadecimal characters."
+              : "No wallet connection is needed. Ripcord signs nothing and sends no mainnet transaction."}
+          </div>
+        </div>
+
+        <div className="field">
+          <span className="label-text" id="mode-label">
+            What to run
+          </span>
+          <div className="options" role="radiogroup" aria-labelledby="mode-label">
             {availableModes.map((m) => (
-              <option key={m} value={m}>
-                {MODE_LABELS[m].label}
-              </option>
+              <button
+                key={m}
+                type="button"
+                role="radio"
+                aria-checked={mode === m}
+                className="option"
+                disabled={liveDisabled}
+                onClick={() => setMode(m as RunMode)}
+              >
+                <span className="option-mark" aria-hidden="true" />
+                <span className="option-body">
+                  <span className="option-title">{MODE_LABELS[m].label}</span>
+                  <span className="option-detail">{MODE_LABELS[m].detail}</span>
+                </span>
+              </button>
             ))}
-          </select>
-          <div className="note small" style={{ marginTop: 5 }}>
-            {MODE_LABELS[mode].detail}
           </div>
           {config && !config.anvil.available && (
-            <div className="note small" style={{ marginTop: 5 }}>
+            <div className="note small" style={{ marginTop: 8 }}>
               The fork sandbox is unavailable on this deployment, so the withdrawal experiment is not offered. A scan is
               unaffected.
             </div>
@@ -288,9 +284,6 @@ export function StartScreen({ config }: { config: ConfigResponse | null }): Reac
                   setBlock(preset.block);
                   setBlockMode("pinned");
                   if (availableModes.includes(preset.suggestedMode)) setMode(preset.suggestedMode);
-                  // The address field a preset fills is up in the hero. Filling
-                  // a control the reader cannot see reads as the click having
-                  // done nothing, so bring it back into view and focus it.
                   const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
                   addressInputRef.current?.scrollIntoView({ block: "center", behavior: smooth ? "smooth" : "auto" });
                   addressInputRef.current?.focus({ preventScroll: true });
@@ -306,20 +299,6 @@ export function StartScreen({ config }: { config: ConfigResponse | null }): Reac
           </div>
         </section>
       )}
-
-      <section className="card">
-        <h3>What the analysis answers</h3>
-        <p className="statement" style={{ marginTop: 0, maxWidth: "68ch" }}>
-          Does an upgrade delay also protect your withdrawal?
-        </p>
-        <p className="note" style={{ maxWidth: "70ch" }}>
-          Those are two different routes. A timelock on the upgrade path says nothing about a pause function reachable
-          with no notice at all, and Ripcord reports them separately rather than letting the reassuring one stand in for
-          the other. Where the fork experiment runs, the answer comes from a withdrawal that succeeded, a privileged
-          call, and the same withdrawal attempted again.
-        </p>
-      </section>
-      </main>
-    </>
+    </main>
   );
 }

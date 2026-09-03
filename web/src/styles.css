@@ -242,6 +242,66 @@ label {
 .row > * { flex: 1; min-width: 180px; }
 .row > .shrink { flex: 0 0 auto; min-width: 0; }
 
+/* --- option list ----------------------------------------------------------
+ *
+ * The run-mode control. A <select> hides two of three options behind a click
+ * and leaves their explanations nowhere to live, so the reader picks by title
+ * alone — on the control that decides whether a fork runs at all. These are
+ * radios that show their own reasoning.
+ *
+ * The mark is a square, not a circle: nothing else in this interface is round,
+ * and a stray radio dot was the one obviously borrowed component on the page.
+ */
+.label-text {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.options { display: flex; flex-direction: column; gap: 6px; }
+
+.option {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+  text-align: left;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--plane);
+  color: var(--text-primary);
+}
+.option:hover:not(:disabled):not([aria-checked="true"]) { border-color: var(--baseline); }
+.option[aria-checked="true"] { border-color: var(--accent); background: var(--good-bg); }
+
+.option-mark {
+  width: 11px;
+  height: 11px;
+  margin-top: 3px;
+  flex: none;
+  border: 1px solid var(--baseline);
+  background: transparent;
+}
+.option[aria-checked="true"] .option-mark {
+  border-color: var(--accent);
+  background: var(--accent);
+  /* The gap is drawn in the SELECTED row's background, not the page's — the row
+     is tinted when checked, and a ring in the wrong colour shows as a seam. */
+  box-shadow: inset 0 0 0 2px var(--good-bg);
+}
+
+.option-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.option-title { font-size: 13px; font-weight: 600; }
+.option-detail { font-size: 12px; line-height: 1.5; color: var(--text-secondary); }
+
+.crumb { margin: 0 0 14px; font-size: 12px; }
+
 /* --- banners and chips ---------------------------------------------------- */
 
 .banner {
@@ -654,52 +714,24 @@ ul.plain li { margin-bottom: 5px; font-size: 13px; color: var(--text-secondary);
 
 .hb-sub { margin: 0; font-size: 15px; line-height: 1.6; color: var(--hb-ink-muted); max-width: 60ch; }
 
-.hb-form { display: flex; flex-direction: column; gap: 8px; max-width: 40rem; }
+.hb-actions { display: flex; align-items: center; gap: clamp(16px, 2vw, 26px); flex-wrap: wrap; }
 
-.hb-label {
-  font-family: var(--mono);
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--hb-ink-faint);
-}
-
-.hb-row { display: flex; gap: 10px; flex-wrap: wrap; }
-
-.hb-input {
-  flex: 1 1 22rem;
-  min-width: 0;
-  font-size: 14px;
-  padding: 12px 14px;
-  color: var(--hb-ink);
-  background: var(--hb-surface);
-  border: 1px solid var(--hb-rule-strong);
-  border-radius: 3px;
-}
-.hb-input::placeholder { color: var(--hb-ink-faint); }
-.hb-input:focus-visible { outline: 2px solid var(--hb-green); outline-offset: 2px; }
-.hb-input[aria-invalid="true"] { border-color: var(--hb-red-edge); }
 
 .hb-btn {
-  flex: 0 0 auto;
   font-size: 14px;
   font-weight: 600;
   color: var(--hb-bg);
   background: var(--hb-green);
   border: 1px solid var(--hb-green);
   border-radius: 3px;
-  padding: 12px 22px;
+  padding: 13px 24px;
   cursor: pointer;
   transition: background-color 0.18s ease, border-color 0.18s ease;
 }
-.hb-btn:hover:not(:disabled) { background: var(--hb-green-lift); border-color: var(--hb-green-lift); }
-.hb-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.hb-btn:hover { background: var(--hb-green-lift); border-color: var(--hb-green-lift); }
 .hb-btn:focus-visible { outline: 2px solid var(--hb-green); outline-offset: 3px; }
 
 .hb-help { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--hb-ink-faint); }
-
-.hb-secondary { margin: 2px 0 0; }
 
 /* A plain text link beside the button, not a second button: the two actions are
    not equals, and drawing them as equals is how a page ends up with no primary. */
@@ -872,7 +904,7 @@ ul.plain li { margin-bottom: 5px; font-size: 13px; color: var(--text-secondary);
   /* The hero band is navigation and a quoted example, not evidence. Its graph,
      its controls and its form carry nothing a printed report needs. */
   .hb { background: #ffffff; color: #0b0b0b; border-bottom: 1px solid #cfcfc7; }
-  .hb-net, .hb-veil, .hb-segmented, .hb-form, .hb-card, .hb-footline { display: none !important; }
+  .hb-net, .hb-veil, .hb-segmented, .hb-actions, .hb-card, .hb-footline { display: none !important; }
   .hb-headline { color: #0b0b0b; font-size: 20px; }
   .hb-setup, .hb-sub, .hb-eyebrow { color: #3a3a38; }
 

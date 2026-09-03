@@ -1,12 +1,16 @@
 /**
- * The hero band — and the address field lives INSIDE it, on purpose.
+ * The hero band: the thesis, and the two controls that act on it.
  *
- * StartScreen's rule is that there is no marketing page in front of the tool.
- * A hero that pushed the form below the fold would break that rule, so this one
- * does not sit in front of the product: it IS the product's first control. The
- * headline states the thesis, and directly beneath it, in the same band, is the
- * address input and the button that starts a real analysis. Nothing to scroll
- * past.
+ * ONE PRIMARY, ONE PLAIN LINK, and they are not equals. "Scan an Address" opens
+ * the scan page, where the address and the run settings live together with room
+ * to explain themselves. "See a Sample Report" opens a finished report, so a
+ * reader who wants to judge the output before running anything can.
+ *
+ * The band held the address input for one revision. It was moved out because a
+ * form that must stay short enough to sit under a headline is a form that
+ * cannot show its own settings — and the run mode is the most consequential
+ * control in the product. What the old arrangement protected was the DISTANCE
+ * to a running analysis, and that is still one click.
  *
  * THE EXAMPLE CARD IS A QUOTATION, NOT A PREVIEW, and that distinction is the
  * whole reason it is allowed to exist here. Every figure is read from
@@ -36,7 +40,7 @@
  * decoration would have been a random flare; this traces a chain.
  */
 import { useEffect, useRef, useState } from "react";
-import type { ReactElement, RefObject } from "react";
+import type { ReactElement } from "react";
 
 type View = "auditors" | "depositors";
 
@@ -71,29 +75,25 @@ const EXAMPLE = {
 } as const;
 
 export function Hero({
-  address,
-  onAddressChange,
-  addressValid,
-  canSubmit,
-  submitting,
-  onSubmit,
-  liveDisabled,
-  inputRef,
+  onScan,
   onOpenSample,
+  liveDisabled,
+  liveDisabledReason,
 }: {
-  address: string;
-  onAddressChange: (value: string) => void;
-  addressValid: boolean;
-  canSubmit: boolean;
-  submitting: boolean;
-  onSubmit: () => void;
-  liveDisabled: boolean;
-  inputRef: RefObject<HTMLInputElement | null>;
+  onScan: () => void;
   /**
    * Null when this deployment has no publishable sample to open. The link is
    * then not rendered at all — a dead "see a sample report" is worse than none.
    */
   onOpenSample: (() => void) | null;
+  /**
+   * A deployment with no RPC can still show this page and still open saved
+   * reports. The button stays reachable and the scan page states the reason,
+   * because an outage in OUR infrastructure must never be presented as a
+   * property of a contract.
+   */
+  liveDisabled: boolean;
+  liveDisabledReason: string | null;
 }): ReactElement {
   const [view, setView] = useState<View>("auditors");
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -406,46 +406,22 @@ export function Hero({
 
             <p className="hb-sub">{SUBHEAD[view]}</p>
 
-            <div className="hb-form">
-              <label className="hb-label" htmlFor="addr">
-                Contract address — Ethereum Mainnet
-              </label>
-              <div className="hb-row">
-                <input
-                  id="addr"
-                  ref={inputRef}
-                  className="hb-input mono"
-                  type="text"
-                  placeholder="0x…"
-                  spellCheck={false}
-                  autoComplete="off"
-                  value={address}
-                  onChange={(e) => onAddressChange(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && canSubmit) onSubmit();
-                  }}
-                  aria-invalid={address.length > 0 && !addressValid}
-                  aria-describedby="addr-help"
-                />
-                <button className="hb-btn" type="button" disabled={!canSubmit} onClick={onSubmit}>
-                  {submitting ? "Starting…" : "Scan an Address"}
-                </button>
-              </div>
+            <div className="hb-actions">
+              <button className="hb-btn" type="button" onClick={onScan}>
+                Scan an Address
+              </button>
               {onOpenSample && (
-                <p className="hb-secondary">
-                  <button className="hb-link" type="button" onClick={onOpenSample}>
-                    See a Sample Report
-                  </button>
-                </p>
+                <button className="hb-link" type="button" onClick={onOpenSample}>
+                  See a Sample Report
+                </button>
               )}
-              <p className="hb-help" id="addr-help">
-                {address.length > 0 && !addressValid
-                  ? "That is not a valid address — 0x followed by 40 hexadecimal characters."
-                  : liveDisabled
-                    ? "Analyze is unavailable on this deployment. The reason is stated below."
-                    : "No wallet connection is needed. Ripcord signs nothing and sends no mainnet transaction."}
-              </p>
             </div>
+
+            <p className="hb-help">
+              {liveDisabled && liveDisabledReason
+                ? liveDisabledReason
+                : "No wallet connection is needed. Ripcord signs nothing and sends no mainnet transaction."}
+            </p>
           </div>
 
           <aside className="hb-card" aria-label="Example result, quoted from a committed report">

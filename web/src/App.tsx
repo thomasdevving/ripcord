@@ -12,7 +12,8 @@ import { useEffect, useState } from "react";
 import type { ConfigResponse } from "@shared/dto";
 import { getConfig } from "./api.js";
 import { navigate, useRoute } from "./router.js";
-import { StartScreen } from "./screens/StartScreen.js";
+import { HomeScreen } from "./screens/HomeScreen.js";
+import { ScanScreen } from "./screens/ScanScreen.js";
 import { AnalysisScreen } from "./screens/AnalysisScreen.js";
 import { ReportScreen } from "./screens/ReportScreen.js";
 import { SavedReportsScreen } from "./screens/SavedReportsScreen.js";
@@ -66,7 +67,8 @@ export function App(): ReactElement {
         </div>
       )}
 
-      {route.name === "home" && <StartScreen config={config} />}
+      {route.name === "home" && <HomeScreen config={config} />}
+      {route.name === "scan" && <ScanScreen config={config} />}
       {route.name === "analysis" && <AnalysisScreen key={route.jobId} jobId={route.jobId} />}
       {route.name === "report" && <ReportScreen key={route.reportId} reportId={route.reportId} />}
       {route.name === "saved" && <SavedReportsScreen />}

@@ -119,7 +119,7 @@ async function main(): Promise<void> {
   const webDist = resolveWebDist(config.webDistDir);
   if (webDist) {
     await app.register(fastifyStatic, { root: webDist, index: ["index.html"] });
-    // SPA fallback for client-side routes (/report/:id, /saved). API and health
+    // SPA fallback for client-side routes (/scan, /report/:id, /saved). API and health
     // paths are excluded so a mistyped API URL 404s as an API call rather than
     // silently returning the HTML shell, which is far harder to debug.
     app.setNotFoundHandler((req, reply) => {
