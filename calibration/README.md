@@ -13,7 +13,8 @@ node scripts/compare-reports.mjs calibration/reports <your-output-dir>
   result that was expected before the report existed.
 - `run-manifest.json` — the exact run as data: `(label, address, mode)` per
   target, block and chain pinned. `mode: prove` additionally runs the fork proof
-  engine.
+  engine; `mode: restrict` runs that proof pass plus the exit-restriction
+  differential. The current manifest uses `restrict` only for Compound Comet.
 - `reports/` — one schema-valid JSON report per target.
 
 ## All 26 reports are here, including 4 that are not publishable

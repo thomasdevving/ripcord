@@ -996,8 +996,8 @@ export type ExitWindow = z.infer<typeof exitWindowSchema>;
  *
  * Every layer before this REASONS about whether a privileged party could shut a
  * holder's exit. This layer TESTS it: on a sandbox fork pinned to the report
- * block it establishes a real baseline exit, then — one privileged function at
- * a time — impersonates that function's guarding party, calls it with a
+ * block it establishes a real baseline exit, then — one restriction candidate
+ * registered by the matched archetype at a time — impersonates its guarding party, calls it with a
  * bounded-adversarial argument, and re-runs the exit. If the exit then fails,
  * the function is a DIRECT exit-restrictor, demonstrated rather than inferred.
  *
@@ -1007,7 +1007,7 @@ export type ExitWindow = z.infer<typeof exitWindowSchema>;
  * not provable by testing, for anyone. So a clean run is NEVER `can_exit_in_time`
  * and never claims safety. Its positive outcome is the deliberately weaker
  * `no_direct_restriction_found`, whose scope is stated on every rendering:
- * "evaluated N privileged functions on a fork; none directly blocked a baseline
+ * "evaluated N registered candidates on a fork; none directly blocked a baseline
  * withdrawal. Not a guarantee — argument space and indirect/economic
  * restrictions were not exhausted." A FOUND restrictor, by contrast, is
  * decisive: a party can close the exit, and if un-timelocked it is a zero-notice
@@ -1078,7 +1078,7 @@ export type RestrictionCandidate = z.infer<typeof restrictionCandidateSchema>;
 
 export const exitRestrictionOutcomeSchema = z.enum([
   "restrictor_found", // at least one candidate closed the baseline exit — decisive
-  "no_direct_restriction_found", // exit ID'd, baseline established, all guarded candidates evaluated, none closed it — the weak positive tier
+  "no_direct_restriction_found", // exit ID'd, baseline established, all registered candidates evaluated, none closed it — the weak positive tier
   "exit_action_unconfident", // could not confidently identify the exit action → undetermined
   "baseline_unestablished", // could not establish a baseline exit on the fork → undetermined
   "no_candidates", // no guarded/restriction-family function to test
@@ -1098,7 +1098,7 @@ export const exitRestrictionSchema = z.object({
   /** The subset with result === "restrictor". Redundant with candidates, surfaced for the reader. */
   restrictors: z.array(restrictionCandidateSchema),
   coverage: z.object({
-    /** Guarded / restriction-family candidates identified. */
+    /** Restriction candidates registered by the matched exit archetype. */
     guardedTotal: z.number().int().nonnegative(),
     /** How many were actually put through the differential (the rest are `not_evaluated`). */
     evaluated: z.number().int().nonnegative(),
@@ -1290,7 +1290,7 @@ export type AuthorityIndirection = z.infer<typeof authorityIndirectionSchema>;
  *                                  day-5 split on `exitWindowAssessmentSchema`.
  *  - `no_direct_restriction_found` (day 7) The fork exit-restriction engine
  *                                  established a baseline exit and evaluated every
- *                                  guarded function without any of them closing
+ *                                  registered candidate without any of them closing
  *                                  it. DELIBERATELY WEAKER than can_exit_in_time
  *                                  and never a safety guarantee: it is scoped to
  *                                  the N functions actually evaluated and states

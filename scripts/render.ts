@@ -644,13 +644,13 @@ ${LIVE_STYLE}
                 : er.restrictionState === "already_shut"
                   ? "ALREADY shut at the pinned block — the baseline exit reverts now"
                   : er.restrictionState === "none_found"
-                    ? "no direct restrictor found among the evaluated functions"
+                    ? "no direct restrictor found among the registered candidates evaluated"
                     : "not determined";
             const banner =
               er.outcome === "restrictor_found"
                 ? `<div class="banner warn"><strong>A privileged party can close this exit — demonstrated on a fork.</strong><p>${escapeHtml(stateLabel)}. Capability, not intent: this is what the party CAN do, watched happening in simulation, not a claim that it will.</p></div>`
                 : er.outcome === "no_direct_restriction_found"
-                  ? `<div class="banner"><strong>No direct exit restriction found — scoped, NOT a safety guarantee.</strong><p>Evaluated ${er.coverage.evaluated} guarded function(s) against a baseline exit; none closed it. Argument space and indirect/economic restrictions were not exhausted.</p></div>`
+                  ? `<div class="banner"><strong>No direct exit restriction found — scoped, NOT a safety guarantee.</strong><p>Evaluated ${er.coverage.evaluated} registered candidate(s) against a baseline exit; none closed it. Other privileged functions, argument space and indirect/economic restrictions were not exhausted.</p></div>`
                   : `<div class="banner"><strong>Exit restriction not evaluated to a conclusion (${escapeHtml(er.outcome)}).</strong><p>${escapeHtml(er.baseline.note)}</p></div>`;
             const candRows = er.candidates.map((c) => [
               `<code>${escapeHtml(c.signature ?? c.selector)}</code>`,
@@ -659,19 +659,34 @@ ${LIVE_STYLE}
               escapeHtml(c.args),
               escapeHtml(c.detail),
             ]);
+            const txRows = er.evidence
+              .filter((e) => e.params.method === "eth_sendTransaction")
+              .map((e) => {
+                const raw = e.rawValue && typeof e.rawValue === "object" ? (e.rawValue as Record<string, unknown>) : {};
+                const receipt = raw.receipt && typeof raw.receipt === "object" ? (raw.receipt as Record<string, unknown>) : {};
+                return [
+                  escapeHtml(String(e.params.action ?? "fork transaction")),
+                  `<code>${escapeHtml(String(e.params.selector ?? "—"))}</code>`,
+                  `<code>${escapeHtml(String(raw.transactionHash ?? "—"))}</code>`,
+                  escapeHtml(String(receipt.status ?? "—")),
+                  escapeHtml(String(receipt.blockNumber ?? "—")),
+                  escapeHtml(String(receipt.gasUsed ?? "—")),
+                ];
+              });
             return `${banner}
              <dl class="meta">
                ${kv("Exit action", `${escapeHtml(er.exitAction.status)} — <code>${escapeHtml(er.exitAction.signature ?? "—")}</code> (${escapeHtml(er.exitAction.interfaceName)})`)}
                ${kv("Baseline", `${escapeHtml(er.baseline.status)} — ${escapeHtml(er.baseline.holderSource)}`)}
                ${kv("Outcome", `${escapeHtml(er.outcome)} · ${escapeHtml(er.confirmationMethod)}`)}
-               ${kv("Coverage", `${er.coverage.evaluated} / ${er.coverage.guardedTotal} guarded function(s) evaluated`)}
+               ${kv("Coverage", `${er.coverage.evaluated} / ${er.coverage.guardedTotal} registered candidate(s) evaluated`)}
              </dl>
              ${candRows.length ? table(["Function", "Result", "Guarding party", "Argument", "Detail"], candRows) : ""}
+             ${txRows.length ? `<h3>Fork transaction evidence</h3><p class="muted">These hashes exist only inside the ephemeral fork. Full sender, target, calldata, gas limit, receipt and revert payload are preserved in the JSON report.</p>${table(["Step", "Selector", "Fork tx hash", "Status", "Receipt block", "Gas used"], txRows)}` : ""}
              <h3>What this does NOT cover</h3>
              <ul class="ceiling">${er.ceiling.map((c) => `<li>${escapeHtml(c)}</li>`).join("")}</ul>
              <p class="sandbox">${escapeHtml(er.sandboxNote)}</p>`;
           })(),
-          "The differential: establish a baseline exit on a fork, then have each guarded function's party try to close it. A restrictor is DEMONSTRATED, never inferred. A clean run is scoped to the functions evaluated — it is never a proof of safe exit.",
+          "The differential: establish a baseline exit on a fork, then have the matched archetype's registered candidates try to close it. A restrictor is DEMONSTRATED, never inferred. A clean run is scoped to those candidates — it is never a proof of safe exit.",
         )
       : ""
   }

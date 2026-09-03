@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.12.0",
   "rulesetVersion": "0.11.0",
-  "generatedAt": "2026-09-02T21:27:53.182Z",
+  "generatedAt": "2026-09-02T22:25:33.509Z",
   "chainId": 1,
   "block": {
     "number": "25800000",
@@ -1698,7 +1698,7 @@
     "failureReason": null,
     "sandboxNote": "Executed only on an ephemeral anvil mainnet fork pinned to the report block. No mainnet transaction was sent, no private key was used or held, no approval was requested. The figures describe what this authority CAN do in simulation — a capability, not a prediction of intent.",
     "reproduceCommand": "pnpm ripcord prove 0xc3d688B66703497DAA19211EEdff47f25384cdc3 --block 25800000 --chain 1",
-    "traceArtifact": "/Users/thomas/Downloads/Exit Window/.ripcord/proofs/0xc3d688B66703497DAA19211EEdff47f25384cdc3-25800000/trace.txt",
+    "traceArtifact": null,
     "forkBlock": "25800000",
     "evidence": [
       {
@@ -2125,6 +2125,84 @@
         {
           "kind": "call",
           "params": {
+            "method": "eth_sendTransaction",
+            "forkOnly": true,
+            "action": "fund holder",
+            "from": "0x37305B1cD40574E4C5Ce33f8e8306Be057fD7341",
+            "to": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+            "calldata": "0xa9059cbb000000000000000000000000000000000000000000000000000000000000abc1000000000000000000000000000000000000000000000000000000174876e800",
+            "selector": "0xa9059cbb",
+            "value": "0",
+            "gasLimit": "200000"
+          },
+          "rawValue": {
+            "transactionHash": "0x7cd4322a5096bb78571c479a35a6849dd21305ecf0798cace797d44670ab3c51",
+            "receipt": {
+              "status": "success",
+              "blockNumber": "25800001",
+              "blockHash": "0x499023b41e1ce01e3d60629ba98da4c3ef233278df40a0d92992ae36c286cdfd",
+              "transactionIndex": 0,
+              "gasUsed": "62044"
+            },
+            "revertData": null
+          },
+          "block": "25800000"
+        },
+        {
+          "kind": "call",
+          "params": {
+            "method": "eth_sendTransaction",
+            "forkOnly": true,
+            "action": "approve base token",
+            "from": "0x000000000000000000000000000000000000abc1",
+            "to": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+            "calldata": "0x095ea7b3000000000000000000000000c3d688b66703497daa19211eedff47f25384cdc3000000000000000000000000000000000000000000000000000000174876e800",
+            "selector": "0x095ea7b3",
+            "value": "0",
+            "gasLimit": "100000"
+          },
+          "rawValue": {
+            "transactionHash": "0x4aa2c8205ce019352a4d41ac15d9cd54cf140761de5d986e6028ff6bb6ed4ff8",
+            "receipt": {
+              "status": "success",
+              "blockNumber": "25800002",
+              "blockHash": "0xb7875e1b7e6d63b77a44d308ae12149564128b960c76dde39ef61625c0fadd33",
+              "transactionIndex": 0,
+              "gasUsed": "55570"
+            },
+            "revertData": null
+          },
+          "block": "25800000"
+        },
+        {
+          "kind": "call",
+          "params": {
+            "method": "eth_sendTransaction",
+            "forkOnly": true,
+            "action": "supply baseline position",
+            "from": "0x000000000000000000000000000000000000abc1",
+            "to": "0xc3d688B66703497DAA19211EEdff47f25384cdc3",
+            "calldata": "0xf2b9fdb8000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb480000000000000000000000000000000000000000000000000000000ba43b7400",
+            "selector": "0xf2b9fdb8",
+            "value": "0",
+            "gasLimit": "900000"
+          },
+          "rawValue": {
+            "transactionHash": "0x2c75663e5a3ce2d3590b6b8fe37871fc693d87f2fc956f14a2742804dbdee13a",
+            "receipt": {
+              "status": "success",
+              "blockNumber": "25800003",
+              "blockHash": "0x1cbb8371941713fb52d899646e745a8813bd17060d5360ee9032ff222702d694",
+              "transactionIndex": 0,
+              "gasUsed": "116111"
+            },
+            "revertData": null
+          },
+          "block": "25800000"
+        },
+        {
+          "kind": "call",
+          "params": {
             "action": "fund+approve+supply",
             "holder": "0x000000000000000000000000000000000000abc1",
             "amount": "50000000000"
@@ -2135,11 +2213,107 @@
         {
           "kind": "call",
           "params": {
+            "method": "eth_sendTransaction",
+            "forkOnly": true,
+            "action": "baseline holder withdraw",
+            "from": "0x000000000000000000000000000000000000abc1",
+            "to": "0xc3d688B66703497DAA19211EEdff47f25384cdc3",
+            "calldata": "0xf3fef3a3000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb4800000000000000000000000000000000000000000000000000000002540be400",
+            "selector": "0xf3fef3a3",
+            "value": "0",
+            "gasLimit": "900000"
+          },
+          "rawValue": {
+            "transactionHash": "0x254f0b51a1831ce6ec91b73d097b59848dab8387d1e06d8ed8705c18581c1881",
+            "receipt": {
+              "status": "success",
+              "blockNumber": "25800004",
+              "blockHash": "0xdf16a03690657b978aad4e15e7357516f8ec0fa75097fb33a3c412b08b153453",
+              "transactionIndex": 0,
+              "gasUsed": "81316"
+            },
+            "revertData": null
+          },
+          "block": "25800000"
+        },
+        {
+          "kind": "call",
+          "params": {
             "action": "baseline withdraw",
             "holder": "0x000000000000000000000000000000000000abc1",
             "amount": "10000000000"
           },
           "rawValue": "success",
+          "block": "25800000"
+        },
+        {
+          "kind": "call",
+          "params": {
+            "read": "isWithdrawPaused()",
+            "phase": "before candidate mutation"
+          },
+          "rawValue": false,
+          "block": "25800000"
+        },
+        {
+          "kind": "call",
+          "params": {
+            "method": "eth_sendTransaction",
+            "forkOnly": true,
+            "action": "guardian pause withdraw",
+            "from": "0xbbf3f1421D886E9b2c5D716B5192aC998af2012c",
+            "to": "0xc3d688B66703497DAA19211EEdff47f25384cdc3",
+            "calldata": "0x44c35d0700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "selector": "0x44c35d07",
+            "value": "0",
+            "gasLimit": "300000"
+          },
+          "rawValue": {
+            "transactionHash": "0x4079acc0da5cc86cf4b2ed7cd01c84b642e91c5ddf85f5d4bc6eab317002dcc5",
+            "receipt": {
+              "status": "success",
+              "blockNumber": "25800004",
+              "blockHash": "0x0e1d99e2cce5e7d02a79474d3ab1b50d3e191f0de53baebf7f21747b1e5cf23c",
+              "transactionIndex": 0,
+              "gasUsed": "37865"
+            },
+            "revertData": null
+          },
+          "block": "25800000"
+        },
+        {
+          "kind": "call",
+          "params": {
+            "method": "eth_sendTransaction",
+            "forkOnly": true,
+            "action": "holder withdraw after candidate",
+            "from": "0x000000000000000000000000000000000000abc1",
+            "to": "0xc3d688B66703497DAA19211EEdff47f25384cdc3",
+            "calldata": "0xf3fef3a3000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb4800000000000000000000000000000000000000000000000000000002540be400",
+            "selector": "0xf3fef3a3",
+            "value": "0",
+            "gasLimit": "900000"
+          },
+          "rawValue": {
+            "transactionHash": "0xafa01152f7b9f119b3095c93719561842ceb6017c10e3069473e4bf5d6722f8d",
+            "receipt": {
+              "status": "reverted",
+              "blockNumber": "25800005",
+              "blockHash": "0xa5827e0014300d30fdfba0140209adaf02cf59b3a14dfab8afb7fe1109836fac",
+              "transactionIndex": 0,
+              "gasUsed": "54882"
+            },
+            "revertData": "0x9e87fac8"
+          },
+          "block": "25800000"
+        },
+        {
+          "kind": "call",
+          "params": {
+            "read": "isWithdrawPaused()",
+            "phase": "after candidate mutation"
+          },
+          "rawValue": true,
           "block": "25800000"
         }
       ]
@@ -2159,19 +2333,62 @@
           {
             "kind": "call",
             "params": {
-              "action": "guardian pause(withdraw=true)",
-              "from": "0xbbf3f1421D886E9b2c5D716B5192aC998af2012c"
+              "method": "eth_sendTransaction",
+              "forkOnly": true,
+              "action": "guardian pause withdraw",
+              "from": "0xbbf3f1421D886E9b2c5D716B5192aC998af2012c",
+              "to": "0xc3d688B66703497DAA19211EEdff47f25384cdc3",
+              "calldata": "0x44c35d0700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+              "selector": "0x44c35d07",
+              "value": "0",
+              "gasLimit": "300000"
             },
-            "rawValue": "success",
+            "rawValue": {
+              "transactionHash": "0x4079acc0da5cc86cf4b2ed7cd01c84b642e91c5ddf85f5d4bc6eab317002dcc5",
+              "receipt": {
+                "status": "success",
+                "blockNumber": "25800004",
+                "blockHash": "0x0e1d99e2cce5e7d02a79474d3ab1b50d3e191f0de53baebf7f21747b1e5cf23c",
+                "transactionIndex": 0,
+                "gasUsed": "37865"
+              },
+              "revertData": null
+            },
             "block": "25800000"
           },
           {
             "kind": "call",
             "params": {
-              "action": "holder withdraw after pause",
-              "from": "0x000000000000000000000000000000000000abc1"
+              "read": "isWithdrawPaused()",
+              "phase": "after candidate mutation"
             },
-            "rawValue": "reverted",
+            "rawValue": true,
+            "block": "25800000"
+          },
+          {
+            "kind": "call",
+            "params": {
+              "method": "eth_sendTransaction",
+              "forkOnly": true,
+              "action": "holder withdraw after candidate",
+              "from": "0x000000000000000000000000000000000000abc1",
+              "to": "0xc3d688B66703497DAA19211EEdff47f25384cdc3",
+              "calldata": "0xf3fef3a3000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb4800000000000000000000000000000000000000000000000000000002540be400",
+              "selector": "0xf3fef3a3",
+              "value": "0",
+              "gasLimit": "900000"
+            },
+            "rawValue": {
+              "transactionHash": "0xafa01152f7b9f119b3095c93719561842ceb6017c10e3069473e4bf5d6722f8d",
+              "receipt": {
+                "status": "reverted",
+                "blockNumber": "25800005",
+                "blockHash": "0xa5827e0014300d30fdfba0140209adaf02cf59b3a14dfab8afb7fe1109836fac",
+                "transactionIndex": 0,
+                "gasUsed": "54882"
+              },
+              "revertData": "0x9e87fac8"
+            },
             "block": "25800000"
           }
         ]
@@ -2192,19 +2409,62 @@
           {
             "kind": "call",
             "params": {
-              "action": "guardian pause(withdraw=true)",
-              "from": "0xbbf3f1421D886E9b2c5D716B5192aC998af2012c"
+              "method": "eth_sendTransaction",
+              "forkOnly": true,
+              "action": "guardian pause withdraw",
+              "from": "0xbbf3f1421D886E9b2c5D716B5192aC998af2012c",
+              "to": "0xc3d688B66703497DAA19211EEdff47f25384cdc3",
+              "calldata": "0x44c35d0700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+              "selector": "0x44c35d07",
+              "value": "0",
+              "gasLimit": "300000"
             },
-            "rawValue": "success",
+            "rawValue": {
+              "transactionHash": "0x4079acc0da5cc86cf4b2ed7cd01c84b642e91c5ddf85f5d4bc6eab317002dcc5",
+              "receipt": {
+                "status": "success",
+                "blockNumber": "25800004",
+                "blockHash": "0x0e1d99e2cce5e7d02a79474d3ab1b50d3e191f0de53baebf7f21747b1e5cf23c",
+                "transactionIndex": 0,
+                "gasUsed": "37865"
+              },
+              "revertData": null
+            },
             "block": "25800000"
           },
           {
             "kind": "call",
             "params": {
-              "action": "holder withdraw after pause",
-              "from": "0x000000000000000000000000000000000000abc1"
+              "read": "isWithdrawPaused()",
+              "phase": "after candidate mutation"
             },
-            "rawValue": "reverted",
+            "rawValue": true,
+            "block": "25800000"
+          },
+          {
+            "kind": "call",
+            "params": {
+              "method": "eth_sendTransaction",
+              "forkOnly": true,
+              "action": "holder withdraw after candidate",
+              "from": "0x000000000000000000000000000000000000abc1",
+              "to": "0xc3d688B66703497DAA19211EEdff47f25384cdc3",
+              "calldata": "0xf3fef3a3000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb4800000000000000000000000000000000000000000000000000000002540be400",
+              "selector": "0xf3fef3a3",
+              "value": "0",
+              "gasLimit": "900000"
+            },
+            "rawValue": {
+              "transactionHash": "0xafa01152f7b9f119b3095c93719561842ceb6017c10e3069473e4bf5d6722f8d",
+              "receipt": {
+                "status": "reverted",
+                "blockNumber": "25800005",
+                "blockHash": "0xa5827e0014300d30fdfba0140209adaf02cf59b3a14dfab8afb7fe1109836fac",
+                "transactionIndex": 0,
+                "gasUsed": "54882"
+              },
+              "revertData": "0x9e87fac8"
+            },
             "block": "25800000"
           }
         ]
@@ -2244,6 +2504,84 @@
       {
         "kind": "call",
         "params": {
+          "method": "eth_sendTransaction",
+          "forkOnly": true,
+          "action": "fund holder",
+          "from": "0x37305B1cD40574E4C5Ce33f8e8306Be057fD7341",
+          "to": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          "calldata": "0xa9059cbb000000000000000000000000000000000000000000000000000000000000abc1000000000000000000000000000000000000000000000000000000174876e800",
+          "selector": "0xa9059cbb",
+          "value": "0",
+          "gasLimit": "200000"
+        },
+        "rawValue": {
+          "transactionHash": "0x7cd4322a5096bb78571c479a35a6849dd21305ecf0798cace797d44670ab3c51",
+          "receipt": {
+            "status": "success",
+            "blockNumber": "25800001",
+            "blockHash": "0x499023b41e1ce01e3d60629ba98da4c3ef233278df40a0d92992ae36c286cdfd",
+            "transactionIndex": 0,
+            "gasUsed": "62044"
+          },
+          "revertData": null
+        },
+        "block": "25800000"
+      },
+      {
+        "kind": "call",
+        "params": {
+          "method": "eth_sendTransaction",
+          "forkOnly": true,
+          "action": "approve base token",
+          "from": "0x000000000000000000000000000000000000abc1",
+          "to": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          "calldata": "0x095ea7b3000000000000000000000000c3d688b66703497daa19211eedff47f25384cdc3000000000000000000000000000000000000000000000000000000174876e800",
+          "selector": "0x095ea7b3",
+          "value": "0",
+          "gasLimit": "100000"
+        },
+        "rawValue": {
+          "transactionHash": "0x4aa2c8205ce019352a4d41ac15d9cd54cf140761de5d986e6028ff6bb6ed4ff8",
+          "receipt": {
+            "status": "success",
+            "blockNumber": "25800002",
+            "blockHash": "0xb7875e1b7e6d63b77a44d308ae12149564128b960c76dde39ef61625c0fadd33",
+            "transactionIndex": 0,
+            "gasUsed": "55570"
+          },
+          "revertData": null
+        },
+        "block": "25800000"
+      },
+      {
+        "kind": "call",
+        "params": {
+          "method": "eth_sendTransaction",
+          "forkOnly": true,
+          "action": "supply baseline position",
+          "from": "0x000000000000000000000000000000000000abc1",
+          "to": "0xc3d688B66703497DAA19211EEdff47f25384cdc3",
+          "calldata": "0xf2b9fdb8000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb480000000000000000000000000000000000000000000000000000000ba43b7400",
+          "selector": "0xf2b9fdb8",
+          "value": "0",
+          "gasLimit": "900000"
+        },
+        "rawValue": {
+          "transactionHash": "0x2c75663e5a3ce2d3590b6b8fe37871fc693d87f2fc956f14a2742804dbdee13a",
+          "receipt": {
+            "status": "success",
+            "blockNumber": "25800003",
+            "blockHash": "0x1cbb8371941713fb52d899646e745a8813bd17060d5360ee9032ff222702d694",
+            "transactionIndex": 0,
+            "gasUsed": "116111"
+          },
+          "revertData": null
+        },
+        "block": "25800000"
+      },
+      {
+        "kind": "call",
+        "params": {
           "action": "fund+approve+supply",
           "holder": "0x000000000000000000000000000000000000abc1",
           "amount": "50000000000"
@@ -2254,11 +2592,107 @@
       {
         "kind": "call",
         "params": {
+          "method": "eth_sendTransaction",
+          "forkOnly": true,
+          "action": "baseline holder withdraw",
+          "from": "0x000000000000000000000000000000000000abc1",
+          "to": "0xc3d688B66703497DAA19211EEdff47f25384cdc3",
+          "calldata": "0xf3fef3a3000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb4800000000000000000000000000000000000000000000000000000002540be400",
+          "selector": "0xf3fef3a3",
+          "value": "0",
+          "gasLimit": "900000"
+        },
+        "rawValue": {
+          "transactionHash": "0x254f0b51a1831ce6ec91b73d097b59848dab8387d1e06d8ed8705c18581c1881",
+          "receipt": {
+            "status": "success",
+            "blockNumber": "25800004",
+            "blockHash": "0xdf16a03690657b978aad4e15e7357516f8ec0fa75097fb33a3c412b08b153453",
+            "transactionIndex": 0,
+            "gasUsed": "81316"
+          },
+          "revertData": null
+        },
+        "block": "25800000"
+      },
+      {
+        "kind": "call",
+        "params": {
           "action": "baseline withdraw",
           "holder": "0x000000000000000000000000000000000000abc1",
           "amount": "10000000000"
         },
         "rawValue": "success",
+        "block": "25800000"
+      },
+      {
+        "kind": "call",
+        "params": {
+          "read": "isWithdrawPaused()",
+          "phase": "before candidate mutation"
+        },
+        "rawValue": false,
+        "block": "25800000"
+      },
+      {
+        "kind": "call",
+        "params": {
+          "method": "eth_sendTransaction",
+          "forkOnly": true,
+          "action": "guardian pause withdraw",
+          "from": "0xbbf3f1421D886E9b2c5D716B5192aC998af2012c",
+          "to": "0xc3d688B66703497DAA19211EEdff47f25384cdc3",
+          "calldata": "0x44c35d0700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "selector": "0x44c35d07",
+          "value": "0",
+          "gasLimit": "300000"
+        },
+        "rawValue": {
+          "transactionHash": "0x4079acc0da5cc86cf4b2ed7cd01c84b642e91c5ddf85f5d4bc6eab317002dcc5",
+          "receipt": {
+            "status": "success",
+            "blockNumber": "25800004",
+            "blockHash": "0x0e1d99e2cce5e7d02a79474d3ab1b50d3e191f0de53baebf7f21747b1e5cf23c",
+            "transactionIndex": 0,
+            "gasUsed": "37865"
+          },
+          "revertData": null
+        },
+        "block": "25800000"
+      },
+      {
+        "kind": "call",
+        "params": {
+          "method": "eth_sendTransaction",
+          "forkOnly": true,
+          "action": "holder withdraw after candidate",
+          "from": "0x000000000000000000000000000000000000abc1",
+          "to": "0xc3d688B66703497DAA19211EEdff47f25384cdc3",
+          "calldata": "0xf3fef3a3000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb4800000000000000000000000000000000000000000000000000000002540be400",
+          "selector": "0xf3fef3a3",
+          "value": "0",
+          "gasLimit": "900000"
+        },
+        "rawValue": {
+          "transactionHash": "0xafa01152f7b9f119b3095c93719561842ceb6017c10e3069473e4bf5d6722f8d",
+          "receipt": {
+            "status": "reverted",
+            "blockNumber": "25800005",
+            "blockHash": "0xa5827e0014300d30fdfba0140209adaf02cf59b3a14dfab8afb7fe1109836fac",
+            "transactionIndex": 0,
+            "gasUsed": "54882"
+          },
+          "revertData": "0x9e87fac8"
+        },
+        "block": "25800000"
+      },
+      {
+        "kind": "call",
+        "params": {
+          "read": "isWithdrawPaused()",
+          "phase": "after candidate mutation"
+        },
+        "rawValue": true,
         "block": "25800000"
       }
     ]
@@ -2353,7 +2787,7 @@
         "name": "exitRestriction.outcome",
         "value": "restrictor_found",
         "confidence": "high",
-        "source": "fork differential (rules 0.1.0), exit action identified, baseline established, 1/1 guarded function(s) evaluated, 1 restrictor(s)"
+        "source": "fork differential (rules 0.1.0), exit action identified, baseline established, 1/1 registered candidate(s) evaluated, 1 restrictor(s)"
       }
     ]
   },

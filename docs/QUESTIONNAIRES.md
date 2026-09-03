@@ -1,36 +1,43 @@
 # Ripcord — Privacy, Security and Sovereignty
 
-Answered against the tool **as it actually is** at the end of day 6, not against
+Answered against the tool **as it actually is** at the end of day 7, not against
 an intended design. Where the honest answer is a caveat, it is written as a
 caveat. Every claim below is checkable from this repository: the file is named,
 or the command that demonstrates it is given.
 
 One framing note that applies to all three sections. Ripcord is a **read-only
-analysis tool**. It holds no key, signs nothing, submits no transaction, and
-requests no approval. Its entire write surface is: a JSON report on stdout, a
-disk cache under `.cache/`, and — for `prove` only — an ephemeral local
-`anvil` fork plus two artefact files. That single fact answers a large share of
-what follows, so it is stated once here rather than repeated.
+analysis tool**. It holds no key, signs nothing, submits no mainnet transaction,
+and requests no approval. Its pinned write surface is a JSON report on stdout, a
+disk cache under `.cache/`, and — for `prove`/`restrict` — an ephemeral local
+`anvil` fork; `prove` may also write its two trace artefacts. The optional Mobula
+fetcher writes timestamped sidecars under `calibration/live/`, structurally
+outside the pinned verdict. Those facts answer a large share of what follows, so
+they are stated once here rather than repeated.
 
 ---
 
 ## 1. Privacy
 
 **What personal data does Ripcord collect?**
-None. There is no account, no login, no telemetry, no analytics, no crash
-reporting, and no phone-home of any kind. The tool has three network
-counterparties in total: the RPC endpoint you configure, and — only when you run
-`prove` — the same endpoint again from a local `anvil` process. It contacts
-nothing else. `grep -rn "fetch\|http" src/` shows the full surface.
+None. There is no account, no login, no telemetry, no analytics and no crash
+reporting. The pinned analyser contacts only the RPC endpoint you configure;
+`prove` and `restrict` also make the local `anvil` process read that same endpoint.
+The optional, explicitly separate live-exposure fetcher contacts Mobula's holdings,
+price and metadata endpoints. It is never called by the CLI or a rendered page,
+and `pnpm verify:boundary` proves it cannot enter the pinned verdict. See
+[`docs/MOBULA.md`](MOBULA.md) for the complete endpoint and metadata account.
 
 **What data does it send to third parties, and to whom?**
-Only what an Ethereum read requires, and only to the RPC provider *you* choose in
-`RPC_URL_1`. Concretely: `eth_call`, `eth_getStorageAt`, `eth_getCode`,
+For a scan, only what an Ethereum read requires, and only to the RPC provider
+*you* choose in `RPC_URL_1`. Concretely: `eth_call`, `eth_getStorageAt`, `eth_getCode`,
 `eth_getLogs`, `eth_getBlockByNumber`. Those requests reveal to your provider
 which contract addresses you are analysing and at which block — which is
 inherent to reading a chain you do not run yourself, and is stated in the
 README's trust assumptions rather than glossed over. Ripcord adds nothing to
 those requests: no identifiers, no headers, no user agent beyond the default.
+If the optional live fetcher is run, Mobula additionally receives the public
+contract addresses whose holdings and metadata are requested; no user identity is
+sent.
 
 **Is any of the data you analyse personal?**
 Ripcord reads public on-chain state: contract code, storage slots, event logs,
@@ -43,10 +50,12 @@ project's design philosophy forbids "malicious", "scam" or "rug", and the
 capability-not-intent discipline is asserted in the proof engine's own tests.
 
 **Where is data stored, and for how long?**
-Locally, in `.cache/`, on the machine that ran the scan. Nothing is uploaded.
-The cache holds RPC responses keyed by `(chainId, blockNumber, method, params)`
-and never expires — deliberately, because a historical block's contents cannot
-change. Delete the directory and it is gone; no other copy exists.
+Locally, on the machine that ran the command. `.cache/` holds pinned RPC responses
+keyed by `(chainId, blockNumber, method, params)` and never expires — deliberately,
+because a historical block's contents cannot change. `.ripcord/proofs/` holds
+optional proof artefacts. `calibration/live/` holds optional, timestamped Mobula
+sidecars and is deliberately non-deterministic. Nothing is uploaded by Ripcord;
+delete those local paths and their local copies are gone.
 
 **The honest caveat: the hosted report site is not private.**
 The pages under `site/`, deployed to GitHub Pages, are **public static files**.
@@ -87,13 +96,16 @@ a guaranteed teardown (SIGTERM, then a SIGKILL backstop). It never touches
 mainnet; the fork is the only execution surface.
 
 **What secrets exist, and how are they handled?**
-Exactly one: the RPC URL, which usually embeds an API key. It lives in `.env`,
-which is gitignored from the first commit, with `.env.example` shipping
-placeholders only. It is **never logged**: `describeProvider()`
+Two optional configuration secrets can exist: the RPC URL, which usually embeds
+an API key, and `MOBULA_API_KEY` for a higher third-party rate limit (the Mobula
+endpoints also work keyless). Both live in `.env`, which is gitignored from the
+first commit, with `.env.example` shipping placeholders only. The RPC URL is
+**never logged**: `describeProvider()`
 (`src/chain/rpcPreflight.ts`) deliberately prints the URL's **host only** —
 `Alchemy (eth-mainnet.g.alchemy.com)` — and there is a unit test asserting that
 the fingerprint of a cache key does not incorporate the provider URL, so a key
-cannot leak into a committed cache file either.
+cannot leak into a committed cache file either. `verify:boundary` rejects an API
+key or Authorization value in committed live sidecars and pages.
 
 **How do you know no secret was ever committed?**
 `gitleaks detect --source . --config .gitleaks.toml` over the **full history**
@@ -105,7 +117,7 @@ forward rather than asserted once.
 Three runtime dependencies, all widely used and pinned by a committed
 `pnpm-lock.yaml`: `viem` (Ethereum RPC/ABI), `zod` (schema validation), and
 `commander` (CLI argument parsing). Dev-only: `typescript`, `tsx`, `vitest`,
-`@types/node`. One external binary, used only by `prove`: Foundry's `anvil`,
+`@types/node`. One external binary, used by `prove` and `restrict`: Foundry's `anvil`,
 which `src/fork/preflight.ts` fails loudly about if it is absent. No `solc`, no
 Hardhat, no forge scripts — the drainer contract used in the proof is
 hand-assembled EVM bytecode in TypeScript specifically so the whole codebase
@@ -118,21 +130,26 @@ policy but an enforced invariant, in four layers:
    the evidence for one (`GuardStatus` is a zod discriminated union).
 2. An unproven delay is **structurally incapable** of appearing as an exit
    window (only the `binding` variant has a `windowSeconds` field).
-3. The two reassuring assessments carry `enumeration: { complete: z.literal(true) }`,
-   so a reassuring result **cannot be constructed** over a role set that may be
-   incomplete — zod and `tsc` both refuse.
-4. A report-level invariant in `scripts/verify-pages.mjs`, run in CI, re-derives
+3. The two static reassuring assessments carry
+   `enumeration: { complete: z.literal(true) }`, so either one **cannot be
+   constructed** over an incomplete authority picture — zod and `tsc` both refuse.
+4. The newer `no_direct_restriction_found` fork tier is explicitly scoped and
+   occurs nowhere in the calibration set; it is not presented as “safe exit”.
+5. A report-level invariant in `scripts/verify-pages.mjs`, run in CI, re-derives
    incompleteness *independently* and rejects any reassuring verdict sitting on
    it, so a bug in the derivation cannot hide itself.
 
 **Where is it weakest?**
-Two places, both documented. First, it trusts the RPC to tell the truth; it runs
+Three places, all documented. First, it trusts the RPC to tell the truth; it runs
 no node and cross-checks no second provider, so a lying endpoint is reported
 faithfully. Second, its coverage is bounded by curated tables (proxy patterns,
 taxonomy signatures, guard dialects, cooldown accessors) — and while an
 unrecognised input always fails toward "undetermined" rather than toward
 "clean", that means the tool is frequently less useful than an auditor, by
-design. See "What Ripcord does NOT do" in the README.
+design. Third, the fork differential currently validates one Comet exit archetype
+and one registered restriction candidate; its demonstrated restrictor is strong,
+but its general clean direction is not yet a calibrated claim. See "What Ripcord
+does NOT do" in the README.
 
 ---
 
@@ -185,7 +202,8 @@ site to exist.
 
 **What data does a user give up to use it?**
 Nothing to us — we receive nothing at all. To their RPC provider: the addresses
-and blocks they query. See Privacy above.
+and blocks they query. If they explicitly run the optional live fetcher, Mobula
+also sees the public contract addresses requested. See Privacy above.
 
 **Is the analysis itself sovereign — could we bias it?**
 The reports are evidence-carrying by construction: every finding names the read

@@ -4,7 +4,7 @@
 
 ## What it does
 
-Ripcord scans a deployed EVM contract at a pinned block and produces an evidence-carrying report of its power structure: who can upgrade it, mint, freeze or sweep; whether those holders are EOAs, multisigs or timelocks; and how far the chain of authority really runs. It then computes the metric the rest of the tool exists for — the **Exit Window**: how much notice you get before the rules can change, minus every way that notice can be cut, measured against how long you would actually need to leave. Where it can, it stops arguing and *demonstrates*: `ripcord prove` executes the admin's own legitimate upgrade path on an ephemeral mainnet fork and measures the funds leaving. Every finding carries the exact read that produced it — the call, its parameters, the raw value, the block — so any claim can be re-executed against the chain without trusting Ripcord at all.
+Ripcord scans a deployed EVM contract at a pinned block and produces an evidence-carrying report of its power structure: who can upgrade it, mint, freeze or sweep; whether those holders are EOAs, multisigs or timelocks; and how far the chain of authority really runs. It then computes the metric the rest of the tool exists for — the **Exit Window**: how much notice you get before the rules can change, minus every way that notice can be cut, measured against how long you would actually need to leave. Where it can, it stops arguing and *demonstrates*: `ripcord prove` executes the admin's own legitimate upgrade path on an ephemeral mainnet fork and measures the funds leaving; `ripcord restrict` establishes a baseline withdrawal and tests the current archetype's registered exit-restriction candidate. Every finding carries the exact read that produced it — the call, its parameters, the raw value, the block — so any claim can be re-executed against the chain without trusting Ripcord at all.
 
 ## The problem
 
@@ -20,7 +20,7 @@ Ripcord's contribution is to assemble it and then refuse to overstate it. That s
 
 ## How it works
 
-Five engines feed one verdict. Everything is pinned to a block and cached by `(chainId, block, method, params)`, so a warm run makes zero network calls and a **cold run is byte-identical to a warm one** — verified over all 26 reports.
+Five pinned analysis stages feed the base verdict. Two optional fork passes then add executed demonstrations: the drain proof and the exit-restriction differential. The on-chain reads are pinned to a block and cached by `(chainId, block, method, params)`, so a warm scan makes zero network calls and a **cold report is byte-identical to a warm one** — verified over all 26 reports.
 
 | Stage | What it establishes |
 |---|---|
@@ -51,7 +51,7 @@ none of them are on a roadmap to be fixed by the end of the week.
 | **EVM, one chain, one block** | Mainnet Ethereum, pinned to a block you pass. No L2s, no non-EVM chains, no "current state" mode. Everything is reproducible precisely because nothing is live. |
 | **No indexer, no explorer API, no 4byte lookup** | Every fact comes from raw RPC reads. That is what keeps a report deterministic and re-runnable offline from cache — and it is why the token list, the taxonomy and the exit-mechanism tables are curated rather than discovered. |
 | **One proof archetype** | `ripcord prove` simulates exactly one path: `CODE_CHANGE → drain` on an EIP-1967 **transparent** proxy. UUPS, beacon and legacy-zos paths return `produced: false` with a stated reason rather than a guessed simulation. Depth over breadth, on purpose. |
-| **The fork differential cannot prove safe exit — and never claims to** | `ripcord restrict` runs a real exit-restriction differential on a fork (`src/fork/exitRestriction.ts`): establish a baseline exit, have each guarded function's party try to close it, watch whether the exit then fails. A *found* restrictor is decisive (this is how Comet's guardian becomes a fork-confirmed zero-notice route). A *clean* run is the deliberately weaker `no_direct_restriction_found`, **scoped to the functions evaluated and never a safety guarantee** — three limits it states verbatim on every evaluation: (1) it tests the exit action Ripcord *identified*; a mis-identified exit is a false-clean, so an unidentified exit stays `undetermined`; (2) it tries one bounded exit-restricting argument per function and does not sweep the argument space; (3) it does **not** model indirect or economic restrictions — oracle manipulation, collateral/liquidity configuration, fee/rate changes, or call sequences. This pass ships **one exit archetype** (Compound III / Comet base-withdrawal), validated live; the interface table is built so neighbours are data. |
+| **The fork differential cannot prove safe exit — and never claims to** | `ripcord restrict` runs a real exit-restriction differential on a fork (`src/fork/exitRestriction.ts`): establish a baseline exit, have the current archetype's registered guarding party try to close it, and watch whether the exit then fails. A *found* restrictor is decisive (this is how Comet's guardian becomes a fork-confirmed zero-notice route). A *clean* run is designed to earn only the deliberately weaker `no_direct_restriction_found`, **scoped to the registered candidates evaluated and never a safety guarantee** — three limits it states verbatim on every evaluation: (1) it tests the exit action Ripcord *identified*; a mis-identified exit is a false-clean, so an unidentified exit stays `undetermined`; (2) it tries one bounded exit-restricting argument per registered candidate and does not sweep the argument space or discover every privileged function; (3) it does **not** model indirect or economic restrictions — oracle manipulation, collateral/liquidity configuration, fee/rate changes, or call sequences. This pass ships **one exit archetype and one registered candidate** (Compound III / Comet base-withdrawal versus `pause(...withdraw=true...)`), validated live. The calibration run finds that restrictor, so the positive tier occurs nowhere in the set and is not presented as empirically validated. |
 | **Dollar figures are floors, never ceilings** | A proof counts only the 6 curated major tokens. Value in unlisted tokens, LP positions or staked principal is invisible to it. |
 | **Liquidity is not modelled at all** | `timeToExit.liquidity.modelled` is a literal `false` in the schema, so a made-up number cannot even be expressed. For a position large relative to available liquidity, the real exit is *longer* than reported. |
 | **Enumeration is bounded by the provider's `eth_getLogs` range** | Role membership on a non-Enumerable contract is reconstructed by replaying events. On a range-capped endpoint a deep-history contract is only partially scanned — and Ripcord then refuses to issue a reassuring verdict at all. See [Aave's ACLManager](docs/TECHNICAL.md#the-aave-case-what-a-bounded-answer-looks-like) for the worked example. **By design, not by accident.** |
@@ -59,11 +59,12 @@ none of them are on a roadmap to be fixed by the end of the week.
 | **It does not monitor** | There is no watchtower, no alerting, no queue-watching. A report is a photograph of one block, not a subscription. |
 | **It is frequently less useful than a good auditor** | 16 of 26 calibration protocols come back `undetermined`. That is the deliberate trade: an under-determination is visible and arguable in the report, while a false clean bill is invisible by construction. |
 
-**The one thing it will not do, under any circumstance, is tell you a contract
-is safe when it has not established that.** Every reassuring result in Ripcord is
-a *positive* claim carrying the evidence that earned it — and two of them are
-literally unconstructable without a completeness witness, enforced by zod and by
-the type checker rather than by anyone remembering to check.
+**The governing rule is that Ripcord must never tell you a contract is safe when
+it has not established that.** The two static reassuring assessments are positive
+claims carrying the evidence that earned them and are literally unconstructable
+without a completeness witness, enforced by zod and by the type checker. The
+newer fork-clean tier is deliberately weaker, separately checked in CI, and occurs
+nowhere in the calibration set; it must not be read as a third form of “safe”.
 
 ## Tech stack
 
@@ -72,8 +73,8 @@ the type checker rather than by anyone remembering to check.
 | **TypeScript / Node 22** | The entire codebase. One language on purpose — even the drainer contract used in the proof is hand-assembled EVM bytecode in TS rather than Solidity, so it stays auditable inline and there is no `solc` in the toolchain. |
 | **[viem](https://viem.sh)** | Ethereum RPC, ABI encode/decode, keccak. Also the source of every derived constant: storage slots and selectors are *computed from their preimages in code*, never hand-copied, and asserted in tests against independent reference values. |
 | **[zod](https://zod.dev)** | Runtime schema validation — and load-bearing, not decorative. The report's structural honesty invariants (discriminated unions, `z.literal(true)` witnesses) are enforced by zod. A report that fails its own schema is treated as a Ripcord bug, not a target problem. |
-| **[Foundry](https://book.getfoundry.sh) (`anvil`, `cast`)** | Ephemeral mainnet-fork EVM for the proof engine, and `cast run --trace` for the human-readable call trace. The only non-npm dependency. |
-| **[vitest](https://vitest.dev)** | 248 unit tests, all network-free, so CI needs no RPC key. |
+| **[Foundry](https://book.getfoundry.sh) (`anvil`, `cast`)** | Ephemeral mainnet-fork EVM for the proof engine and exit-restriction differential, plus `cast run --trace` for the proof engine's human-readable call trace. The only non-npm dependency. |
+| **[vitest](https://vitest.dev)** | 267 unit tests, all network-free, so CI needs no RPC key. |
 | **[gitleaks](https://github.com/gitleaks/gitleaks)** | Secret scanning over the full history, in CI on every push. |
 | **commander** | CLI argument parsing. |
 
@@ -86,7 +87,7 @@ the type checker rather than by anyone remembering to check.
 
 ## How to run / test
 
-**Prerequisites:** Node **22.13+** and pnpm (the exact version is pinned in `package.json`'s `packageManager` field, so `corepack` fetches it). `ripcord prove` additionally needs Foundry's `anvil` and `cast` on your `PATH`.
+**Prerequisites:** Node **22.13+** and pnpm (the exact version is pinned in `package.json`'s `packageManager` field, so `corepack` fetches it). `ripcord prove` and `ripcord restrict` additionally need Foundry's `anvil`; `prove` also uses `cast` for its trace artefact.
 
 Everything below runs with **no network and no RPC key**:
 
@@ -95,7 +96,7 @@ git clone https://github.com/thomasdevving/ripcord.git
 cd ripcord
 pnpm install
 pnpm typecheck      # tsc --noEmit
-pnpm test           # 248 unit tests, network-free
+pnpm test           # 267 unit tests, network-free
 pnpm verify:pages   # re-check every published page against its source report
 pnpm verify:claims  # re-check this README's claims against those reports
 pnpm verify:boundary # prove the live data layer cannot reach the pinned verdict
@@ -157,7 +158,7 @@ There is **no backend and no hosted scanner** — Ripcord is a local CLI, and th
 - **Day 4 — the Exit Window.** Per-route modelling with the protocol figure as the minimum; binding-ness established by probe; `checksPerformed[]` so "none found" is distinguishable from "not checked"; time-to-exit as a lower bound with named gaps; the verdict as pure, exhaustively testable composition.
 - **Day 5 — Calibration.** 26 mainnet protocols, all pinned, 0 errors — including four chosen *because* their authority lives somewhere Ripcord does not model, so a wrong answer would be false-clean rather than a visible false alarm. Found and fixed the one optimism-direction bug. Built the renderer and its verifier.
 - **Day 6 — Self-audit.** The semantic cache audit; the enumeration-completeness witness; the prose-vs-reports claim checker; submission hardening.
-- **Day 7 — the fork differential.** `ripcord restrict` stops reasoning about exit restriction and *tests* it: identify the exit action, fund a real baseline exit on a fork, then have each guarded function's party try to close it and watch whether the exit fails. Comet's `pauseGuardian()` (a 5-of-9 Safe) is demonstrated closing withdrawals with zero notice, moving it from `undetermined` to a fork-confirmed `no_notice` — while its $540M upgrade path stays timelocked, so the report now shows *notice on a rule change* and *the exit itself being closable* as two different numbers. A clean run earns only the deliberately weak `no_direct_restriction_found`, scoped to what was evaluated and never a safety guarantee. Predictions were registered as CI assertions before the code; exactly one verdict changed and nothing moved toward reassurance.
+- **Day 7 — the fork differential.** `ripcord restrict` stops reasoning about one bounded exit-restriction path and *tests* it: identify the exit action, fund a real baseline exit on a fork, then have the current archetype's registered guarding party try to close it and watch whether the exit fails. Comet's `pauseGuardian()` (a 5-of-9 Safe) is demonstrated closing withdrawals with zero notice, moving it from `undetermined` to a fork-confirmed `no_notice` — while its $540M upgrade path stays timelocked, so the report now shows *notice on a rule change* and *the exit itself being closable* as two different numbers. A clean run is designed to earn only the deliberately weak `no_direct_restriction_found`, scoped to the registered candidates evaluated and never a safety guarantee; it occurs nowhere in this calibration pass. Predictions were registered as CI assertions before the code; exactly one verdict changed and nothing moved toward reassurance.
 
 **The bugs found by running against live mainnet, rather than by unit tests, are the part worth reading** — each is written up in KNOWN EDGES in `CLAUDE.md`:
 
@@ -182,7 +183,7 @@ Third-party code I did not write, in full:
 | `zod` | Runtime schema validation. Runtime, and load-bearing for the honesty invariants. |
 | `commander` | CLI argument parsing. Runtime. |
 | `typescript`, `tsx`, `vitest`, `@types/node` | Type checking, TS execution, test runner, Node types. Dev-only. |
-| Foundry `anvil` | Ephemeral mainnet-fork EVM for `ripcord prove`. External binary, subprocess. |
+| Foundry `anvil` | Ephemeral mainnet-fork EVM for `ripcord prove` and `ripcord restrict`. External binary, subprocess. |
 | Foundry `cast` | Renders the proof's call trace. External binary; optional — if absent the trace artefact is simply not written. |
 | `gitleaks` | Secret scanning, CI and local. Dev/CI only. |
 

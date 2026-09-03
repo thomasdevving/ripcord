@@ -153,7 +153,7 @@ if (secrets === 0) pass("no API key or Authorization value in any committed side
 console.log(
   `\nNote: calibration/live/*.json are DELIBERATELY non-deterministic — each is a\n` +
     `timestamped snapshot of third-party market data and changes on every fetch.\n` +
-    `The determinism gate (pnpm determinism) covers calibration/reports/ only.\n` +
+    `The report-directory determinism comparison covers calibration/reports/ only.\n` +
     `A changed sidecar is expected behaviour, never a determinism regression.`,
 );
 

@@ -29,6 +29,7 @@ rebuilt cold. That is not a formality; see [Task 0](#0-the-determinism-gate).
 - [11. Aave: a bounded answer, documented rather than bought](#11-aave-a-bounded-answer-documented-rather-than-bought)
 - [12. The one blocker that looked like a real finding](#12-the-one-blocker-that-looked-like-a-real-finding)
 - [13. The flagship green result that was wrong](#13-the-flagship-green-result-that-was-wrong)
+- [14. Day 7: the fork differential](#14-day-7-the-fork-differential)
 
 ---
 
@@ -164,9 +165,9 @@ their reports existed.
 |---|---|---|
 | `immutable_within_checks` | 2 | WETH9, wstETH |
 | `can_exit_in_time` | **0** | none — see [§13](#13-the-flagship-green-result-that-was-wrong) |
-| `no_notice` | 6 | USDC, cbETH, FXS, Morpho Blue, PAID ×2 |
+| `no_notice` | 7 | USDC, cbETH, FXS, Morpho Blue, PAID ×2, **Compound Comet cUSDCv3** |
 | `trapped` | 1 | Ethena sUSDe |
-| `undetermined` | 17 | DAI, MKR, Balancer, rETH, stETH, USDT, Curve 3pool, Compound cDAI, Compound Unitroller, Aave PoolAddressesProvider, Aave ACLManager, Lido Withdrawal Queue, Wasabi, **Ethena USDe, Ethena Minting** |
+| `undetermined` | 16 | DAI, MKR, Balancer, rETH, stETH, USDT, Curve 3pool, Compound cDAI, Compound Unitroller, Aave PoolAddressesProvider, Aave ACLManager, Lido Withdrawal Queue, Wasabi, Uniswap v3 Factory, **Ethena USDe, Ethena Minting** |
 
 The last two moved there after calibration, and they are the subject of [§9](#9-the-last-false-clean-vector-enumeration-completeness).
 
@@ -284,7 +285,7 @@ name and in every rendered page.
 Verdict correctness judged against the on-chain reality, not against what would
 be convenient. "Direction" says which way an error leans.
 
-### Correct, and confidently so — a determined verdict, and the right one (9)
+### Correct, and confidently so — a determined verdict, and the right one (10)
 
 | Protocol | Verdict | Why it is right |
 |---|---|---|
@@ -297,6 +298,7 @@ be convenient. "Direction" says which way an error leans.
 | Morpho Blue | `no_notice` | Immutable code, live owner → Safe. Narrow power, zero notice. |
 | PAID proxy 1 (`0x1614f18f…`) | `no_notice` | Two zero-notice routes, both terminating at plain EOAs — **and** `paused()` reads **true** at the pinned block, so the exit is not slow, it is shut. |
 | PAID proxy 2 (`0x8c8687fc…`) | `no_notice` | Two zero-notice routes, same shape. `paused()` reads **false** here; its `blockable` is `undetermined`. Disclosure-blocked, so no published page. |
+| Compound Comet cUSDCv3 | `no_notice` | Its upgrade path is protected by a proven-binding 2-day timelock, but the day-7 fork differential demonstrates a separate zero-notice route: the 5-of-9 pause-guardian Safe closes withdrawals and the baseline exit then reverts. |
 
 ### Correct, and the desired answer, on the four deliberate traps (4)
 
@@ -307,7 +309,7 @@ be convenient. "Direction" says which way an error leans.
 | Balancer Vault | `undetermined` | Names `getAuthorizer()` and refuses to follow it. |
 | stETH | `undetermined` | Aragon proxy detected as `pattern: unknown`; the isProxy branch forces undetermined. |
 
-### Correct but under-determined — Ripcord knows less than an auditor would (13)
+### Correct but under-determined — Ripcord knows less than an auditor would (12)
 
 These are **false negatives in usefulness, not in safety**. Each says "I could
 not establish this" about something a human can establish.
@@ -325,11 +327,10 @@ not establish this" about something a human can establish.
 | Wasabi | Access control is a custom error Ripcord cannot identify; correctly blocked from publication. | conservative |
 | **Ethena USDe** | Its single route terminates at a `TimelockController` whose OWN roles were only partially enumerated, so the completeness witness is withheld and `binding` degrades to `not_proven_binding`. Before [§9](#9-the-last-false-clean-vector-enumeration-completeness) this read `can_exit_in_time`. | conservative |
 | **Ethena Minting** | Its own role scan covered 6,750 of 5.66M blocks. Same degradation, one layer shallower. Before §9 this read `can_exit_in_time`. | conservative |
-| **Compound Comet cUSDCv3** | Its 2-day timelock is real and proven binding, but 67 of 67 selectors were never evaluated for privilege while a governor, a proxy admin and a guardian pointer exist — and one of those selectors is a guarded `pause`. See [§13](#13-the-flagship-green-result-that-was-wrong). | conservative |
 | **Uniswap v3 Factory** | Same rule: 7 unevaluated selectors beside a timelock owner. No kill switch is known here; the point is that Ripcord cannot rule one out. | conservative |
 
-**The groups sum to 26**: 9 determined-and-correct + 4 deliberate traps + 13
-under-determined. All 15 `undetermined` verdicts are the 4 traps plus the 11
+**The groups sum to 26**: 10 determined-and-correct + 4 deliberate traps + 12
+under-determined. All 16 `undetermined` verdicts are the 4 traps plus the 12
 above; every figure in this section is re-derivable with
 `node scripts/summarize.mjs calibration/reports`.
 
@@ -932,7 +933,9 @@ mislabelled while the schema catches up.
 Ripcord's best demo result was `compound-comet-cusdcv3`: a proven-binding 2-day
 timelock against an instant exit, `can_exit_in_time`, and a $540M fork proof
 beside it. It was found to be a false-clean while scoping an unrelated feature,
-and it is now `undetermined`.
+and was moved to `undetermined` by the capability-surface rule. Day 7 then
+converted the manually discovered path into shipped fork evidence, so the current
+report is the decided `no_notice`; §14 records that second step.
 
 ### What was there
 
@@ -991,14 +994,14 @@ pendingOwner, no proxy admin, no role members and no indirection marker: there i
 nobody for an unevaluated selector to be privileged *for*, so theirs are inert
 and their true negatives survive.
 
-### Predictions registered before the code, and the result
+### Day-6 predictions registered before the capability-surface fix
 
 | | Predicted | Actual |
 |---|---|---|
 | Verdicts changed | Comet, Uniswap v3 Factory | **exactly those 2** |
 | Moved toward reassurance | 0 | **0** |
 | WETH9 / wstETH | survive | **survived** |
-| Final distribution | 2 / 0 / 6 / 1 / 17 | **immutable 2 · can_exit 0 · no_notice 6 · trapped 1 · undetermined 17** |
+| Distribution at the end of day 6 | 2 / 0 / 6 / 1 / 17 | **immutable 2 · can_exit 0 · no_notice 6 · trapped 1 · undetermined 17** |
 
 Twelve further reports had `enumeration.complete` flip to `false` with **no
 verdict change** — the caution-only property holding: an incomplete enumeration
@@ -1010,13 +1013,16 @@ reassuring again, and the independent derivation in that script grew the same
 capability-surface dimension — derived separately from `enumeration.ts`, so a bug
 in one cannot hide in the other.
 
-### What the verdict may and may not say
+### What the verdict could say then, and what changed on day 7
 
-The fork test above is how the kill switch was **found**. It is not shipped
-machinery, so the report does not assert it. What the pipeline can establish is
-that a privileged party exists over 67 unevaluated selectors — so the honest
-output is `undetermined` naming that gap, not a decided bad verdict. Ripcord does
-not get to claim, in a report, something only a manual investigation showed.
+At the end of day 6, the fork test above was how the kill switch was **found**,
+but it was not shipped machinery. The report could establish only that a
+privileged party existed over 67 unevaluated selectors, so `undetermined` was the
+honest output; Ripcord did not claim something supported only by a manual
+investigation. Day 7 shipped that exact baseline/mutation differential. The
+current report can therefore assert the demonstrated restrictor and returns
+`no_notice`; the remaining 66 unmatched selectors stay named as an enumeration
+gap rather than disappearing.
 
 ### The cost, stated plainly
 
@@ -1042,12 +1048,14 @@ closable* is the thing no checklist makes.
 ## 14. Day 7: the fork differential
 
 Every layer up to day 6 REASONS about whether a privileged party can close a
-holder's exit. Day 7 TESTS it. On a sandbox anvil fork pinned to the report
-block the engine identifies the exit action, establishes a real baseline exit,
-then — one guarded function at a time — impersonates that function's guarding
-party, calls it with an exit-restricting argument, and re-runs the exit. If the
-exit then fails, the function is a DIRECT exit-restrictor, demonstrated rather
-than inferred.
+holder's exit. Day 7 TESTS one bounded archetype. On a sandbox anvil fork pinned
+to the report block the engine identifies the exit action, establishes a real
+baseline exit, then evaluates the restriction candidates registered for that
+matched archetype. This pass has one: Comet's `pauseGuardian()` setting the
+withdraw-pause flag. If the exit then fails, the function is a DIRECT
+exit-restrictor, demonstrated rather than inferred. It does not discover or
+execute every privileged function in the target; coverage is coverage of the
+registered candidate set.
 
 ### The epistemic ceiling, stated before anything was built
 
@@ -1075,7 +1083,7 @@ which keep the verdict `undetermined` — the differential is refused, not guess
 | Comet → a fork-confirmed DECIDED restriction, non-reassuring | ✅ `undetermined` → `no_notice`, `exitRestriction.outcome=restrictor_found`, `confirmationMethod=fork_confirmed` |
 | The true negatives (WETH9, wstETH) survive unchanged | ✅ both remain `immutable_within_checks` |
 | No protocol currently `no_notice`/`trapped` moves toward reassurance | ✅ 0 moved toward reassurance |
-| The new tier fires only on all-gates-green, possibly nowhere this pass | ✅ fires nowhere; not forced |
+| The new tier may fire nowhere and must not be forced for a showcase | ✅ fires nowhere; not forced or claimed as a calibrated result |
 
 **Exactly one verdict changed: Comet, `undetermined` → `no_notice` — a move
 toward caution, from the tool's own fork evidence.** The predictions are enforced
@@ -1113,7 +1121,8 @@ it rather than asserting it.
 ### Scope of this pass: one archetype, validated end to end
 
 Like the proof engine (one upgrade archetype, done properly), the fork
-differential ships **one exit archetype — Compound III / Comet base-withdrawal —
+differential ships **one exit archetype and one registered restriction candidate
+— Compound III / Comet base-withdrawal versus its withdraw-pause guardian —
 validated live end to end**, with the interface table
 (`src/fork/exitActions.ts`) built so a new interface is data, not a rewrite. The
 confirmation direction (finding a restrictor) is caution-only and safe to run
@@ -1123,6 +1132,13 @@ withdrawal-queue claim behind `PAUSE_ROLE`, a pausable/blacklistable ERC20
 mechanics and a live validation before it is trusted — deliberately not rushed
 under the timebox, because testing against a mis-identified exit is the one
 false-clean this layer exists to refuse.
+
+No calibration report exercises the clean direction: Comet finds its restrictor,
+and every other report is a plain `scan`/`prove`. The repository therefore makes
+an empirical claim about the demonstrated Comet restriction, not about the
+general reliability of `no_direct_restriction_found`. Before that tier is relied
+upon on additional interfaces, inconclusive candidates must fail closed and the
+clean outcome must be bound directly to the completeness witness.
 
 ### Determinism
 

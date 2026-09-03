@@ -225,15 +225,16 @@ export async function runProofEngine(req: ProofRequest): Promise<Proof> {
   const pathNotice = noticeForPath(req.exitWindow, upgradePath);
 
   // --- Preflight anvil, then run in the sandbox. ---
+  let anvilExecutable: string;
   try {
-    await checkAnvilAvailable();
+    anvilExecutable = (await checkAnvilAvailable()).executable;
   } catch (err) {
     return notProduced(req, archetype, err instanceof Error ? err.message : String(err), {
       authorityPath: upgradePath,
     });
   }
 
-  const fork = await startAnvilFork({ rpcUrl: req.rpcUrl, blockNumber: req.blockNumber });
+  const fork = await startAnvilFork({ rpcUrl: req.rpcUrl, blockNumber: req.blockNumber, anvilExecutable });
   try {
     const evidence: Evidence[] = [];
 

@@ -13,6 +13,8 @@
  * empty result.
  */
 import { execFile } from "node:child_process";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -33,6 +35,7 @@ export class AnvilUnavailableError extends Error {
 export interface AnvilInfo {
   available: true;
   version: string;
+  executable: string;
 }
 
 /**
@@ -41,15 +44,23 @@ export interface AnvilInfo {
  * message telling them exactly how to fix it.
  */
 export async function checkAnvilAvailable(): Promise<AnvilInfo> {
-  try {
-    const { stdout } = await execFileAsync("anvil", ["--version"], { timeout: 10_000 });
-    const version = stdout.trim().split("\n")[0] ?? stdout.trim();
-    if (!version) throw new AnvilUnavailableError("`anvil --version` produced no output");
-    return { available: true, version };
-  } catch (err) {
-    if (err instanceof AnvilUnavailableError) throw err;
-    const code = (err as NodeJS.ErrnoException).code;
-    if (code === "ENOENT") throw new AnvilUnavailableError("not found on PATH");
-    throw new AnvilUnavailableError(err instanceof Error ? err.message : String(err));
+  const candidates = ["anvil", join(homedir(), ".foundry", "bin", "anvil")];
+  let lastError: unknown = null;
+  for (const executable of candidates) {
+    try {
+      const { stdout } = await execFileAsync(executable, ["--version"], { timeout: 10_000 });
+      const version = stdout.trim().split("\n")[0] ?? stdout.trim();
+      if (!version) throw new AnvilUnavailableError("`anvil --version` produced no output");
+      return { available: true, version, executable };
+    } catch (err) {
+      if (err instanceof AnvilUnavailableError) throw err;
+      lastError = err;
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw new AnvilUnavailableError(err instanceof Error ? err.message : String(err));
+      }
+    }
   }
+  const code = (lastError as NodeJS.ErrnoException | null)?.code;
+  if (code === "ENOENT") throw new AnvilUnavailableError("not found on PATH or at ~/.foundry/bin/anvil");
+  throw new AnvilUnavailableError(lastError instanceof Error ? lastError.message : String(lastError));
 }

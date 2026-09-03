@@ -325,6 +325,33 @@ for (const file of readdirSync(reportsDir).filter((f) => f.endsWith(".json")).so
       console.log(`${label}`);
       fail(`DAY-7 PREDICTION: Comet's restrictor must be fork_confirmed, got "${er.confirmationMethod}"`);
     }
+    const forkTxs = (er?.evidence ?? []).filter((e) => e.params?.method === "eth_sendTransaction");
+    const requiredTxSteps = [
+      "fund holder",
+      "approve base token",
+      "supply baseline position",
+      "baseline holder withdraw",
+      "guardian pause withdraw",
+      "holder withdraw after candidate",
+    ];
+    for (const step of requiredTxSteps) {
+      const tx = forkTxs.find((e) => e.params?.action === step);
+      const receipt = tx?.rawValue?.receipt;
+      if (
+        !tx ||
+        typeof tx.params?.calldata !== "string" ||
+        !/^0x[0-9a-fA-F]*$/.test(tx.params.calldata) ||
+        typeof tx.rawValue?.transactionHash !== "string" ||
+        !/^0x[0-9a-fA-F]{64}$/.test(tx.rawValue.transactionHash) ||
+        !receipt ||
+        !["success", "reverted"].includes(receipt.status) ||
+        typeof receipt.blockNumber !== "string" ||
+        typeof receipt.gasUsed !== "string"
+      ) {
+        console.log(`${label}`);
+        fail(`DAY-7 EVIDENCE: fork transaction "${step}" lacks calldata, hash, or receipt facts`);
+      }
+    }
     const forkRoute = (report.exitWindow?.routes ?? []).some((r) => r.confirmationMethod === "fork_confirmed");
     if (!forkRoute) {
       console.log(`${label}`);
@@ -352,15 +379,29 @@ for (const file of readdirSync(reportsDir).filter((f) => f.endsWith(".json")).so
       fail(`a restrictor is recorded but confirmationMethod is "${er.confirmationMethod}", not fork_confirmed`);
     }
     // The weak positive tier is unreachable without a confidently identified
-    // exit action AND an established baseline — the riskiest-false-clean gate.
+    // exit action, established baseline, and a positively clean result for every
+    // candidate registered by the matched archetype.
     if (verdictStatus === "no_direct_restriction_found") {
+      if (er.outcome !== "no_direct_restriction_found" || er.confirmationMethod !== "fork_confirmed") {
+        console.log(`${label}`);
+        fail(`verdict "no_direct_restriction_found" disagrees with outcome="${er.outcome}" / confirmation="${er.confirmationMethod}"`);
+      }
       if (er.exitAction?.status !== "identified" || er.baseline?.status !== "established") {
         console.log(`${label}`);
         fail(`verdict "no_direct_restriction_found" without an identified exit action (${er.exitAction?.status}) and an established baseline (${er.baseline?.status})`);
       }
       if (er.coverage.evaluated !== er.coverage.guardedTotal) {
         console.log(`${label}`);
-        fail(`verdict "no_direct_restriction_found" while ${er.coverage.guardedTotal - er.coverage.evaluated} guarded function(s) were left unevaluated`);
+        fail(`verdict "no_direct_restriction_found" while ${er.coverage.guardedTotal - er.coverage.evaluated} registered candidate(s) were left unevaluated`);
+      }
+      if ((er.candidates ?? []).length !== er.coverage.guardedTotal) {
+        console.log(`${label}`);
+        fail(`verdict "no_direct_restriction_found" records ${(er.candidates ?? []).length} candidate(s) but claims guardedTotal=${er.coverage.guardedTotal}`);
+      }
+      const nonClean = (er.candidates ?? []).filter((c) => c.result !== "no_effect");
+      if (nonClean.length > 0) {
+        console.log(`${label}`);
+        fail(`verdict "no_direct_restriction_found" has ${nonClean.length} candidate(s) that did not positively return no_effect (${nonClean.map((c) => `${c.selector}:${c.result}`).join(", ")})`);
       }
     }
   }

@@ -67,7 +67,7 @@ const cometAbi = [
   },
 ] as const;
 
-/** Selectors (viem-derived at module load, never hand-copied — asserted in tests). */
+/** Pinned selectors, each asserted against viem derivation from its signature in tests. */
 export const SELECTORS = {
   cometSupply: "0xf2b9fdb8" as Hex, // supply(address,uint256)
   cometWithdraw: "0xf3fef3a3" as Hex, // withdraw(address,uint256)

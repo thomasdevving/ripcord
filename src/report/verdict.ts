@@ -196,7 +196,7 @@ function composeVerdictInner(
       name: "exitRestriction.outcome",
       value: exitRestriction.outcome,
       confidence: exitRestriction.exitAction.confidence,
-      source: `fork differential (rules ${exitRestriction.rulesVersion}), exit action ${exitRestriction.exitAction.status}, baseline ${exitRestriction.baseline.status}, ${exitRestriction.coverage.evaluated}/${exitRestriction.coverage.guardedTotal} guarded function(s) evaluated, ${exitRestriction.restrictors.length} restrictor(s)`,
+      source: `fork differential (rules ${exitRestriction.rulesVersion}), exit action ${exitRestriction.exitAction.status}, baseline ${exitRestriction.baseline.status}, ${exitRestriction.coverage.evaluated}/${exitRestriction.coverage.guardedTotal} registered candidate(s) evaluated, ${exitRestriction.restrictors.length} restrictor(s)`,
     });
   }
 
@@ -245,7 +245,7 @@ function composeVerdictInner(
   // A fork-clean run resolves an otherwise-undetermined window into the
   // deliberately WEAK positive `no_direct_restriction_found`. It is reachable
   // ONLY on the strict gates the engine already enforces (exit action
-  // confidently identified, baseline established, EVERY guarded candidate
+  // confidently identified, baseline established, EVERY registered candidate
   // evaluated) and ONLY when the static window did not itself find something
   // worse — a static no_notice above already returned. It NEVER reuses
   // `can_exit_in_time` and always carries its scope sentence and the count N,
@@ -263,7 +263,7 @@ function composeVerdictInner(
     const n = exitRestriction.coverage.evaluated;
     return {
       status: "no_direct_restriction_found",
-      statement: `No DIRECT exit restriction was found on a fork: Ripcord established a baseline ${exitRestriction.exitAction.signature} exit and evaluated ${n} guarded function(s); none of them, called by its guarding party with an exit-restricting argument, closed the exit. This is NOT a guarantee of safe exit — it is scoped to the ${n} function(s) evaluated. Argument space was not exhausted, and indirect or economic restrictions (oracle, liquidity, fee/rate, call sequences) were not tested.${blockedSuffix}`,
+      statement: `No DIRECT exit restriction was found on a fork: Ripcord established a baseline ${exitRestriction.exitAction.signature} exit and evaluated ${n} registered candidate(s); none of them, called by its guarding party with an exit-restricting argument, closed the exit. This is NOT a guarantee of safe exit — it is scoped to the ${n} candidate(s) evaluated. Other privileged functions, argument space, and indirect or economic restrictions (oracle, liquidity, fee/rate, call sequences) were not exhausted.${blockedSuffix}`,
       exitWindowSeconds: null,
       timeToExitSeconds: timeToExit.atLeastSeconds,
       marginSeconds: null,

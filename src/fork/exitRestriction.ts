@@ -7,14 +7,14 @@
  *   1. identifies the exit action (Part 1 — how a holder actually leaves),
  *   2. establishes a BASELINE: a real holder position for whom that exit
  *      succeeds before any mutation (Part 2 — the control),
- *   3. for each guarded restriction-family function, snapshots the fork,
+ *   3. for each restriction candidate registered by the matched archetype, snapshots the fork,
  *      impersonates the party that guards it, calls it with the exit-restricting
  *      argument, and re-runs the exit (Part 3 — the differential). Exit now
  *      fails → that function is a direct exit-restrictor, demonstrated.
  *
  * THE EPISTEMIC CEILING is honoured, not hidden. A clean run is NEVER a safety
  * guarantee and never reuses `can_exit_in_time`; its outcome is the deliberately
- * weaker `no_direct_restriction_found`, scoped to the N functions evaluated. A
+ * weaker `no_direct_restriction_found`, scoped to the N registered candidates evaluated. A
  * found restrictor is decisive and, if its party imposes no delay, a zero-notice
  * route that caps the verdict.
  *
@@ -28,7 +28,7 @@
  *     an explicit `undetermined`-producing outcome, never a fabricated clean run.
  */
 import { encodeFunctionData, getAddress, type Hex } from "viem";
-import { startAnvilFork, type ForkHandle } from "./anvil.js";
+import { startAnvilFork, type ForkHandle, type ForkTransactionResult } from "./anvil.js";
 import { checkAnvilAvailable } from "./preflight.js";
 import {
   BASE_TOKEN_WHALES,
@@ -89,6 +89,41 @@ export interface ExitRestrictionResult {
 
 function ev(params: Record<string, unknown>, rawValue: unknown, block: bigint): Evidence {
   return { kind: "call", params, rawValue, block: block.toString() };
+}
+
+/** A complete, ordered fork-transaction witness. Hashes are fork-local, never mainnet transaction hashes. */
+function txEv(
+  action: string,
+  from: Hex,
+  tx: { to?: Hex; data?: Hex; value?: bigint; gas?: bigint },
+  result: ForkTransactionResult,
+  forkBlock: bigint,
+): Evidence {
+  return ev(
+    {
+      method: "eth_sendTransaction",
+      forkOnly: true,
+      action,
+      from,
+      to: tx.to ?? null,
+      calldata: tx.data ?? "0x",
+      selector: tx.data && tx.data.length >= 10 ? tx.data.slice(0, 10) : null,
+      value: (tx.value ?? 0n).toString(),
+      gasLimit: (tx.gas ?? 3_000_000n).toString(),
+    },
+    {
+      transactionHash: result.hash,
+      receipt: {
+        status: result.status,
+        blockNumber: result.blockNumber.toString(),
+        blockHash: result.blockHash,
+        transactionIndex: result.transactionIndex,
+        gasUsed: result.gasUsed.toString(),
+      },
+      revertData: result.revertData,
+    },
+    forkBlock,
+  );
 }
 
 /** All selectors the dispatcher recovered — matched findings plus the unmatched remainder. */
@@ -168,13 +203,14 @@ export async function runExitRestrictionEngine(req: ExitRestrictionRequest): Pro
     return notRun(req, "no_candidates", `exit action identified (${iface.id}) but its differential archetype is not implemented — reported honestly rather than run partially`, exitAction);
   }
 
+  let anvilExecutable: string;
   try {
-    await checkAnvilAvailable();
+    anvilExecutable = (await checkAnvilAvailable()).executable;
   } catch (err) {
     return notRun(req, "not_run", err instanceof Error ? err.message : String(err), exitAction);
   }
 
-  const fork = await startAnvilFork({ rpcUrl: req.rpcUrl, blockNumber: req.blockNumber });
+  const fork = await startAnvilFork({ rpcUrl: req.rpcUrl, blockNumber: req.blockNumber, anvilExecutable });
   try {
     return await runCometArchetype(req, fork, exitAction);
   } finally {
@@ -231,17 +267,23 @@ async function runCometArchetype(
   }
 
   // Fund the holder from the whale.
-  const fund = await fork.sendFrom(whale.whale, {
+  const fundTx = {
     to: baseToken,
     data: encodeErc20Transfer(HOLDER, fundAmount),
     gas: 200_000n,
-  });
+  };
+  const fund = await fork.sendFrom(whale.whale, fundTx);
+  evidence.push(txEv("fund holder", whale.whale, fundTx, fund, req.blockNumber));
   if (fund.status !== "success") {
     return baseUnattempted(`funding the holder from whale ${whale.whale} reverted on the fork — baseline unestablished`);
   }
   // Approve + supply into Comet.
-  const approve = await fork.sendFrom(HOLDER, { to: baseToken, data: encodeErc20Approve(target, fundAmount), gas: 100_000n });
-  const supply = await fork.sendFrom(HOLDER, { to: target, data: cometSupplyCalldata(baseToken, supplyAmount), gas: 900_000n });
+  const approveTx = { to: baseToken, data: encodeErc20Approve(target, fundAmount), gas: 100_000n };
+  const approve = await fork.sendFrom(HOLDER, approveTx);
+  evidence.push(txEv("approve base token", HOLDER, approveTx, approve, req.blockNumber));
+  const supplyTx = { to: target, data: cometSupplyCalldata(baseToken, supplyAmount), gas: 900_000n };
+  const supply = await fork.sendFrom(HOLDER, supplyTx);
+  evidence.push(txEv("supply baseline position", HOLDER, supplyTx, supply, req.blockNumber));
   if (approve.status !== "success" || supply.status !== "success") {
     return baseUnattempted("approve/supply into the protocol reverted on the fork, so no exitable position exists — baseline unestablished");
   }
@@ -249,14 +291,16 @@ async function runCometArchetype(
 
   // Snapshot the position, then run the baseline exit.
   const baseSnap = await fork.snapshot();
-  const baselineWithdraw = await fork.sendFrom(HOLDER, { to: target, data: cometWithdrawCalldata(baseToken, withdrawAmount), gas: 900_000n });
+  const withdrawTx = { to: target, data: cometWithdrawCalldata(baseToken, withdrawAmount), gas: 900_000n };
+  const baselineWithdraw = await fork.sendFrom(HOLDER, withdrawTx);
+  evidence.push(txEv("baseline holder withdraw", HOLDER, withdrawTx, baselineWithdraw, req.blockNumber));
   await fork.revert(baseSnap);
 
   if (baselineWithdraw.status !== "success") {
     // The exit reverts BEFORE any mutation — the door is already shut at the
     // pinned block. A decisive current restriction, not an unestablished baseline.
     const isPaused = (await fork.client.readContract({ address: target, abi: cometAbi, functionName: "isWithdrawPaused" })) as boolean;
-    evidence.push(ev({ action: "baseline withdraw", holder: HOLDER }, "reverted (exit already restricted)", req.blockNumber));
+    evidence.push(ev({ read: "isWithdrawPaused()", phase: "baseline failure diagnosis" }, isPaused, req.blockNumber));
     const cand: RestrictionCandidate = {
       selector: SELECTORS.cometWithdraw,
       signature: "withdraw(address,uint256) already reverts",
@@ -296,7 +340,12 @@ async function runCometArchetype(
   // pause guardian's withdraw-pause. Snapshot → pause → re-run exit → revert. ---
   const guardianClass = await classifyOnFork(fork, guardian);
   const diffSnap = await fork.snapshot();
-  const pause = await fork.sendFrom(guardian, { to: target, data: cometWithdrawPauseCalldata(), gas: 300_000n });
+  const pausedBefore = (await fork.client.readContract({ address: target, abi: cometAbi, functionName: "isWithdrawPaused" })) as boolean;
+  evidence.push(ev({ read: "isWithdrawPaused()", phase: "before candidate mutation" }, pausedBefore, req.blockNumber));
+  const pauseTx = { to: target, data: cometWithdrawPauseCalldata(), gas: 300_000n };
+  const pause = await fork.sendFrom(guardian, pauseTx);
+  const pauseEvidence = txEv("guardian pause withdraw", guardian, pauseTx, pause, req.blockNumber);
+  evidence.push(pauseEvidence);
   let candidate: RestrictionCandidate;
   if (pause.status !== "success") {
     candidate = {
@@ -309,12 +358,16 @@ async function runCometArchetype(
       result: "inconclusive",
       noticeSeconds: null,
       detail: "the pause guardian's pause() call itself reverted on the fork, so nothing about the exit was learned — reported as inconclusive, never as no-effect",
-      evidence: [ev({ action: "guardian pause()", from: guardian }, "reverted", req.blockNumber)],
+      evidence: [pauseEvidence],
     };
     await fork.revert(diffSnap);
   } else {
-    const afterWithdraw = await fork.sendFrom(HOLDER, { to: target, data: cometWithdrawCalldata(baseToken, withdrawAmount), gas: 900_000n });
+    const afterWithdraw = await fork.sendFrom(HOLDER, withdrawTx);
+    const afterWithdrawEvidence = txEv("holder withdraw after candidate", HOLDER, withdrawTx, afterWithdraw, req.blockNumber);
+    evidence.push(afterWithdrawEvidence);
     const isPaused = (await fork.client.readContract({ address: target, abi: cometAbi, functionName: "isWithdrawPaused" })) as boolean;
+    const pausedEvidence = ev({ read: "isWithdrawPaused()", phase: "after candidate mutation" }, isPaused, req.blockNumber);
+    evidence.push(pausedEvidence);
     await fork.revert(diffSnap);
     const safeRail =
       guardianClass.type === "safe"
@@ -334,8 +387,9 @@ async function runCometArchetype(
           ? `DIFFERENTIAL CONFIRMED: baseline withdraw succeeded; after the guardian set isWithdrawPaused()=${isPaused}, the identical withdraw reverts. The pause guardian can close the exit.${safeRail}`
           : `the guardian set isWithdrawPaused()=${isPaused} but the baseline withdraw still succeeded — not an exit restrictor.`,
       evidence: [
-        ev({ action: "guardian pause(withdraw=true)", from: guardian }, "success", req.blockNumber),
-        ev({ action: "holder withdraw after pause", from: HOLDER }, afterWithdraw.status, req.blockNumber),
+        pauseEvidence,
+        pausedEvidence,
+        afterWithdrawEvidence,
       ],
     };
   }

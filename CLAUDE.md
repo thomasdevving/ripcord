@@ -321,16 +321,18 @@ src/fork/
                    function, so an interface is matched only when a FINGERPRINT of
                    characteristic selectors is ALL present (partial ≠ match), and
                    the positive verdict inherits the match's confidence. Selectors
-                   are viem-derived, asserted in tests. ONE interface this pass:
+                   are pinned and asserted against viem derivation in tests. ONE interface this pass:
                    compound-comet-base (supply+baseToken+isWithdrawPaused ⇒ exit is
                    withdraw(address,uint256)) — built so a neighbour is data.
   exitRestriction.ts (day 7, THE FORK DIFFERENTIAL) Stops REASONING about exit
                    restriction and TESTS it. On a fork: identify the exit action,
                    establish a BASELINE exit (fund a holder from a whale, supply,
-                   withdraw — must succeed), then per guarded function snapshot →
-                   impersonate its guarding party → call with the exit-restricting
-                   argument → re-run the exit; exit now fails ⇒ a DIRECT restrictor,
-                   demonstrated. revert BETWEEN candidates so each is isolated. The
+                   withdraw — must succeed), then for each candidate registered by
+                   the matched archetype: snapshot → impersonate its guarding party →
+                   call with the exit-restricting argument → re-run the exit; exit now
+                   fails ⇒ a DIRECT restrictor, demonstrated. Revert BETWEEN candidates
+                   so each is isolated. This pass registers one Comet pause candidate; it
+                   does not discover every privileged function in the target. The
                    epistemic ceiling is in the types: a clean run is NEVER
                    can_exit_in_time and never claims safety — it is the weaker
                    `no_direct_restriction_found`, unreachable unless the exit action
@@ -467,9 +469,10 @@ only via delegatecall and is usually uninitialized.
   reader can tell a delay we could not verify from a kill switch we watched fire.
   A new verdict status `no_direct_restriction_found` — the DELIBERATELY WEAKER
   positive tier, never `can_exit_in_time`, always carrying its scope sentence and
-  the count N — is unconstructable unless the exit action was identified AND a
-  baseline established AND every guarded candidate evaluated. schema 0.12.0 /
-  ruleset 0.11.0.
+  the count N — is intended to require an identified exit action, an established
+  baseline and complete evaluation of the matched archetype's registered candidates.
+  It occurs nowhere in the current calibration set; see KNOWN EDGE #38 before relying
+  on the clean direction. schema 0.12.0 / ruleset 0.11.0.
 - **Authority PATH, not just a terminal holder (day 3).** `authorityResolution`
   carries a recursive `authorityNode` tree per depth-1 power holder plus a
   flattened `paths[]` projection ("upgrade -> ProxyAdmin -> EOA"). Confidence
@@ -1262,8 +1265,8 @@ only via delegatecall and is usually uninitialized.
 37. **[DAY 7 — the fork differential, and the graded positive tier that must
     never become a guarantee] Reasoning about exit restriction was replaced by
     TESTING it, under an epistemic ceiling stated before the code.** `ripcord
-    restrict` establishes a baseline exit on a fork and has each guarded
-    function's party try to close it (src/fork/exitRestriction.ts). Comet is the
+    restrict` establishes a baseline exit on a fork and has the matched archetype's
+    registered guarding party try to close it (src/fork/exitRestriction.ts). Comet is the
     anchor and resolved EXACTLY as predicted: its `pauseGuardian()` (a 5-of-9
     Safe) sets `isWithdrawPaused=true` and a baseline `withdraw` that succeeded
     before then reverts — a fork-confirmed zero-notice restrictor, so Comet moved
@@ -1276,8 +1279,8 @@ only via delegatecall and is usually uninitialized.
     the absence of any restriction path over arguments, sequences, and oracle/
     liquidity manipulation is not testable, for anyone. So a clean run is the
     weaker `no_direct_restriction_found`, NOT `can_exit_in_time`, scoped to the N
-    functions evaluated, and unconstructable unless the exit action was confidently
-    identified AND a baseline established. Three ceiling items ship verbatim on
+    registered candidates evaluated, and intended to require a confidently identified
+    exit action plus an established baseline. Three ceiling items ship verbatim on
     every evaluation (exit-action mis-ID, un-swept argument space, indirect/economic
     restrictions). The riskiest new false-clean — testing the WRONG exit action —
     is refused: an unmatched interface fingerprint → `exit_action_unconfident` →
@@ -1290,13 +1293,34 @@ only via delegatecall and is usually uninitialized.
     toward caution), the true negatives (WETH9/wstETH) survived, and 0 moved toward
     reassurance. The tier fires nowhere this pass and was not forced to.
 
-    SCOPE / RESIDUAL: ONE exit archetype (compound-comet-base) is implemented and
-    validated live; the interface table (exitActions.ts) is built so neighbours are
-    data. The confirmation direction (finding a restrictor) is caution-only and safe
+    SCOPE / RESIDUAL: ONE exit archetype and one registered restriction candidate
+    (compound-comet-base versus withdraw-pause) are implemented and validated live;
+    the interface table (exitActions.ts) is built so neighbours are data. The
+    confirmation direction (finding a restrictor) is caution-only and safe
     to run broadly; extending it to ERC-4626 redeem, a Lido withdrawal-queue claim
     behind PAUSE_ROLE, and pausable/blacklistable ERC20 transfer is the next step,
     each needing its own baseline mechanics + a live validation before it is trusted
     — deliberately not rushed under the day-7 timebox. schema 0.12.0 / ruleset 0.11.0.
+
+38. **[OPEN — the Comet restriction is validated; the general fork-clean tier is
+    not.]** Day 7 established the confirmation direction end to end: Comet's
+    baseline withdrawal succeeds, its registered guardian candidate closes the
+    exit, and the identical withdrawal then reverts. That supports the current
+    `no_notice` finding. It does NOT validate `no_direct_restriction_found`, which
+    occurs nowhere in the calibration set.
+
+    Three cross-field gates must be hardened before that clean direction is relied
+    upon on another target: (a) a candidate whose privileged mutation is
+    `inconclusive` is currently counted as evaluated and can fall through to the
+    clean outcome; only candidates positively returning `no_effect` may support
+    it, (b) an incomplete enumeration currently appends its gaps to `missing[]`
+    without changing the positive verdict status in the CLI path, and (c) a
+    baseline withdrawal revert is classified `already_shut` without proving the
+    pause caused it, whereas an unestablished baseline should normally remain
+    undetermined. The engine also covers the matched archetype's REGISTERED
+    candidates, currently one Comet pause function — never every privileged
+    selector in the bytecode. Until those gates land, present `restrict` as a
+    demonstrated Comet restrictor detector, not a calibrated absence detector.
 
 22. **The cleared-dependency registry is small, manual, and mainnet-only
     (consolidation pass).** `clearedRegistry.ts` documents design-not-bug
@@ -1574,16 +1598,17 @@ which were genuinely privileged, report THAT percentage.
   the project, and it is far better closed by us than opened by a judge.
   THEN (optional, if time remains): Watchtower — live monitoring of timelock
   queues, alerting when a rule change is actually queued.
-- **Day 7 (DONE — see KNOWN EDGE #37 and docs/CALIBRATION.md §14).** The fork
+- **Day 7 (DONE — see KNOWN EDGES #37/#38 and docs/CALIBRATION.md §14).** The fork
   differential: `ripcord restrict` stops reasoning about exit restriction and
-  TESTS it on a fork — identify the exit action, establish a baseline exit, then
-  per guarded function impersonate its party, call it with the exit-restricting
-  argument, and re-run the exit. A found restrictor is decisive; a clean run earns
+  TESTS one registered path on a fork — identify the exit action, establish a
+  baseline exit, then impersonate the matched archetype's guarding party, call it
+  with the exit-restricting argument, and re-run the exit. A found restrictor is decisive; a clean run is designed to earn
   only the deliberately weaker `no_direct_restriction_found` (scoped, never a
   safety guarantee, unreachable without exit-action ID + baseline). New modules:
   src/fork/exitActions.ts (versioned interface fingerprints + whales),
-  src/fork/exitRestriction.ts (the engine, ONE archetype — Comet base-withdrawal —
-  validated live), src/report/applyExitRestriction.ts (pure merge + re-compose).
+  src/fork/exitRestriction.ts (the engine, ONE archetype + ONE candidate — Comet
+  base-withdrawal versus withdraw-pause — validated live),
+  src/report/applyExitRestriction.ts (pure merge + re-compose).
   Schema gains `exitRestriction` + the verdict status + route confirmation fields;
   schema 0.12.0 / ruleset 0.11.0. Predictions registered as CI assertions FIRST
   (outcome-neutral, break-tested); exactly one verdict changed — Comet

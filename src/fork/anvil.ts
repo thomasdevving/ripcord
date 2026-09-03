@@ -18,13 +18,35 @@ export interface ForkHandle {
   client: TestClient & ReturnType<typeof publicActions> & ReturnType<typeof walletActions>;
   rpcUrl: string;
   port: number;
-  /** Sends a transaction from an (impersonated) account via eth_sendTransaction and waits for the receipt. */
-  sendFrom(from: Hex, tx: { to?: Hex; data?: Hex; value?: bigint; gas?: bigint }): Promise<{ hash: Hex; status: "success" | "reverted" }>;
+  /** Sends a transaction from an (impersonated) account and retains the receipt facts needed for fork evidence. */
+  sendFrom(from: Hex, tx: { to?: Hex; data?: Hex; value?: bigint; gas?: bigint }): Promise<ForkTransactionResult>;
   /** Take a fork state snapshot (evm_snapshot). Returns the snapshot id. */
   snapshot(): Promise<Hex>;
   /** Restore the fork to a previous snapshot (evm_revert). The differential engine reverts BETWEEN candidates so each is isolated. */
   revert(id: Hex): Promise<void>;
   stop(): Promise<void>;
+}
+
+export interface ForkTransactionResult {
+  hash: Hex;
+  status: "success" | "reverted";
+  blockNumber: bigint;
+  blockHash: Hex;
+  transactionIndex: number;
+  gasUsed: bigint;
+  /** Raw revert payload recovered by replaying a reverted transaction as eth_call in the same fork state. */
+  revertData: Hex | null;
+}
+
+function findRevertData(err: unknown, depth = 0): Hex | null {
+  if (!err || depth > 8 || typeof err !== "object") return null;
+  const value = err as Record<string, unknown>;
+  if (typeof value.data === "string" && /^0x[0-9a-fA-F]*$/.test(value.data)) return value.data as Hex;
+  for (const key of ["data", "cause", "error"]) {
+    const nested = findRevertData(value[key], depth + 1);
+    if (nested) return nested;
+  }
+  return null;
 }
 
 /** Deterministic-ish port in the ephemeral range, derived from pid+block so parallel runs don't collide. */
@@ -35,6 +57,8 @@ function pickPort(seed: bigint): number {
 export interface StartForkOptions {
   rpcUrl: string;
   blockNumber: bigint;
+  /** Executable resolved by the preflight (PATH or Foundry's default install directory). */
+  anvilExecutable?: string;
   /** Readiness timeout, ms. */
   timeoutMs?: number;
   /** Cap per-tx gas so a pathological simulated call can't run unbounded. */
@@ -47,7 +71,7 @@ export async function startAnvilFork(opts: StartForkOptions): Promise<ForkHandle
   const timeoutMs = opts.timeoutMs ?? 60_000;
 
   const proc: ChildProcess = spawn(
-    "anvil",
+    opts.anvilExecutable ?? "anvil",
     [
       "--fork-url",
       opts.rpcUrl,
@@ -117,7 +141,29 @@ export async function startAnvilFork(opts: StartForkOptions): Promise<ForkHandle
       params: [params] as never,
     })) as Hex;
     const receipt = await client.waitForTransactionReceipt({ hash });
-    return { hash, status: receipt.status };
+    let revertData: Hex | null = null;
+    if (receipt.status === "reverted") {
+      try {
+        await client.request({
+          method: "eth_call" as never,
+          params: [params, "latest"] as never,
+        });
+      } catch (err) {
+        // Store only the node's raw revert bytes. Persisting a provider error
+        // message could accidentally copy an RPC URL (and its API key) into a
+        // report, whereas the payload is deterministic and safe to publish.
+        revertData = findRevertData(err);
+      }
+    }
+    return {
+      hash,
+      status: receipt.status,
+      blockNumber: receipt.blockNumber,
+      blockHash: receipt.blockHash,
+      transactionIndex: receipt.transactionIndex,
+      gasUsed: receipt.gasUsed,
+      revertData,
+    };
   };
 
   const snapshot: ForkHandle["snapshot"] = async () => {

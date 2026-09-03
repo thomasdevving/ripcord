@@ -32,4 +32,4 @@ establish something on-chain rather than assume it.
 |---|---|
 | `summarize.mjs` | One line per report: verdict, window, time-to-exit, selector accounting, publishability. |
 | `manual-verification-audit.mjs` | Every `needsManualVerification` entry with its probe revert **decoded** — the table behind the disclosure gate's false-alarm rate. |
-| `compare-reports.mjs` | Byte-compares two report directories with `generatedAt` normalised. The determinism gate. |
+| `compare-reports.mjs` | Byte-compares two explicit report directories with `generatedAt` normalised: `node scripts/compare-reports.mjs <dirA> <dirB>`. The determinism gate. |

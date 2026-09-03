@@ -3,7 +3,8 @@
 Ripcord's verdict is a **pinned artifact**: one target, one block, one ruleset, and
 a report that is byte-identical whether you run it today from a cold cache or in a
 year from a warm one. That property is the reason anyone should believe the tool,
-and `pnpm determinism` exists to prove it rather than assert it.
+and `node scripts/compare-reports.mjs <cold-dir> <warm-dir>` exists to test it
+rather than assert it.
 
 Live market data is the opposite kind of thing. It is current, it is third-party,
 and it is different every time you ask. It is also genuinely useful — it answers
@@ -78,9 +79,9 @@ carries a `fetchedAt` stamp that is rendered on the page.
 ### The sidecars are deliberately non-deterministic
 
 `calibration/live/*.json` change on every fetch. That is correct and expected.
-`pnpm determinism` covers `calibration/reports/` only. A changed sidecar is never
-a determinism regression, and `verify-boundary` prints that note on every run so
-nobody has to rediscover it.
+The report-directory comparison covers `calibration/reports/` only. A changed
+sidecar is never a determinism regression, and `verify-boundary` prints that note
+on every run so nobody has to rediscover it.
 
 ---
 

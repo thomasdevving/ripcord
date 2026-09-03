@@ -49,7 +49,14 @@ const ok = (doc, msg) => checked.push(`${doc}: ${msg}`);
 
 // --- 1. Every 0x address mentioned in prose that we HAVE a report for: any
 //        verdict/status word claimed near it must match that report. ---
-const VERDICTS = ["no_notice", "can_exit_in_time", "trapped", "undetermined", "immutable_within_checks"];
+const VERDICTS = [
+  "no_notice",
+  "can_exit_in_time",
+  "trapped",
+  "undetermined",
+  "immutable_within_checks",
+  "no_direct_restriction_found",
+];
 
 /**
  * Human names for reports, so a MARKDOWN TABLE ROW that names a protocol and a
@@ -196,6 +203,24 @@ for (const doc of docs) {
   // bounded run of non-newline text so it cannot span unrelated sentences.
   const verdictCounts = {};
   for (const r of Object.values(reports)) verdictCounts[r.verdict.status] = (verdictCounts[r.verdict.status] ?? 0) + 1;
+
+  // A compact distribution table usually says `| `status` | 7 | ...` rather
+  // than "7 of 26 status". The latter was already checked below; missing the
+  // former let CALIBRATION.md keep its pre-day-7 6/17 split while every report
+  // and the prose immediately below it said 7/16.
+  for (const line of text.split(/\n/)) {
+    const cells = line.split("|").map((c) => c.trim());
+    if (cells.length < 4) continue;
+    const statusMatch = (cells[1] ?? "").match(/^`([a-z_]+)`$/);
+    const countMatch = (cells[2] ?? "").replace(/\*/g, "").match(/^(\d+)$/);
+    if (!statusMatch || !countMatch || !VERDICTS.includes(statusMatch[1])) continue;
+    const status = statusMatch[1];
+    const claimed = Number(countMatch[1]);
+    const actual = verdictCounts[status] ?? 0;
+    if (claimed === actual) ok(doc, `verdict table count "${status} = ${claimed}" matches`);
+    else fail(doc, `verdict table says "${status} = ${claimed}" but ${actual} reports have that verdict`);
+  }
+
   for (const v of VERDICTS) {
     const re = new RegExp(`(\\d+)\\s+of\\s+26[^\\n]{0,60}?\`?${v}\`?`, "g");
     for (const m of text.matchAll(re)) {

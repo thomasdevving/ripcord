@@ -251,7 +251,7 @@ function printVerdict(report: Report): void {
 program
   .command("restrict")
   .description(
-    "Build the power map, then FORK-EVALUATE whether a privileged party can close a holder's exit: identify the exit action, establish a baseline exit, and run each guarded function through a differential. Sandbox only — no mainnet tx is ever sent.",
+    "Build the power map, then FORK-EVALUATE one matched exit archetype: identify the exit action, establish a baseline exit, and run its registered restriction candidates through a differential. Sandbox only — no mainnet tx is ever sent.",
   )
   .argument("<address>", "contract address to evaluate")
   .requiredOption("--block <number>", "block number to pin the scan and fork to")
@@ -320,7 +320,7 @@ program
       for (const c of er.candidates) {
         console.error(`     - ${c.signature ?? c.selector}: ${c.result}${c.guardingParty ? ` (party ${c.guardingParty}${c.guardingPartyType ? `/${c.guardingPartyType}` : ""})` : ""}`);
       }
-      console.error(`   coverage    : ${er.coverage.evaluated}/${er.coverage.guardedTotal} guarded function(s) evaluated`);
+      console.error(`   coverage    : ${er.coverage.evaluated}/${er.coverage.guardedTotal} registered candidate(s) evaluated`);
       console.error(`   ceiling     :`);
       for (const c of er.ceiling) console.error(`     · ${c}`);
 
