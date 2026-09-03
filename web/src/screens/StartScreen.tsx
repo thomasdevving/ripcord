@@ -6,6 +6,19 @@
  * reviewer with three minutes, and the fastest way to lose them is to make them
  * scroll past a value proposition to reach the thing that does the work.
  *
+ * THE HERO DOES NOT WEAKEN THAT RULE, IT IS HOW THE RULE IS KEPT. The address
+ * field and the button now live INSIDE the hero band (components/Hero.tsx), so
+ * the thesis and the control that acts on it occupy the same fold. Nothing was
+ * put in front of the tool; the tool was given a first line. This card keeps
+ * what remains — what to run, and at which block — and no longer owns the
+ * address input, which would otherwise appear twice on one screen.
+ *
+ * The hero's example card quotes a committed calibration report, names the
+ * address and block it was measured at, and repeats that report's own
+ * "not proven binding" wording. That is the same rule the presets below follow:
+ * nothing on this screen may look like a result the visitor's run has not
+ * produced yet.
+ *
  * Two details that look cosmetic and are not:
  *
  *  - THE BLOCK IS ALWAYS VISIBLE, including when a preset filled it in. The
@@ -20,11 +33,12 @@
  *    not yet supported, and the first thing a reviewer checks is whether what
  *    appeared on screen actually came from the analysis.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ConfigResponse, RunMode } from "@shared/dto";
 import { createJob, ApiRequestError } from "../api.js";
 import { navigate } from "../router.js";
 import { rememberControlToken } from "../control.js";
+import { Hero } from "../components/Hero.js";
 import type { ReactElement } from "react";
 
 const ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
@@ -54,6 +68,7 @@ export function StartScreen({ config }: { config: ConfigResponse | null }): Reac
   const [advanced, setAdvanced] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<{ message: string; hint: string | null } | null>(null);
+  const addressInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (config && block === "") setBlock(config.defaultBlock);
@@ -103,9 +118,21 @@ export function StartScreen({ config }: { config: ConfigResponse | null }): Reac
   };
 
   return (
-    <main className="container">
+    <>
+      <Hero
+        address={address}
+        onAddressChange={setAddress}
+        addressValid={addressValid}
+        canSubmit={canSubmit}
+        submitting={submitting}
+        onSubmit={() => void submit()}
+        liveDisabled={liveDisabled}
+        inputRef={addressInputRef}
+      />
+
+      <main className="container">
       <section className="card">
-        <h1>Analyze a contract</h1>
+        <h2>Run settings</h2>
         <p className="note" style={{ maxWidth: "70ch", marginTop: 0 }}>
           Ripcord reads who holds privileged power over a deployed contract, what that power lets them do, and how much
           notice exists before the rules can change. Then it tests, on a sandbox fork, whether a holder's exit can
@@ -117,30 +144,6 @@ export function StartScreen({ config }: { config: ConfigResponse | null }): Reac
             <strong>Analyze is unavailable.</strong> {config.liveRuns.reason}
           </div>
         )}
-
-        <div className="field">
-          <label htmlFor="addr">Contract address — Ethereum Mainnet</label>
-          <input
-            id="addr"
-            className="mono"
-            type="text"
-            placeholder="0x…"
-            spellCheck={false}
-            autoComplete="off"
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && canSubmit) void submit();
-            }}
-            aria-invalid={address.length > 0 && !addressValid}
-            aria-describedby="addr-help"
-          />
-          <div id="addr-help" className="note small" style={{ marginTop: 5 }}>
-            {address.length > 0 && !addressValid
-              ? "That is not a valid address — 0x followed by 40 hexadecimal characters."
-              : "No wallet connection is needed. Ripcord signs nothing and sends no mainnet transaction."}
-          </div>
-        </div>
 
         <div className="field">
           <label htmlFor="mode">What to run</label>
@@ -251,6 +254,12 @@ export function StartScreen({ config }: { config: ConfigResponse | null }): Reac
                   setBlock(preset.block);
                   setBlockMode("pinned");
                   if (availableModes.includes(preset.suggestedMode)) setMode(preset.suggestedMode);
+                  // The address field a preset fills is up in the hero. Filling
+                  // a control the reader cannot see reads as the click having
+                  // done nothing, so bring it back into view and focus it.
+                  const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+                  addressInputRef.current?.scrollIntoView({ block: "center", behavior: smooth ? "smooth" : "auto" });
+                  addressInputRef.current?.focus({ preventScroll: true });
                 }}
               >
                 <strong>{preset.label}</strong>
@@ -276,6 +285,7 @@ export function StartScreen({ config }: { config: ConfigResponse | null }): Reac
           call, and the same withdrawal attempted again.
         </p>
       </section>
-    </main>
+      </main>
+    </>
   );
 }

@@ -5,6 +5,24 @@
 
 <style>
   /* ---------------------------------------------------------------
+     Ripcord — hero. DESIGN REFERENCE, not the shipped page.
+
+     The integrated version is web/src/components/Hero.tsx, and it differs
+     in three deliberate ways:
+
+       - Typography. This file loads Archivo / Source Serif 4 / IBM Plex Mono
+         from Google Fonts. The app does not: hotlinking a font would send
+         every page view to a third party, which is the same thing
+         src/live/logos.ts inlines data URIs to avoid. The app uses the
+         system stack until the three families are self-hosted.
+       - The result card. Here the figures are illustrative. In the app they
+         are quoted from a committed calibration report and carry the address
+         and block they were measured at — nothing on the product's first
+         screen may look like a result the visitor's run has not produced.
+       - The position-size pills ($10K/$100K/$1M) exist here only. The proof
+         engine measures the CONTRACT's holdings, not the visitor's position,
+         so in the app that control would do nothing.
+
      Ripcord — hero.
      Single committed theme: near-black with a warm-green undertone.
      Every colour is painted explicitly so the page holds on any ground.

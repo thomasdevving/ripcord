@@ -505,6 +505,291 @@ ul.plain li { margin-bottom: 5px; font-size: 13px; color: var(--text-secondary);
 .ceiling ul { margin: 6px 0 0; padding-left: 18px; }
 .ceiling li { margin-bottom: 6px; }
 
+/* --- hero band ------------------------------------------------------------
+ *
+ * A committed dark band, whatever theme the rest of the app is in. Its tokens
+ * are scoped to `.hb` and never touch the app's, so the light and dark
+ * stylesheets above are unaffected and a theme switch cannot leave this band
+ * half-repainted.
+ *
+ * The palette is the design's own, with one rule carried over from the top of
+ * this file: GREEN IS NOT A SAFETY COLOUR. Here it marks the exit concept, the
+ * primary control and links. The verdict in the example card is amber and red,
+ * never green, exactly as a rendered report would show it.
+ *
+ * Every class is `hb-` prefixed. The app already owns .card, .chip, .link,
+ * .field, .note, .row, .pill and .primary, and an unprefixed hero class would
+ * silently restyle a report page.
+ */
+
+.hb {
+  --hb-bg: #0f120e;
+  --hb-surface: #181c17;
+  --hb-surface-2: #1f241e;
+  --hb-ink: #e7ede4;
+  --hb-ink-muted: #9aa396;
+  --hb-ink-faint: #6b7568;
+  --hb-rule: #293027;
+  --hb-rule-strong: #3a4237;
+  --hb-green: #4cc384;
+  --hb-green-lift: #5fd293;
+  --hb-green-wash: #16281e;
+  --hb-green-edge: #23422f;
+  --hb-green-rule: #22392c;
+  --hb-green-dim: #7ca98f;
+  --hb-amber: #dfa748;
+  --hb-amber-wash: #2a2216;
+  --hb-amber-dim: #8e7a4e;
+  --hb-red: #ef7361;
+  --hb-red-wash: #2c1917;
+  --hb-red-edge: #4a2823;
+
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background: var(--hb-bg);
+  color: var(--hb-ink);
+  border-bottom: 1px solid var(--hb-rule);
+}
+
+.hb-net { position: absolute; inset: 0; z-index: 0; display: block; width: 100%; height: 100%; }
+
+/* Darkens the ground under the copy column and at the edges so the graph never
+   crosses live text at readable contrast. */
+.hb-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    radial-gradient(115% 88% at 4% 68%, rgba(15, 18, 14, 0.95) 0%, rgba(15, 18, 14, 0.78) 32%, rgba(15, 18, 14, 0) 68%),
+    linear-gradient(180deg, rgba(15, 18, 14, 0.62) 0%, rgba(15, 18, 14, 0) 20%, rgba(15, 18, 14, 0) 72%, rgba(15, 18, 14, 0.66) 100%);
+}
+
+.hb-frame {
+  position: relative;
+  z-index: 2;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: clamp(18px, 2.6vw, 28px) clamp(20px, 4vw, 44px) clamp(20px, 2.6vw, 30px);
+  display: grid;
+  gap: clamp(26px, 3.6vw, 46px);
+}
+
+.hb-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px 20px;
+  flex-wrap: wrap;
+  padding-bottom: clamp(12px, 1.5vw, 18px);
+  border-bottom: 1px solid var(--hb-rule);
+}
+
+.hb-eyebrow { margin: 0; font-family: var(--mono); font-size: 12px; letter-spacing: 0.055em; color: var(--hb-ink-muted); }
+.hb-eyebrow b { font-weight: 600; color: var(--hb-ink); }
+
+.hb-segmented { display: flex; gap: 6px; }
+
+.hb-seg {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--hb-ink-muted);
+  background: transparent;
+  border: 1px solid var(--hb-rule-strong);
+  border-radius: 999px;
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: color 0.18s ease, background-color 0.18s ease, border-color 0.18s ease;
+}
+.hb-seg:hover { color: var(--hb-ink); }
+.hb-seg[aria-pressed="true"] { background: var(--hb-green-wash); border-color: var(--hb-green-edge); color: var(--hb-green); }
+
+.hb-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 372px);
+  gap: clamp(30px, 4.4vw, 66px);
+  align-items: end;
+}
+
+.hb-copy { display: flex; flex-direction: column; gap: clamp(16px, 1.8vw, 24px); max-width: 44rem; }
+
+.hb-headline {
+  margin: 0;
+  font-size: clamp(2rem, 4.4vw, 3.4rem);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.032em;
+  color: var(--hb-ink);
+  text-wrap: balance;
+}
+/* The premise is the quiet half; the gap it leaves is the loud one. */
+.hb-setup { color: var(--hb-ink-muted); }
+
+.hb-sub { margin: 0; font-size: 15px; line-height: 1.6; color: var(--hb-ink-muted); max-width: 60ch; }
+
+.hb-form { display: flex; flex-direction: column; gap: 8px; max-width: 40rem; }
+
+.hb-label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--hb-ink-faint);
+}
+
+.hb-row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+.hb-input {
+  flex: 1 1 22rem;
+  min-width: 0;
+  font-size: 14px;
+  padding: 12px 14px;
+  color: var(--hb-ink);
+  background: var(--hb-surface);
+  border: 1px solid var(--hb-rule-strong);
+  border-radius: 3px;
+}
+.hb-input::placeholder { color: var(--hb-ink-faint); }
+.hb-input:focus-visible { outline: 2px solid var(--hb-green); outline-offset: 2px; }
+.hb-input[aria-invalid="true"] { border-color: var(--hb-red-edge); }
+
+.hb-btn {
+  flex: 0 0 auto;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--hb-bg);
+  background: var(--hb-green);
+  border: 1px solid var(--hb-green);
+  border-radius: 3px;
+  padding: 12px 22px;
+  cursor: pointer;
+  transition: background-color 0.18s ease, border-color 0.18s ease;
+}
+.hb-btn:hover:not(:disabled) { background: var(--hb-green-lift); border-color: var(--hb-green-lift); }
+.hb-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.hb-btn:focus-visible { outline: 2px solid var(--hb-green); outline-offset: 3px; }
+
+.hb-help { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--hb-ink-faint); }
+
+/* --- example card --- */
+
+.hb-card { position: relative; z-index: 3; background: var(--hb-surface); border: 1px solid var(--hb-rule); border-radius: 3px; }
+
+.hb-card-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--hb-rule);
+  background: var(--hb-surface-2);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--hb-ink-faint);
+}
+
+.hb-card-top { background: var(--hb-green-wash); padding: 18px 16px 0; }
+
+.hb-figure {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: clamp(1.9rem, 2.6vw, 2.3rem);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--hb-ink);
+  font-variant-numeric: tabular-nums;
+}
+.hb-vs { font-family: var(--mono); font-weight: 400; font-size: 0.9rem; letter-spacing: 0.06em; color: var(--hb-green-dim); }
+
+.hb-card-label { margin: 10px 0 16px; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.04em; color: var(--hb-ink-muted); }
+
+.hb-stats { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--hb-green-rule); margin: 0 -16px; }
+
+.hb-stat { padding: 11px 12px; border-left: 1px solid var(--hb-green-rule); }
+.hb-stat:first-child { border-left: 0; padding-left: 16px; }
+.hb-stat-v { font-family: var(--mono); font-size: 12.5px; color: var(--hb-ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.hb-stat-k { margin-top: 3px; font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--hb-ink-faint); }
+
+.hb-card-bottom {
+  background: var(--hb-amber-wash);
+  border-top: 1px solid var(--hb-rule);
+  padding: 14px 16px 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.hb-chip {
+  align-self: flex-start;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--hb-red);
+  background: var(--hb-red-wash);
+  border: 1px solid var(--hb-red-edge);
+  border-radius: 2px;
+  padding: 5px 11px;
+}
+
+.hb-verdict { margin: 0; font-family: var(--mono); font-size: 11px; line-height: 1.5; color: var(--hb-amber); }
+.hb-verdict span { color: var(--hb-amber-dim); }
+
+/* The provenance line is part of the card, not a footnote to it: a quoted
+   figure with no source is the thing this project refuses to render. */
+.hb-card-source {
+  margin: 0;
+  padding: 11px 16px 13px;
+  border-top: 1px solid var(--hb-rule);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--hb-ink-faint);
+}
+.hb-card-source .mono { word-break: break-all; }
+
+.hb-footline {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: clamp(12px, 1.5vw, 16px);
+  border-top: 1px solid var(--hb-rule);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--hb-ink-faint);
+}
+.hb-tick { width: 26px; height: 1px; background: var(--hb-rule-strong); flex: none; }
+
+@media (max-width: 1020px) {
+  .hb-stage { grid-template-columns: minmax(0, 1fr); align-items: start; gap: clamp(26px, 4vw, 36px); }
+  .hb-card { max-width: 420px; }
+}
+
+@media (max-width: 560px) {
+  .hb-card { max-width: none; }
+  .hb-stat { padding: 10px 9px; }
+  .hb-stat:first-child { padding-left: 16px; }
+  .hb-btn { flex: 1 1 auto; }
+}
+
+@media print {
+  .hb-net, .hb-veil, .hb-segmented, .hb-form { display: none !important; }
+  .hb { background: #fff; color: #000; }
+}
+
 @media print {
   .topbar, .runbar, button, .graph-wrap { display: none !important; }
   section.card { break-inside: avoid; border: 1px solid #ccc; }
