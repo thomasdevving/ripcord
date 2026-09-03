@@ -37,6 +37,11 @@ export function ReportScreen({ reportId }: { reportId: string }): ReactElement {
     getReport(reportId)
       .then((res) => {
         setStructure(res.structure);
+        // A stored report opens as a map, not as an empty inspector. Select the
+        // target by default so the right-hand column immediately explains what
+        // the left-hand schema is centred on; clicking any other node replaces
+        // that context without changing the layout.
+        setSelected(res.structure?.nodes.find((node) => node.kind === "target")?.address ?? null);
         const parsed = asReport(res.report);
         if (parsed) setReport(parsed);
         else setError({ message: "That report was returned in a shape this page does not recognise.", blocked: false });
@@ -79,13 +84,23 @@ export function ReportScreen({ reportId }: { reportId: string }): ReactElement {
 
   return (
     <main className="container wide">
+      <div className="split report-map-layout">
+        <section className="card report-map-card">
+          <h1>Power map</h1>
+          <p className="note report-map-description">
+            Authority rises from the analyzed contract to the addresses and contracts that can control it. Select any
+            node to inspect the observed relation and the reads behind it.
+          </p>
+          <PowerMap snapshot={structure} selected={selected} onSelect={setSelected} />
+        </section>
+        <DetailPanel snapshot={structure} selected={selected} onClose={() => setSelected(null)} />
+      </div>
+
       <div className="banner info">
         This is a stored report, with infrastructure details redacted for publication. It describes chain state at block{" "}
         <span className="mono">{report.block.number}</span> and was generated on {report.generatedAt.slice(0, 10)} under
         ruleset {report.rulesetVersion}. No chain read happens when you open this page.
       </div>
-      <PowerMap snapshot={structure} selected={selected} onSelect={setSelected} />
-      <DetailPanel snapshot={structure} selected={selected} onClose={() => setSelected(null)} />
       <ReportView
         report={report}
         reportId={reportId}

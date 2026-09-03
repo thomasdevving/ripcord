@@ -191,7 +191,7 @@ export function AnalysisScreen({ jobId }: { jobId: string }): ReactElement {
           )}
         </section>
 
-        <div className="split">
+        <div className="split analysis-layout">
           <section className="card">
             <h2>Power map</h2>
             <p className="note" style={{ marginTop: 0 }}>

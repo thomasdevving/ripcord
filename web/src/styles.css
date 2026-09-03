@@ -485,15 +485,24 @@ label {
 .split { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
 @media (max-width: 1040px) { .split { grid-template-columns: minmax(0, 1fr); } }
 
-/* STICKINESS BELONGS TO THE SPLIT LAYOUT, NOT TO THE PANEL.
+/* STICKINESS BELONGS TO THE LIVE ANALYSIS LAYOUT, NOT TO THE PANEL.
  *
  * In the analysis view the panel is a side column beside a 540px graph, and
  * staying in view while the reader works the map is the point. The report
- * stacks the same component full-width under the map, where sticky made an
- * often-EMPTY "Details — select a node" card follow the reader down the entire
- * report. Scoping the rule to `.split` gives the side column its behaviour and
- * lets the stacked one scroll away like any other section. */
-.split > .detail-panel { position: sticky; top: 110px; max-height: calc(100vh - 130px); overflow-y: auto; }
+ * now uses the same left/right composition, but is a document: its inspector
+ * must scroll away with the opening map instead of following the reader through
+ * every evidence section below. */
+.analysis-layout > .detail-panel { position: sticky; top: 110px; max-height: calc(100vh - 130px); overflow-y: auto; }
+
+.report-map-layout { grid-template-columns: minmax(0, 1fr) 380px; align-items: stretch; }
+.report-map-layout > section.card { margin-bottom: 16px; }
+.report-map-card { min-width: 0; }
+.report-map-description { max-width: 72ch; margin-top: 0; }
+.report-map-layout > .detail-panel { min-width: 0; }
+
+@media (max-width: 1040px) {
+  .report-map-layout { grid-template-columns: minmax(0, 1fr); }
+}
 
 /* --- tables and evidence -------------------------------------------------- */
 
