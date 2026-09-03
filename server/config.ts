@@ -37,6 +37,12 @@ export interface ServerConfig {
   webDistDir: string | null;
   /** Committed historical reports, served read-only and never as a directory listing of the filesystem. */
   calibrationDir: string;
+  /**
+   * Committed Mobula snapshots, used ONLY by the asset-coverage panel. Its
+   * absence is a supported state: coverage then reports Mobula as unavailable
+   * and every pinned observation is still shown.
+   */
+  liveSidecarDir: string;
   mobulaApiKey: string | null;
 }
 
@@ -109,6 +115,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     defaultBlock: 0n,
     webDistDir: env.RIPCORD_WEB_DIST ? resolve(env.RIPCORD_WEB_DIST) : null,
     calibrationDir: resolve(env.RIPCORD_CALIBRATION_DIR ?? "calibration/reports"),
+    liveSidecarDir: resolve(env.RIPCORD_LIVE_SIDECAR_DIR ?? "calibration/live"),
     mobulaApiKey: env.MOBULA_API_KEY && env.MOBULA_API_KEY.trim() !== "" ? env.MOBULA_API_KEY : null,
   };
 

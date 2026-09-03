@@ -320,3 +320,99 @@ The Docker smoke job builds without credentials, mounts a fresh root-owned data
 volume, and checks boot and saved-report access. This checks deployment mechanics;
 it does not validate an archive RPC or a live mainnet fork. Before presenting,
 run the chosen target on the deployed service and record a backup demo.
+
+---
+
+## 10. Assets & analysis coverage
+
+A panel on the report and analysis views that answers, per asset: was it seen in
+the Mobula snapshot, was its balance established at the analysis block, was it in
+a fork experiment, what did that experiment show, and what was never examined.
+
+**It is a scope view, not a risk score.** There is no ladder from "found" to
+"safe", no coverage percentage and no share-of-value-tested. A percentage would
+need a denominator, and nothing here establishes a complete asset inventory.
+
+### Where it lives
+
+`server/coverage.ts` exposes `buildAssetCoverage(report, liveExposure)` — a pure
+function of two artifacts that already exist. It performs **no** chain read, RPC
+call, fork or Mobula fetch. That is deliberate: a composer that could fetch the
+missing piece would erase the gaps this panel exists to display.
+
+It sits outside the pinned chain. `src/report`, `src/detect`, `src/chain` and
+`src/fork` do not import it or Mobula, its output never enters the deterministic
+report JSON, and it is served as a separate envelope at
+`GET /api/reports/:id/coverage` — through the same `loadPublishable` gate as
+every other report transport, so a blocked report returns **451** here too.
+
+### Three independent characteristics
+
+| Characteristic | States |
+| --- | --- |
+| **Mobula observation** | `observed` · `not_listed` · `chain_unclear` · `unavailable` |
+| **Balance at the analysis block** | `verified` · `read_failed` · `no_recorded_evidence` · `different_chain` |
+| **Fork experiments** | zero or more records, each with its own kind, account, execution status and caveats |
+
+They are independent. An asset can be observed with no on-chain evidence, have a
+verified balance and no experiment, or appear only in an experiment.
+
+### The judgements that keep it honest
+
+**A missing dependency entry is not a zero balance.** `detectDependencies`
+records an entry only for a **non-zero** balance and `continue`s otherwise, so a
+genuine zero leaves no artifact at all. Absence is therefore unusable as
+evidence, and the panel says `no_recorded_evidence` with that reason spelled out.
+A *failed* read is different — that one **is** recorded as an `unknowns[]` entry —
+so the two are told apart.
+
+**Curated-list membership is eligibility, never evidence.** Being on
+`MAJOR_TOKENS` means the asset was eligible to be checked, not that it was
+checked in this run.
+
+**Identity is (chain, address).** Mobula reports `evm:1`, the report reports `1`;
+both normalise to `evm:<n>`. A source with no usable chain yields a null chain
+reference, and a null reference can never produce a positive match. Native assets
+are keyed `evm:N|native` — the `0xeeee…` sentinel is identical on every chain
+while meaning a different asset on each.
+
+**Account scope travels with every experiment.** The withdrawal baseline
+exercises a **sandbox holder** Ripcord funded on the fork, not the target. A
+successful sandbox withdrawal of USDC is never rendered as "the target's USDC was
+withdrawn". The upgrade proof is separate, carries the impersonated controller,
+and the two never collapse into one green tick.
+
+**Fork linkage must be earned from evidence.** An asset is attached to the
+withdrawal experiment only when the report carries a `baseToken()` read whose
+recorded `params.address` is the target. Reports written before that parameter
+existed return "Could not establish asset-level test coverage" instead of being
+linked by protocol name or archetype — visible on the committed Comet report,
+whose upgrade proof *is* linkable (its deltas name the token) while its
+withdrawal test is not.
+
+**Historical results keep their version.** A report from an earlier ruleset
+carries an explicit caveat that it has not been re-run under the current
+full-position and causality checks.
+
+### Counts and the two clocks
+
+Counts are computed, scoped and overlapping — never combined:
+
+> 5341 entries available in this snapshot · 12 shown here · 6 with recorded
+> target-balance evidence · 0 in a withdrawal experiment · 0 in an upgrade proof
+
+The shown subset is never presented as the whole inventory: the floor, the
+display cap and each withheld bucket are rendered above the table.
+
+The Mobula snapshot and the pinned block are shown as **separate observations**
+with their own timestamps. A difference between them is not an inconsistency, and
+a stored snapshot keeps its original `fetchedAt`.
+
+### Mobula is optional
+
+Snapshots are read from committed sidecars (`calibration/live/`), indexed by
+**(chain, target)** — never by file or protocol name, so a fresh scan of a target
+reuses the snapshot for that same address with its original fetch time intact. A
+missing or unreadable snapshot makes the panel **partial**: Mobula reads
+`unavailable` and every pinned balance and fork observation is still shown. It
+can never fail a scan, a fork, or the report page.

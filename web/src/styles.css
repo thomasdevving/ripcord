@@ -467,6 +467,35 @@ pre.raw {
 
 .copy-btn { font-size: 11px; padding: 2px 8px; border-radius: 5px; }
 
+/* The expanded evidence for one asset row. Constrained so a long address or a
+   verbatim ceiling item cannot widen the table past its scroll container. */
+/* Compact, non-stretching chips. Each count is a short fact, and stretching
+   them to equal width makes five facts look like five buttons. */
+.chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+
+.coverage-detail-wrap {
+  position: relative;
+  z-index: 1;
+  margin-top: 8px;
+  min-width: 420px;
+  max-width: 620px;
+}
+.coverage-detail {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--plane);
+  padding: 14px;
+}
+.coverage-detail h4 {
+  margin: 14px 0 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.coverage-detail h4:first-child { margin-top: 0; }
+.coverage-detail td, .coverage-detail th { word-break: break-word; }
+
 .empty { padding: 26px; text-align: center; color: var(--muted); font-size: 13px; }
 
 ul.plain { margin: 6px 0; padding-left: 18px; }

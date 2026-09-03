@@ -87,8 +87,11 @@ async function main(): Promise<void> {
   const store = new JobStore(config.dataDir);
   await store.init();
 
-  const reports = new ReportService(store, config.calibrationDir, rpcSecrets(config.rpcUrls.values()));
+  const reports = new ReportService(store, config.calibrationDir, rpcSecrets(config.rpcUrls.values()), config.liveSidecarDir);
   const indexed = await reports.init();
+  // Mobula snapshots for the coverage panel. Soft by design: zero indexed
+  // snapshots is a supported state, not a startup failure.
+  const sidecars = await reports.indexLiveSidecars();
 
   const manager = new JobManager(config, store, resolveWorkerPath());
   const { recovered } = await manager.init();
@@ -142,6 +145,7 @@ async function main(): Promise<void> {
       `  live runs    : ${blocked ? `DISABLED — ${blocked}` : "enabled"}`,
       `  fork sandbox : ${anvil.available ? anvil.version : "unavailable (scan mode only)"}`,
       `  saved reports: ${indexed.indexed} calibration report(s) indexed, ${indexed.blocked} withheld by the disclosure gate`,
+      `  asset coverage: ${sidecars} Mobula snapshot(s) indexed by (chain, target)`,
       `  recovered    : ${recovered} interrupted job(s) from a previous run`,
     ].join("\n"),
   );

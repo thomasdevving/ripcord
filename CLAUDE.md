@@ -433,6 +433,33 @@ server/         (webapp) THE WEB ORCHESTRATION. Imports the engine functions
                    once a browser holds it no later decision takes it back.
                    Also assembles the power map from FOUND FACTS ONLY.
 
+server/coverage.ts + server/shared/coverage.ts
+                   (asset coverage) buildAssetCoverage(report, liveExposure) —
+                   a PURE function of two existing artifacts that makes the SCOPE
+                   OF THE EVIDENCE legible per asset. No chain read, no RPC, no
+                   fork, no Mobula fetch: a composer that could fetch the missing
+                   piece would erase the gaps it exists to show. Three INDEPENDENT
+                   characteristics, never a ladder from "found" to "safe": Mobula
+                   observation, balance at the analysis block, and zero-or-more
+                   fork experiment records. The judgements, all conservative:
+                   identity is (chain, address) with natives keyed per chain (the
+                   0xeeee sentinel is the same string on every chain); a null
+                   chain never yields a positive match; a MISSING dependency entry
+                   is NOT a zero balance (detectDependencies records only NON-ZERO
+                   balances, so a real zero leaves no artifact) while a FAILED read
+                   is recorded in unknowns[] and reported separately; curated-list
+                   membership is eligibility, never evidence; the withdrawal
+                   baseline's account is a SANDBOX HOLDER, not the target, and says
+                   so on every record; and an asset is linked to the withdrawal
+                   experiment ONLY via a baseToken() read whose params.address is
+                   the target — older reports lacking that field report "could not
+                   establish asset-level test coverage" rather than being linked by
+                   protocol name. Outside the pinned chain, absent from the
+                   deterministic report JSON, served at GET /api/reports/:id/coverage
+                   behind the same loadPublishable gate (451 on a blocked report).
+                   No coverage percentage or safety score — there is no denominator.
+                   See docs/WEBAPP.md §10.
+
 web/            (webapp) React + Vite frontend. Computes NO risk conclusion:
                    verdicts, notices, route minima and uncertainty all arrive
                    already decided by the server. A second implementation of that

@@ -50,11 +50,70 @@ export class ReportService {
   /** id → absolute path, for committed calibration reports only. Built once at startup. */
   private readonly calibration = new Map<string, { path: string; item: SavedReportListItem }>();
 
+  /**
+   * Mobula snapshots, indexed by `<chainRef>|<lowercased target>` — never by
+   * file name or protocol name.
+   *
+   * Keying on the address is what lets a FRESH scan of a target reuse the
+   * committed snapshot for that same address: it is the same account, and the
+   * snapshot keeps its original `fetchedAt`, which the panel renders so its age
+   * is visible. Keying on a name would instead match "the Comet report" to "the
+   * Comet sidecar" by convention, which is exactly the kind of inference this
+   * feature refuses everywhere else.
+   */
+  private readonly liveSidecars = new Map<string, string>();
+
   constructor(
     private readonly store: JobStore,
     private readonly calibrationDir: string,
     private readonly secrets: string[] = [],
+    /** Committed Mobula snapshots. Optional: their absence only makes the coverage panel partial. */
+    private readonly liveDir: string | null = null,
   ) {}
+
+  /**
+   * Indexes the committed Mobula snapshots by (chain, target).
+   *
+   * Failure here is deliberately soft. A missing, unreadable or malformed
+   * snapshot directory must never stop a report being served — Mobula is not
+   * allowed to block the scan or the fork, and it is not allowed to block their
+   * presentation either.
+   */
+  async indexLiveSidecars(): Promise<number> {
+    if (!this.liveDir || !existsSync(this.liveDir)) return 0;
+    let indexed = 0;
+    for (const file of (await readdir(this.liveDir)).filter((f) => f.endsWith(".json"))) {
+      try {
+        const parsed = JSON.parse(await readFile(join(this.liveDir, file), "utf8")) as {
+          target?: string;
+          chainId?: number;
+        };
+        if (typeof parsed.target !== "string" || typeof parsed.chainId !== "number") continue;
+        this.liveSidecars.set(`evm:${parsed.chainId}|${parsed.target.toLowerCase()}`, join(this.liveDir, file));
+        indexed++;
+      } catch {
+        // A snapshot that will not parse is skipped, not fatal. The panel then
+        // reports Mobula as absent for that target, which is accurate.
+      }
+    }
+    return indexed;
+  }
+
+  /**
+   * The Mobula snapshot for a (chain, target), or null.
+   *
+   * Null is a first-class answer that the composer renders as "Mobula data
+   * unavailable" — never as "this asset is not held".
+   */
+  async loadLiveExposure(chainId: number, target: string): Promise<unknown | null> {
+    const path = this.liveSidecars.get(`evm:${chainId}|${target.toLowerCase()}`);
+    if (!path) return null;
+    try {
+      return JSON.parse(await readFile(path, "utf8")) as unknown;
+    } catch {
+      return null;
+    }
+  }
 
   /**
    * Indexes the committed calibration reports.

@@ -32,6 +32,8 @@ import type { ServerConfig } from "./config.js";
 import { availableModes, liveRunsBlockedReason, providerHostFor, rpcUrlFor } from "./config.js";
 import { JobManager, QueueFullError, IdempotencyConflictError, SubmissionRateError } from "./jobs/manager.js";
 import { ReportService, BLOCKED_MESSAGE } from "./reports.js";
+import { buildAssetCoverage } from "./coverage.js";
+import type { LiveExposure } from "../src/live/exposure.js";
 import { validateCreateJob } from "./validate.js";
 import { classify } from "./sanitize.js";
 import { schemaVersion, rulesetVersion } from "../src/report/schema.js";
@@ -292,6 +294,30 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
       return sendError(reply, 404, { code: "not_found", message: "No such report.", hint: null });
     }
     return reply.send({ id: loaded.value.id, origin: loaded.value.origin, report: loaded.value.report, structure: reportStructure(loaded.value.report as Report) });
+  });
+
+  /**
+   * Asset coverage: which assets were observed, which balances were verified at
+   * the analysis block, and which assets were in a fork experiment.
+   *
+   * Goes through `loadPublishable` like every other report transport, so a
+   * blocked report cannot leak its findings sideways through coverage labels,
+   * counts or evidence references. Composed on demand from two artifacts that
+   * already exist — it performs no chain read, no fork and no Mobula fetch, so
+   * a missing snapshot makes the panel PARTIAL and never fails the request.
+   */
+  app.get("/api/reports/:id/coverage", async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
+    const loaded = await reports.loadPublishable(req.params.id);
+    if (!loaded.ok) {
+      if (loaded.reason === "blocked") return reply.status(451).send({ blocked: true, message: BLOCKED_MESSAGE });
+      return sendError(reply, 404, { code: "not_found", message: "No such report.", hint: null });
+    }
+    const report = loaded.value.report as Report;
+    // Mobula is optional by construction here: a null snapshot yields a coverage
+    // model whose Mobula characteristic reads "unavailable", with every pinned
+    // balance and fork observation still present.
+    const exposure = (await reports.loadLiveExposure(report.chainId, report.target?.address ?? "")) as LiveExposure | null;
+    return reply.send({ id: loaded.value.id, coverage: buildAssetCoverage(report, exposure) });
   });
 
   app.get("/api/reports/:id/download", async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {

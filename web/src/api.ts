@@ -25,6 +25,7 @@ import type {
   RunMode,
   SavedReportListItem,
 } from "@shared/dto";
+import type { AssetCoverage } from "@shared/coverage";
 
 export class ApiRequestError extends Error {
   constructor(public readonly api: ApiError, public readonly status: number) {
@@ -67,6 +68,13 @@ export const cancelJob = (jobId: string, controlToken: string) =>
     method: "POST",
     body: JSON.stringify({ controlToken }),
   });
+
+/**
+ * Asset coverage for a report. Goes through the same publication gate as the
+ * report body, so a blocked report yields a 451 here too.
+ */
+export const getCoverage = (id: string) =>
+  request<{ id: string; coverage: AssetCoverage }>(`/api/reports/${encodeURIComponent(id)}/coverage`);
 
 export const listReports = () => request<{ reports: SavedReportListItem[] }>("/api/reports");
 

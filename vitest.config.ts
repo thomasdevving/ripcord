@@ -13,9 +13,20 @@
  * configurations independent.
  */
 import { defineConfig } from "vitest/config";
+import { fileURLToPath } from "node:url";
 
 export default defineConfig({
-  resolve: { alias: { "@shared": new URL("./server/shared", import.meta.url).pathname } },
+  resolve: {
+    alias: {
+      // `fileURLToPath`, NOT `.pathname`. A file URL keeps its path
+      // percent-encoded, so `.pathname` yields ".../Exit%20Window/server/shared"
+      // for any checkout whose path contains a space — a directory that does not
+      // exist, which makes every test importing `@shared` fail to load with a
+      // module-resolution error. It works on CI only because the repository is
+      // checked out as `ripcord`, with no space to encode.
+      "@shared": fileURLToPath(new URL("./server/shared", import.meta.url)),
+    },
+  },
   test: {
     root: ".",
     include: ["test/**/*.test.ts"],
