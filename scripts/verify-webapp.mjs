@@ -4,7 +4,7 @@
  * Sibling of scripts/verify-boundary.mjs, which does the same job for the Mobula
  * live layer. Both exist because "we were careful" is not a control.
  *
- * Six properties, each corresponding to a way this integration could quietly go
+ * Seven properties, each corresponding to a way this integration could quietly go
  * wrong:
  *
  *  1. THE SHARED DTO MODULE IMPORTS NO NODE BUILTIN. It is compiled into the
@@ -31,7 +31,12 @@
  *     deterministic, with no webapp present at all. A transitive import walk, the
  *     same technique verify-boundary.mjs uses.
  *
- * Deliberately NARROW, and it says so: it checks these six things and prints what
+ *  7. THE PRODUCTION IMAGE CARRIES THE MOBULA SIDECARS. The report API reads
+ *     committed snapshots at runtime. Excluding calibration/live from the build
+ *     context or failing to copy it makes every deployed report silently look as
+ *     if no snapshot was stored.
+ *
+ * Deliberately NARROW, and it says so: it checks these seven things and prints what
  * a human still has to look at. A checker that implied full coverage would be its
  * own false-clean.
  */
@@ -191,10 +196,23 @@ while (stack.length) {
 if (leak) fail(`the pinned engine path reaches the webapp: ${leak} — the engine must stay usable with no webapp present`);
 else pass(`no import path from the pinned engine into server/ or web/ (${seen.size} modules walked transitively)`);
 
+// --- 7. the production image carries committed Mobula sidecars --------------
+
+const dockerfile = readFileSync("Dockerfile", "utf8");
+const dockerignore = readFileSync(".dockerignore", "utf8");
+const liveIgnored = /^\s*calibration\/live\/?\s*$/m.test(dockerignore);
+const liveCopied = /^\s*COPY\s+calibration\/live\/?\s+\.\/calibration\/live\/?\s*$/m.test(dockerfile);
+const liveConfigured = /RIPCORD_LIVE_SIDECAR_DIR=\/app\/calibration\/live\b/.test(dockerfile);
+
+if (liveIgnored) fail(".dockerignore excludes calibration/live, so committed Mobula snapshots cannot enter the production image");
+if (!liveCopied) fail("Dockerfile does not copy calibration/live into the production image");
+if (!liveConfigured) fail("Dockerfile does not point RIPCORD_LIVE_SIDECAR_DIR at the copied snapshot directory");
+if (!liveIgnored && liveCopied && liveConfigured) pass("production image includes and configures committed Mobula sidecars");
+
 // --- what this does NOT check ------------------------------------------------
 
 console.log(
-  `\nScope: this checks six structural properties. It does NOT verify UI copy, the\n` +
+  `\nScope: this checks seven structural properties. It does NOT verify UI copy, the\n` +
     `disclosure gate's runtime behaviour (test/webappJobs.test.ts covers that), or\n` +
     `that the rendered figures match a report (scripts/verify-pages.mjs does, for\n` +
     `the committed calibration pages). A green run here is not a review.`,

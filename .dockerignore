@@ -23,11 +23,10 @@ dist-web
 .github
 .gitleaks.toml
 
-# Rendered pages and live sidecars: the container serves reports through the API
-# from calibration/reports, which the Dockerfile copies explicitly. site/ is the
-# GitHub Pages artifact and has no role here.
+# Rendered pages. site/ is the GitHub Pages artifact and has no role in the
+# webapp container. The committed Mobula sidecars in calibration/live are kept
+# in the build context because the report API indexes them at startup.
 site
-calibration/live
 
 # Editor, OS and log noise.
 .DS_Store

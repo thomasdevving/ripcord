@@ -100,10 +100,11 @@ COPY --from=build /app/dist-server ./dist-server
 COPY --from=build /app/dist-web ./dist-web
 COPY --from=build /app/package.json ./package.json
 
-# Committed historical evidence, served read-only through the report routes.
-# Copied explicitly rather than by mounting the repo, so the container never has
-# a filesystem path into anything else.
+# Committed historical evidence and timestamped Mobula sidecars, served
+# read-only through the report routes. Copied explicitly rather than by mounting
+# the repo, so the container never has a filesystem path into anything else.
 COPY calibration/reports ./calibration/reports
+COPY calibration/live ./calibration/live
 
 # node:22 ships an unprivileged `node` user (uid 1000). /data is created and
 # owned here so the app can write even when no volume is attached; when Railway
@@ -117,7 +118,8 @@ ENV NODE_ENV=production \
     PORT=8080 \
     RIPCORD_DATA_DIR=/data \
     RIPCORD_WEB_DIST=/app/dist-web \
-    RIPCORD_CALIBRATION_DIR=/app/calibration/reports
+    RIPCORD_CALIBRATION_DIR=/app/calibration/reports \
+    RIPCORD_LIVE_SIDECAR_DIR=/app/calibration/live
 
 # Only the web port. anvil binds loopback inside the container and is never
 # published, so there is no public RPC proxy here.
@@ -128,7 +130,8 @@ EXPOSE 8080
 # failure, and this makes it a build failure instead of a 3am one.
 RUN test -f /app/dist-server/server/index.js \
  && test -f /app/dist-server/server/jobs/worker.js \
- && test -f /app/dist-web/index.html
+ && test -f /app/dist-web/index.html \
+ && test -d /app/calibration/live
 
 # tini reaps zombies and forwards signals; the CMD is the real production
 # entrypoint, never the Vite dev server.
