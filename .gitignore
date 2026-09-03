@@ -8,6 +8,14 @@ dist/
 # Proof engine artifacts (regenerable, machine-specific paths)
 .ripcord/
 
+# Webapp build output (dist-server from tsconfig.server.json, dist-web from
+# vite.config.ts) and the local RIPCORD_DATA_DIR used by manual server runs.
+# Both are regenerable from source and machine/run-specific — same reasoning
+# as dist/ and .cache/ above.
+dist-server/
+dist-web/
+.ripcord-data/
+
 # Mobula live sidecars (calibration/live/*.json) are COMMITTED too, for the same
 # reason as the pages: a clean clone can then re-render every page without a
 # Mobula API key. They are timestamped snapshots and are DELIBERATELY not

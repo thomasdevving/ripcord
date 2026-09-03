@@ -32,7 +32,7 @@ const reportsDir = process.argv[3] ?? "calibration/reports";
 // fail by construction, and checking them against the sidecars would fail on the
 // next fetch. That document states its own observation instant instead, and says
 // so where the figures appear. The exclusion is a decision, not an oversight.
-const docs = ["README.md", "CLAUDE.md", "docs/TECHNICAL.md", "docs/CALIBRATION.md", "docs/QUESTIONNAIRES.md", "test/fixtures/targets.json"].filter(existsSync);
+const docs = ["README.md", "CLAUDE.md", "docs/TECHNICAL.md", "docs/CALIBRATION.md", "docs/QUESTIONNAIRES.md", "docs/WEBAPP.md", "docs/RAILWAY.md", "test/fixtures/targets.json"].filter(existsSync);
 
 const reports = {};
 for (const f of readdirSync(reportsDir).filter((f) => f.endsWith(".json"))) {

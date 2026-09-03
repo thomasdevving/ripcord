@@ -1,0 +1,484 @@
+/*
+ * Ripcord webapp styling.
+ *
+ * Continues the palette and typography of the existing rendered calibration
+ * pages (scripts/render.ts) so the live app and the committed evidence look
+ * like one product rather than two.
+ *
+ * The colour rules are semantic, not decorative, and one of them is load-bearing:
+ *
+ *   GREEN MEANS "THIS STEP FINISHED", NEVER "THIS CONTRACT IS SAFE."
+ *
+ * A verdict is only ever rendered in the neutral or cautionary tone; the healthy
+ * tone is reserved for process completion. That is the stylesheet's share of the
+ * rule the whole codebase follows — an undetermined result wearing a reassuring
+ * colour is the same false-clean as an undetermined result wearing reassuring
+ * prose, and it is harder to notice.
+ *
+ * Sizing targets a 1366×768 laptop and a projector: 14px base, generous line
+ * height, and no layout that needs more than ~1200px to be readable.
+ */
+
+:root {
+  --surface-1: #fcfcfb;
+  --plane: #f9f9f7;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --baseline: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.1);
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --good: #0ca30c;
+  --warning: #fab219;
+  --critical: #d03b3b;
+  --good-ink: #006300;
+  --warn-ink: #7a5200;
+  --crit-ink: #9c2020;
+  --good-bg: #eef7ee;
+  --warn-bg: #fdf5e3;
+  --crit-bg: #fbeded;
+  --radius: 10px;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface-1: #1a1a19;
+    --plane: #0d0d0d;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255, 255, 255, 0.1);
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --good-ink: #0ca30c;
+    --warn-ink: #fab219;
+    --crit-ink: #e66767;
+    --good-bg: #12210f;
+    --warn-bg: #241d09;
+    --crit-bg: #2a1414;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--plane);
+  color: var(--text-primary);
+  font: 14px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+code, pre, .mono { font-family: var(--mono); }
+
+a { color: var(--series-1); }
+
+/* Keyboard focus must be visible everywhere. A demo driven from the keyboard
+   with an invisible focus ring is a demo nobody can follow. */
+:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Animations follow real events and are short. Anyone who has asked their OS
+   for less motion gets none — including the indeterminate progress shimmer,
+   which is the one thing here that would otherwise never stop moving. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* --- shell ---------------------------------------------------------------- */
+
+.app { min-height: 100vh; display: flex; flex-direction: column; }
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-1);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  flex-wrap: wrap;
+}
+
+.brand {
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  font-size: 12px;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+.brand span { color: var(--muted); font-weight: 500; letter-spacing: 0.02em; margin-left: 10px; }
+
+.topbar-spacer { flex: 1; }
+
+.container { width: 100%; max-width: 1200px; margin: 0 auto; padding: 20px; }
+/* Belt to the braces above: nothing inside the page shell may exceed it. */
+.container > *, section.card { max-width: 100%; }
+.container.wide { max-width: 1440px; }
+
+/* --- generic blocks ------------------------------------------------------- */
+
+section.card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+h1 { font-size: 22px; margin: 0 0 10px; letter-spacing: -0.01em; }
+h2 { font-size: 17px; margin: 0 0 10px; }
+h3 {
+  font-size: 12px;
+  margin: 20px 0 8px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+h3:first-child { margin-top: 0; }
+
+.muted { color: var(--muted); }
+.secondary { color: var(--text-secondary); }
+.note { color: var(--text-secondary); font-size: 13px; }
+.small { font-size: 12px; }
+
+.addr {
+  font-family: var(--mono);
+  font-size: 12px;
+  word-break: break-all;
+  color: var(--text-secondary);
+}
+
+/* --- controls ------------------------------------------------------------- */
+
+button, .btn {
+  font: inherit;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  padding: 9px 16px;
+  cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--baseline); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+button.primary {
+  background: var(--series-1);
+  border-color: var(--series-1);
+  color: #fff;
+  font-weight: 600;
+}
+button.primary:hover:not(:disabled) { filter: brightness(1.08); }
+
+button.link {
+  background: none;
+  border: none;
+  color: var(--series-1);
+  padding: 0;
+  text-decoration: underline;
+}
+
+input[type="text"], select {
+  font: inherit;
+  width: 100%;
+  /* A <select> sizes itself to its WIDEST OPTION rather than to its container,
+     and a flex/grid child's default `min-width: auto` then refuses to shrink
+     below that intrinsic width. Left alone, the longest run-mode label could
+     push the form wider than a narrow viewport and make the BODY scroll
+     sideways, which this app must never do (wide content scrolls inside its own
+     container instead). Verified in a real 390px viewport: scrollWidth equals
+     the viewport width and no element extends past it. */
+  min-width: 0;
+  max-width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--baseline);
+  background: var(--plane);
+  color: var(--text-primary);
+}
+input[type="text"].mono { font-family: var(--mono); font-size: 13px; }
+input:invalid { border-color: var(--critical); }
+
+label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 5px; font-weight: 500; }
+
+.field { margin-bottom: 14px; }
+.row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+.row > * { flex: 1; min-width: 180px; }
+.row > .shrink { flex: 0 0 auto; min-width: 0; }
+
+/* --- banners and chips ---------------------------------------------------- */
+
+.banner {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+.banner.warn { background: var(--warn-bg); color: var(--warn-ink); }
+.banner.danger { background: var(--crit-bg); color: var(--crit-ink); }
+.banner.ok { background: var(--good-bg); color: var(--good-ink); }
+.banner.info { background: var(--plane); color: var(--text-secondary); }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  padding: 3px 9px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--plane);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.chip.good { background: var(--good-bg); color: var(--good-ink); }
+.chip.warn { background: var(--warn-bg); color: var(--warn-ink); }
+.chip.crit { background: var(--crit-bg); color: var(--crit-ink); }
+
+/* --- run header ----------------------------------------------------------- */
+
+.runbar {
+  display: flex;
+  gap: 22px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 12px 20px;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 41px;
+  z-index: 15;
+}
+.runbar .item { display: flex; flex-direction: column; gap: 2px; }
+.runbar .k { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.runbar .v { font-size: 13px; font-family: var(--mono); }
+
+/* --- phase timeline ------------------------------------------------------- */
+
+.timeline { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.phase {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 11px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--plane);
+  font-size: 12px;
+  color: var(--text-secondary);
+  /* Fixed min-height so a phase changing status never reflows the row and
+     shifts everything below it mid-run. */
+  min-height: 32px;
+}
+.phase .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--baseline); flex: none; }
+
+.phase.running { border-color: var(--series-1); color: var(--text-primary); }
+.phase.running .dot { background: var(--series-1); animation: pulse 1.4s ease-in-out infinite; }
+/* Green here means the STEP finished — never that the contract is fine. */
+.phase.completed .dot { background: var(--good); }
+.phase.inconclusive { background: var(--warn-bg); color: var(--warn-ink); border-color: transparent; }
+.phase.inconclusive .dot { background: var(--warning); }
+.phase.degraded, .phase.failed { background: var(--crit-bg); color: var(--crit-ink); border-color: transparent; }
+.phase.degraded .dot, .phase.failed .dot { background: var(--critical); }
+.phase.skipped { opacity: 0.55; }
+
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+/* --- power map ------------------------------------------------------------ */
+
+.graph-wrap {
+  /* Tall enough for a three-layer authority chain at the layout's spacing
+     without fitView having to shrink the labels past readability. */
+  height: 540px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--plane);
+  position: relative;
+}
+.graph-wrap .react-flow__attribution { display: none; }
+
+/* React Flow's controls ship a light-mode look. Without this they render as a
+   stack of white buttons on the dark canvas — the one obviously unstyled thing
+   on the page, and the control a viewer needs most (fit-to-view). */
+.graph-wrap .react-flow__controls-button {
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--border);
+  fill: var(--text-secondary);
+}
+.graph-wrap .react-flow__controls-button:hover { background: var(--plane); }
+.graph-wrap .react-flow__controls { box-shadow: none; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+
+.node-box {
+  border-radius: 8px;
+  border: 1px solid var(--baseline);
+  background: var(--surface-1);
+  padding: 8px 11px;
+  min-width: 168px;
+  max-width: 210px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.node-box.selected { border-color: var(--series-1); box-shadow: 0 0 0 2px color-mix(in srgb, var(--series-1) 30%, transparent); }
+.node-box .n-kind { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.node-box .n-addr { font-family: var(--mono); font-size: 11px; margin: 2px 0; word-break: break-all; }
+.node-box .n-meta { font-size: 11px; color: var(--text-secondary); }
+
+.node-box.target { border-color: var(--text-primary); border-width: 2px; }
+.node-box.k-implementation { border-style: dashed; }
+/* An unresolved controller is drawn as an explicit, visibly different node.
+   Omitting it would read as "nothing there", which is the one thing it is not. */
+.node-box.k-unknown { border-style: dotted; background: var(--warn-bg); }
+
+.legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 11.5px; color: var(--text-secondary); margin-top: 10px; }
+.legend .sw { width: 22px; height: 11px; border-radius: 3px; display: inline-block; margin-right: 5px; vertical-align: -1px; }
+.legend .sw.solid { border: 1px solid var(--baseline); background: var(--surface-1); }
+.legend .sw.dashed { border: 1px dashed var(--baseline); background: var(--surface-1); }
+.legend .sw.dotted { border: 1px dotted var(--baseline); background: var(--warn-bg); }
+
+/* --- split layout --------------------------------------------------------- */
+
+.split { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+@media (max-width: 1040px) { .split { grid-template-columns: minmax(0, 1fr); } }
+
+.detail-panel { position: sticky; top: 110px; max-height: calc(100vh - 130px); overflow-y: auto; }
+
+/* --- tables and evidence -------------------------------------------------- */
+
+/* Wide content scrolls INSIDE its own container; the page body never scrolls
+   sideways. On a projector a horizontally-scrolling page is unusable. */
+.scroll-x { overflow-x: auto; }
+
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
+td.mono { font-family: var(--mono); font-size: 11.5px; }
+
+details {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-top: 8px;
+  background: var(--plane);
+}
+details > summary { cursor: pointer; font-size: 12.5px; color: var(--text-secondary); }
+details[open] > summary { margin-bottom: 10px; }
+
+pre.raw {
+  background: var(--plane);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 11px;
+  overflow-x: auto;
+  font-size: 11.5px;
+  margin: 0;
+  max-height: 340px;
+}
+
+/* --- fork evidence blocks ------------------------------------------------- */
+
+.evidence-block {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  background: var(--plane);
+  margin-bottom: 12px;
+}
+.evidence-block > header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+.evidence-block .step {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+.evidence-block h4 { margin: 0; font-size: 14px; }
+
+.tx-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.tx-row:last-child { border-bottom: none; }
+.tx-row .tx-action { font-weight: 500; }
+.tx-row .tx-meta { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+/* --- verdict hero --------------------------------------------------------- */
+
+.hero { border-left: 4px solid var(--baseline); }
+.hero.critical { border-left-color: var(--critical); }
+.hero.unknown { border-left-color: var(--warning); }
+.hero.good { border-left-color: var(--good); }
+
+.verdict-badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 5px 12px;
+  border-radius: 6px;
+  background: var(--plane);
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+.hero.critical .verdict-badge { background: var(--crit-bg); color: var(--crit-ink); }
+.hero.unknown .verdict-badge { background: var(--warn-bg); color: var(--warn-ink); }
+.hero.good .verdict-badge { background: var(--good-bg); color: var(--good-ink); }
+
+.statement { font-size: 15px; line-height: 1.5; }
+
+/* --- route list ----------------------------------------------------------- */
+
+.route {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--baseline);
+  border-radius: 7px;
+  padding: 11px 13px;
+  margin-bottom: 9px;
+  background: var(--plane);
+}
+.route.immediate { border-left-color: var(--critical); }
+.route.delayed { border-left-color: var(--good); }
+.route.unknown { border-left-color: var(--warning); }
+.route header { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; margin-bottom: 4px; }
+.route .r-label { font-weight: 600; font-size: 13px; }
+.route .r-notice { font-family: var(--mono); font-size: 12px; }
+
+/* --- misc ----------------------------------------------------------------- */
+
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+
+.preset-btn { text-align: left; width: 100%; padding: 11px 13px; }
+.preset-btn strong { display: block; font-size: 13px; margin-bottom: 3px; }
+.preset-btn span { font-size: 12px; color: var(--text-secondary); font-weight: 400; }
+
+.copy-btn { font-size: 11px; padding: 2px 8px; border-radius: 5px; }
+
+.empty { padding: 26px; text-align: center; color: var(--muted); font-size: 13px; }
+
+ul.plain { margin: 6px 0; padding-left: 18px; }
+ul.plain li { margin-bottom: 5px; font-size: 13px; color: var(--text-secondary); }
+
+.ceiling { background: var(--warn-bg); border-radius: 8px; padding: 12px 14px; font-size: 12.5px; color: var(--warn-ink); }
+.ceiling ul { margin: 6px 0 0; padding-left: 18px; }
+.ceiling li { margin-bottom: 6px; }
+
+@media print {
+  .topbar, .runbar, button, .graph-wrap { display: none !important; }
+  section.card { break-inside: avoid; border: 1px solid #ccc; }
+  details { break-inside: avoid; }
+  details:not([open]) > summary::after { content: " (collapsed in print)"; color: #888; }
+}

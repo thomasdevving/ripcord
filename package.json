@@ -12,7 +12,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit && tsc -p web/tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "ripcord": "tsx src/cli.ts",
@@ -25,17 +25,34 @@
     "verify:claims": "node scripts/verify-claims.mjs",
     "live:fetch": "tsx scripts/fetch-live.ts",
     "verify:boundary": "node scripts/verify-boundary.mjs",
-    "live:revalue": "tsx scripts/revalue-live.ts"
+    "live:revalue": "tsx scripts/revalue-live.ts",
+    "build:server": "tsc -p tsconfig.server.json",
+    "build:web": "vite build",
+    "build:webapp": "pnpm build:server && pnpm build:web",
+    "start:webapp": "node dist-server/server/index.js",
+    "dev:webapp": "concurrently -n server,web -c blue,green \"pnpm dev:server\" \"vite\"",
+    "dev:server": "tsx watch server/index.ts",
+    "verify:webapp": "node scripts/verify-webapp.mjs"
   },
   "dependencies": {
+    "@fastify/static": "^10.1.3",
     "commander": "^12.1.0",
+    "fastify": "^5.12.1",
     "viem": "^2.21.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^6.1.1",
+    "@xyflow/react": "^12.11.6",
+    "concurrently": "^10.0.5",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
+    "vite": "^8.2.2",
     "vitest": "^2.1.0"
   },
   "packageManager": "pnpm@11.24.0"

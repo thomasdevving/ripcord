@@ -1,0 +1,43 @@
+# Keep the build context small and, more importantly, keep secrets and local
+# machine state out of it entirely. Anything listed here cannot end up in an
+# image layer even by accident — a COPY that is too broad still cannot reach it.
+
+# Secrets. .env holds a real RPC URL (which is the provider key) and a Mobula
+# key. Runtime configuration is supplied by the platform, never baked in.
+.env
+.env.*
+!.env.example
+
+# Local machine state and build output. node_modules in particular would carry
+# macOS-native binaries into a Linux image.
+node_modules
+dist
+dist-server
+dist-web
+.cache
+.ripcord
+.ripcord-data
+
+# Version control and CI.
+.git
+.github
+.gitleaks.toml
+
+# Rendered pages and live sidecars: the container serves reports through the API
+# from calibration/reports, which the Dockerfile copies explicitly. site/ is the
+# GitHub Pages artifact and has no role here.
+site
+calibration/live
+
+# Editor, OS and log noise.
+.DS_Store
+*.log
+.vscode
+.idea
+
+# Documentation and tests are not needed at runtime. The image is a runtime, not
+# a development checkout.
+docs
+test
+*.md
+!README.md

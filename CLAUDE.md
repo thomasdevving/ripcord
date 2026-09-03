@@ -379,6 +379,81 @@ src/live/          (Mobula bounty) THE LIVE LAYER — deliberately OUTSIDE the
                    forbids a remote src, and hotlinking would leak every page
                    view to the vendor.
 
+server/         (webapp) THE WEB ORCHESTRATION. Imports the engine functions
+                   DIRECTLY — never src/cli.ts, which parses argv — and never
+                   parses CLI text as a progress protocol.
+  config.ts        Env -> typed config, validated at startup. A missing RPC is a
+                   SUPPORTED STATE: the service boots, saved reports stay
+                   readable, and /api/config says why Analyze is unavailable. An
+                   RPC outage is a fact about our infrastructure and must never
+                   be presented as a property of the contract.
+  sanitize.ts      The only place error text crosses outward. viem embeds the
+                   request URL in its errors and anvil prints its --fork-url; on
+                   every mainstream provider that URL IS the key. Redaction is by
+                   SHAPE (any URL, any long opaque token, any absolute path), not
+                   by provider allowlist, because a hostname list fails open on
+                   the next provider. classify() then maps a failure onto a
+                   product code + next step, so a provider outage can never
+                   render as a finding about the target.
+  validate.ts      Address/chain/block/mode + contract-code presence AT THE
+                   PINNED BLOCK. `latest` is resolved ONCE and pinned; a failure
+                   to resolve is a hard error, because falling back to a default
+                   block silently substitutes a different measurement. Accepts no
+                   RPC URL, path or anvil argument from a request.
+  reports.ts       THE PUBLICATION GATE, enforced once for every outward
+                   transport. `loadPublishable` is the only function that loads a
+                   report body; a blocked report returns 451 with NO bytes, and
+                   is absent from the listing (a row reading "withheld: X" is
+                   itself a signal about X). Blocked reports are still STORED —
+                   they are evidence — what changes is who may read them.
+  jobs/store.ts    Atomic writes (temp + rename in the same directory), safe
+                   id->path resolution, bounded retention. On boot, jobs left
+                   `running` or `queued` become `interrupted` — never resumed,
+                   never completed: manufacturing a result through a restart is
+                   the same false-clean this project refuses everywhere else.
+  jobs/manager.ts  Queue, worker lifecycle, event sequencing, cancellation,
+                   timeouts. Every terminal transition routes through one
+                   `finish`, which is what makes "the worker is always killed"
+                   a property of the code rather than a checklist item.
+                   Cancellation needs a control token, not the job id (ids travel
+                   in shareable links). Two live-found races are fixed here and
+                   documented at their sites: `fork` must not inherit the
+                   parent's execArgv, and a child's `message` and `exit` events
+                   are NOT ordered — a worker that delivers its report and exits
+                   could be reported as having crashed.
+  jobs/worker.ts   The forked child that runs the engine. Terminal IPC messages
+                   go through `sendAndFlush`: process.send is asynchronous and
+                   process.exit discards what is still queued, which silently
+                   dropped a finished 400KB report on the first live run.
+  jobs/observer.ts THE EARLY-STREAM BOUNDARY. Structural facts (proxy slots,
+                   owner, role holders, the authority chain, indirection markers)
+                   may stream before the disclosure gate has run, because the
+                   gate never blocks on them. Capability signatures, selectors
+                   and probe payloads may NOT: the gate has not decided yet, and
+                   once a browser holds it no later decision takes it back.
+                   Also assembles the power map from FOUND FACTS ONLY.
+
+web/            (webapp) React + Vite frontend. Computes NO risk conclusion:
+                   verdicts, notices, route minima and uncertainty all arrive
+                   already decided by the server. A second implementation of that
+                   logic in the browser would eventually disagree with the first,
+                   and the one on screen is the one people believe.
+                   scripts/verify-webapp.mjs fails the build if browser code
+                   value-imports the engine, if the shared DTO module imports a
+                   Node builtin, or if a secret or engine call appears in the
+                   BUILT bundle.
+
+src/report/observer.ts
+                   (webapp) Optional, typed progress hooks on buildReport and
+                   runExitRestrictionEngine. PURELY ADDITIVE: every hook is
+                   optional, returns void, receives already-computed values, and
+                   is invoked through `notify`, whose catch is the one justified
+                   catch in the file — it contains a PRESENTATION failure so it
+                   cannot corrupt an ANALYSIS. test/observer.test.ts asserts the
+                   property directly: the same report built with and without an
+                   observer is byte-identical, and a hostile observer that throws
+                   on every hook produces the identical report too.
+
 src/report/
   applyExitRestriction.ts (day 7) PURE merge: takes a base report + a fork
                    exit-restriction result, injects a fork-confirmed restrictor as

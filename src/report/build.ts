@@ -20,6 +20,7 @@ import { analyseTimeToExit } from "../detect/timeToExit.js";
 import { composeVerdict } from "./verdict.js";
 import { taxonomyVersion } from "../detect/taxonomy.js";
 import { clearedCapability, clearedRegistryVersion } from "../chain/clearedRegistry.js";
+import { notify, type EngineStage, type RunObserver, type StageOutcome } from "./observer.js";
 import {
   reportSchema,
   schemaVersion,
@@ -143,7 +144,14 @@ export function assessDisclosure(chainId: number, capabilities: CapabilitiesResu
   };
 }
 
-export async function buildReport(chain: ChainReader, target: Hex): Promise<Report> {
+/**
+ * @param observer Optional, presentation-only progress hooks (see observer.ts).
+ *   Attaching one CANNOT change the report: every hook is invoked through
+ *   `notify`, receives already-computed values, and nothing it does is read
+ *   back. A report built with an observer is byte-identical to one built
+ *   without, which `test/observer.test.ts` asserts directly.
+ */
+export async function buildReport(chain: ChainReader, target: Hex, observer?: RunObserver): Promise<Report> {
   const unknowns: UnknownEntry[] = [];
   const errors: ErrorEntry[] = [];
 
@@ -164,7 +172,18 @@ export async function buildReport(chain: ChainReader, target: Hex): Promise<Repo
       slots: {},
       evidence: [codeEvidence],
     }),
+    observer,
+    (value) => ({
+      // A DELEGATECALL that matches no known slot layout is genuinely
+      // unresolved, not a completed classification — see KNOWN EDGE #3a.
+      outcome: value.pattern === "unknown" && value.isProxy ? "inconclusive" : "completed",
+      detail: value.isProxy
+        ? `${value.pattern} proxy${value.implementation ? ", implementation resolved" : ", implementation NOT resolved"}`
+        : "no proxy pattern detected",
+      metrics: { isProxy: value.isProxy, pattern: value.pattern, implementation: value.implementation, admin: value.admin },
+    }),
   );
+  notify(observer, "onProxy", proxy);
 
   // Authority-related state (owner, AccessControl roles) is always read from
   // `target`, never from `proxy.implementation`. A proxy's storage — where
@@ -180,15 +199,42 @@ export async function buildReport(chain: ChainReader, target: Hex): Promise<Repo
       owner: { address: null, source: "detection failed, see errors[]", evidence: [] },
       pendingOwner: { address: null, source: "detection failed, see errors[]", evidence: [] },
     }),
+    observer,
+    (value) => ({
+      outcome: "completed",
+      // "No owner" is a real answer, not a failure — say so plainly rather than
+      // letting an empty result read as a stage that did not run.
+      detail: value.owner.address ? `owner ${value.owner.address}` : "no owner() found (this is an answer, not a gap)",
+      metrics: { owner: value.owner.address, pendingOwner: value.pendingOwner.address },
+    }),
   );
+  notify(observer, "onOwnership", ownership);
 
   const accessControlDetection = await runStage(
     "accessControl",
     () => detectAccessControl(chain, target),
     errors,
     () => ({ result: { detected: false, method: "not_applicable" as const, roles: [], reconstruction: null }, unknowns: [] }),
+    observer,
+    ({ result }) => ({
+      // A partial reconstruction has NOT fully answered. Reporting it as a
+      // completion would let the UI show a green tick over a role set that may
+      // be missing entries — the seam KNOWN EDGE #30 was built to close.
+      outcome: result.reconstruction && result.reconstruction.complete === false ? "inconclusive" : "completed",
+      detail: !result.detected
+        ? "not an AccessControl contract"
+        : `${result.roles.length} role(s) via ${result.method}${result.reconstruction?.complete === false ? " — PARTIAL reconstruction" : ""}`,
+      metrics: {
+        detected: result.detected,
+        method: result.method,
+        roles: result.roles.length,
+        members: result.roles.reduce((n, r) => n + r.members.length, 0),
+        reconstructionComplete: result.reconstruction ? result.reconstruction.complete : null,
+      },
+    }),
   );
   unknowns.push(...accessControlDetection.unknowns);
+  notify(observer, "onAccessControl", accessControlDetection.result);
 
   // Capability detection scans the implementation's bytecode for a proxy
   // (see detectCapabilities), but attributes guards using THIS target's
@@ -219,8 +265,29 @@ export async function buildReport(chain: ChainReader, target: Hex): Promise<Repo
       } as CapabilitiesResult,
       unknowns: [],
     }),
+    observer,
+    ({ result }) => ({
+      // An unreadable dispatcher means the privileged surface was never
+      // enumerated at all; that is inconclusive, not a clean scan of nothing.
+      outcome: result.dispatcherRecognized ? "completed" : "inconclusive",
+      detail: result.dispatcherRecognized
+        ? `${result.selectorsExtracted} selector(s) recovered; ${result.findings.length} classified, ${result.unmatchedSelectors.length} unmatched`
+        : "dispatcher shape not recognised — the selector surface could not be enumerated",
+      // COUNTS ONLY. No signatures, no selectors, no probe payloads: the
+      // publication gate has not run yet, and an unattributed capability
+      // carries a possible "unguarded" reading about a live contract. See the
+      // disclosure note in observer.ts.
+      metrics: {
+        dispatcherRecognized: result.dispatcherRecognized,
+        selectorsExtracted: result.selectorsExtracted,
+        classified: result.findings.length,
+        unmatched: result.unmatchedSelectors.length,
+        needsManualVerification: result.needsManualVerification.length,
+      },
+    }),
   );
   unknowns.push(...capabilityDetection.unknowns);
+  notify(observer, "onCapabilities", capabilityDetection.result);
 
   const capabilityHolders = capabilityDetection.result.findings
     .filter((f) => f.guard.status === "attributed")
@@ -238,6 +305,7 @@ export async function buildReport(chain: ChainReader, target: Hex): Promise<Repo
     accessControlRoles: accessControlDetection.result.roles,
     capabilityHolders,
   });
+  notify(observer, "onPowerHolders", powerHolders);
 
   // Day-3 recursive authority resolution. Seeds are the target's DIRECT
   // (depth-1) authorities — the same set powerHolders is built from — and the
@@ -262,8 +330,31 @@ export async function buildReport(chain: ChainReader, target: Hex): Promise<Repo
     async () => await resolveAuthorityGraph(chain, seeds),
     errors,
     () => ({ resolution: null, unknowns: [] }),
+    observer,
+    ({ resolution }) => ({
+      // A path that terminates at max_depth or no_authority_found has not
+      // resolved the controller. Saying "completed" would present "we stopped
+      // looking" as "we found the end" — KNOWN EDGES #10 and #17.
+      outcome:
+        resolution && resolution.paths.some((p) => p.terminationReason === "max_depth" || p.terminationReason === "no_authority_found")
+          ? "inconclusive"
+          : "completed",
+      detail: resolution
+        ? `${resolution.paths.length} authority path(s) resolved${resolution.cyclesDetected.length ? `, ${resolution.cyclesDetected.length} cycle(s) recorded` : ""}`
+        : "no authority resolution produced",
+      metrics: {
+        paths: resolution?.paths.length ?? 0,
+        cycles: resolution?.cyclesDetected.length ?? 0,
+        unresolved: resolution?.paths.filter((p) => p.terminationReason === "max_depth" || p.terminationReason === "no_authority_found").length ?? 0,
+      },
+    }),
   );
   const authorityResolution = authorityDetection.resolution;
+  // The recursive tree, in full. This is what lets a viewer see the CHAIN —
+  // "upgrade → ProxyAdmin → Timelock" — rather than stopping at the immediate
+  // holder, and it is the difference between a power map that shows a delay
+  // exists and one that shows only that a contract owns a contract.
+  notify(observer, "onAuthority", authorityResolution);
   // Unknowns threaded up from deep in the authority tree (e.g. a partial role
   // reconstruction on a capped provider) — previously discarded by a swallowing
   // catch, now surfaced.
@@ -298,7 +389,18 @@ export async function buildReport(chain: ChainReader, target: Hex): Promise<Repo
     () => detectAuthorityIndirection(chain, target),
     errors,
     () => null,
+    observer,
+    (value) => ({
+      outcome: "completed",
+      // `gettersProbed` is what makes an empty marker list mean "checked, found
+      // none" rather than "never looked" — so it is reported, not just the hits.
+      detail: value
+        ? `${value.markers.length} indirection marker(s) from ${value.gettersProbed.length} getter(s) probed`
+        : "indirection check did not run",
+      metrics: { markers: value?.markers.length ?? null, gettersProbed: value?.gettersProbed.length ?? null },
+    }),
   );
+  notify(observer, "onAuthorityIndirection", authorityIndirection);
 
   // Dependencies run BEFORE the exit window, which they did not used to. The
   // enumeration witness below aggregates over every site the verdict could rest
@@ -311,6 +413,12 @@ export async function buildReport(chain: ChainReader, target: Hex): Promise<Repo
     () => detectDependencies(chain, target),
     errors,
     () => ({ result: { tokens: [], oracles: [] } as DependencyGraph, unknowns: [] }),
+    observer,
+    ({ result }) => ({
+      outcome: "completed",
+      detail: `${result.tokens.length} major-token holding(s), ${result.oracles.length} oracle getter(s) resolved`,
+      metrics: { tokens: result.tokens.length, oracles: result.oracles.length },
+    }),
   );
   unknowns.push(...dependencyDetection.unknowns);
 
@@ -349,16 +457,49 @@ export async function buildReport(chain: ChainReader, target: Hex): Promise<Repo
       }),
     errors,
     () => ({ result: null, unknowns: [] }),
+    observer,
+    ({ result }) => ({
+      // `undetermined` is the INVERTED DEFAULT from KNOWN EDGE #24: falling
+      // through produces it, and it is a statement about the search, never
+      // about the contract. It is reported as inconclusive so the UI cannot
+      // paint it as a finished, reassuring answer.
+      outcome: !result || result.assessment.status === "undetermined" ? "inconclusive" : "completed",
+      detail: result
+        ? `${result.routes.length} route(s); window ${result.assessment.status}`
+        : "exit-window analysis produced no result",
+      metrics: {
+        routes: result?.routes.length ?? null,
+        assessment: result?.assessment.status ?? null,
+        bypasses: result?.bypasses.length ?? null,
+      },
+    }),
   );
   unknowns.push(...exitWindowDetection.unknowns);
+  notify(observer, "onExitWindow", exitWindowDetection.result);
 
   const timeToExitDetection = await runStage<{ result: TimeToExit | null; unknowns: UnknownEntry[] }>(
     "timeToExit",
     () => analyseTimeToExit(chain, target, { proxy, capabilities: capabilityDetection.result }),
     errors,
     () => ({ result: null, unknowns: [] }),
+    observer,
+    ({ result }) => ({
+      // `tight` is deliberately hard to earn. A non-tight bound is a floor with
+      // named gaps, so it is not a completed measurement of the exit duration.
+      outcome: result && result.tight ? "completed" : "inconclusive",
+      detail: result
+        ? `${result.status}${result.atLeastSeconds !== null ? ` — ${result.tight ? "" : "at least "}${result.atLeastSeconds}s` : " — no duration established"}`
+        : "time-to-exit analysis produced no result",
+      metrics: {
+        status: result?.status ?? null,
+        atLeastSeconds: result?.atLeastSeconds ?? null,
+        tight: result?.tight ?? null,
+        unmeasuredLegs: result?.unmeasuredLegs.length ?? null,
+      },
+    }),
   );
   unknowns.push(...timeToExitDetection.unknowns);
+  notify(observer, "onTimeToExit", timeToExitDetection.result);
 
   // The verdict is a pure composition of the above — no chain access, no new
   // facts. The enumeration witness goes in so that no report can ever again say
@@ -394,6 +535,8 @@ export async function buildReport(chain: ChainReader, target: Hex): Promise<Repo
     () => chain.getBlockHash(),
     errors,
     () => "0x" as Hex,
+    observer,
+    (value) => ({ outcome: "completed", detail: `block hash ${value}`, metrics: { blockHash: value } }),
   );
 
   const report: Report = {
@@ -441,19 +584,51 @@ export async function buildReport(chain: ChainReader, target: Hex): Promise<Repo
     );
   }
 
+  // Fires only AFTER schema validation and the disclosure gate, so a consumer
+  // can never see a verdict from a report that failed its own schema, and the
+  // publishable decision arrives together with the verdict it governs rather
+  // than one frame later.
+  notify(observer, "onVerdict", validated.data.verdict, validated.data.disclosure);
+
   return validated.data;
 }
 
+/**
+ * Runs one detector stage, converting an exception into an `errors[]` entry plus
+ * a safe fallback value rather than a crash.
+ *
+ * The observer notifications added here are PURELY ADDITIVE: `notify` cannot
+ * throw (see observer.ts), the hooks receive already-computed values, and
+ * nothing on this path is read back into the report. A stage that threw is
+ * reported to the observer as `degraded`, never as a completion — the fallback
+ * value it returns is a placeholder, and a UI painting it green would be
+ * asserting a clean result the engine never produced.
+ */
 async function runStage<T>(
   stage: string,
   fn: () => Promise<T>,
   errors: ErrorEntry[],
   fallback: () => T,
+  observer?: RunObserver,
+  /** Describes the SUCCESSFUL outcome for the observer. Not called on the failure path. */
+  describe?: (value: T) => { outcome: StageOutcome; detail: string | null; metrics?: Record<string, number | string | boolean | null> },
 ): Promise<T> {
+  const engineStage = stage as EngineStage;
+  notify(observer, "onStageStart", engineStage);
   try {
-    return await fn();
+    const value = await fn();
+    const described = describe?.(value);
+    notify(observer, "onStageEnd", {
+      stage: engineStage,
+      outcome: described?.outcome ?? "completed",
+      detail: described?.detail ?? null,
+      ...(described?.metrics ? { metrics: described.metrics } : {}),
+    });
+    return value;
   } catch (err) {
-    errors.push({ stage, message: err instanceof Error ? err.message : String(err) });
+    const message = err instanceof Error ? err.message : String(err);
+    errors.push({ stage, message });
+    notify(observer, "onStageEnd", { stage: engineStage, outcome: "degraded", detail: message });
     return fallback();
   }
 }

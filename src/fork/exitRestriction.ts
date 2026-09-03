@@ -42,6 +42,7 @@ import {
   SELECTORS,
 } from "./exitActions.js";
 import { fullWithdrawalVerified, readWithdrawalPosition, samePosition } from "./withdrawal.js";
+import { notifyFork, type ForkObserver, type ForkParty } from "../report/observer.js";
 import type { Evidence } from "../chain/client.js";
 import type {
   AuthorityResolution,
@@ -84,6 +85,13 @@ export interface ExitRestrictionRequest {
   enumeration: EnumerationCompleteness;
   exitWindow: ExitWindow | null;
   authorityResolution: AuthorityResolution | null;
+  /**
+   * Optional presentation-only progress hooks (see report/observer.ts). Purely
+   * additive: hooks cannot throw out of `notifyFork`, receive evidence the
+   * engine already recorded, and nothing they do is read back. A differential
+   * run with an observer attached produces the identical ExitRestriction.
+   */
+  observer?: ForkObserver;
 }
 
 export interface ExitRestrictionResult {
@@ -223,8 +231,15 @@ export async function runExitRestrictionEngine(req: ExitRestrictionRequest): Pro
   const selectors = allSelectors(req.capabilities);
 
   // --- Part 1: identify the exit action. Unconfident → undetermined. ---
+  notifyFork(req.observer, "onForkStart", "exit_action");
   const iface = identifyExitInterface(selectors);
   if (!iface) {
+    notifyFork(req.observer, "onForkStep", {
+      phase: "exit_action",
+      outcome: "inconclusive",
+      detail:
+        "No registered exit-interface fingerprint matched the decoded selectors. Testing an unidentified exit function would risk a false-clean, so the differential is refused rather than run against a guess.",
+    });
     return notRun(req, "exit_action_unconfident", "no known exit interface fingerprint matched the decoded selectors, so the exit action could not be confidently identified — the differential is refused rather than run against a guessed exit function", {
       status: "unconfident",
       interfaceName: "none",
@@ -244,10 +259,21 @@ export async function runExitRestrictionEngine(req: ExitRestrictionRequest): Pro
     note: `${iface.label}: a holder leaves by calling ${iface.exitSignature}. Identified by the fingerprint ${iface.fingerprint.join(", ")} in the decoded selector set.`,
     evidence: [ev({ fingerprint: iface.fingerprint, matchedFrom: "capabilities.selectorsExtracted" }, iface.id, req.blockNumber)],
   };
+  notifyFork(req.observer, "onForkStep", {
+    phase: "exit_action",
+    outcome: "completed",
+    detail: `${iface.label}: a holder leaves by calling ${iface.exitSignature}. Matched on the full fingerprint ${iface.fingerprint.join(", ")}.`,
+    evidence: exitAction.evidence,
+  });
 
   // Only the Comet archetype is implemented end-to-end. Any other identified
   // interface is honestly reported as not-yet-evaluated rather than guessed at.
   if (iface.id !== "compound-comet-base") {
+    notifyFork(req.observer, "onForkStep", {
+      phase: "verdict",
+      outcome: "inconclusive",
+      detail: `The exit action was identified (${iface.id}), but no differential archetype is implemented for it. The scan stands; the withdrawal experiment was not run.`,
+    });
     return notRun(req, "no_candidates", `exit action identified (${iface.id}) but its differential archetype is not implemented — reported honestly rather than run partially`, exitAction);
   }
 
@@ -255,6 +281,11 @@ export async function runExitRestrictionEngine(req: ExitRestrictionRequest): Pro
   try {
     anvilExecutable = (await checkAnvilAvailable()).executable;
   } catch (err) {
+    notifyFork(req.observer, "onForkStep", {
+      phase: "verdict",
+      outcome: "degraded",
+      detail: "The fork sandbox is unavailable, so no withdrawal experiment was performed. The static scan is unaffected.",
+    });
     return notRun(req, "not_run", err instanceof Error ? err.message : String(err), exitAction);
   }
 
@@ -275,7 +306,20 @@ async function runCometArchetype(
   const target = req.target;
   const HOLDER: Hex = "0x000000000000000000000000000000000000abc1";
   const CONTROL_SINK: Hex = "0x000000000000000000000000000000000000abc2";
-  const baseUnattempted = (reason: string): ExitRestrictionResult => ({
+  notifyFork(req.observer, "onForkStart", "baseline");
+  // Every early return below is a baseline that could not be established. Each
+  // one reports through here, so the UI can never show a blank baseline block
+  // and let a reader infer the control simply had not happened yet.
+  const baseUnattempted = (reason: string): ExitRestrictionResult => {
+    notifyFork(req.observer, "onForkStep", {
+      phase: "baseline",
+      outcome: "inconclusive",
+      detail: `Baseline NOT established: ${reason}. Without a control exit that succeeds first, no later revert can be attributed to a privileged mutation, so the differential does not run.`,
+      evidence: [...evidence],
+    });
+    return baseUnattemptedResult(reason);
+  };
+  const baseUnattemptedResult = (reason: string): ExitRestrictionResult => ({
     restrictorRoute: null,
     exitRestriction: mkRestriction(req, exitAction, {
       outcome: "baseline_unestablished",
@@ -364,8 +408,32 @@ async function runCometArchetype(
     note: `receipt success AND ${recovered} base-token units received, zero remaining principal, zero supply and zero debt; control and mutation use the same fork clock`,
     evidence: [...evidence],
   };
+  notifyFork(req.observer, "onForkStep", {
+    phase: "baseline",
+    outcome: "completed",
+    // The economic facts, not just the receipt: a successful receipt alone is
+    // not an exit, which is why the recovered amount and the cleared position
+    // are stated here rather than "withdraw succeeded".
+    detail: `Baseline ESTABLISHED: the holder was funded 100k ${whale.symbol}, supplied 50k, and withdrew the full base position — ${recovered} base-token units received back, zero remaining principal, zero supply, zero debt.`,
+    evidence: [...evidence],
+  });
 
   const guardianClass = await classifyOnFork(fork, guardian);
+  // The guarding party as a first-class observation. It is read from the
+  // contract's own pauseGuardian() and classified on the fork, so it is found
+  // information — but no static detector reaches it (it is neither owner(), nor
+  // a role member, nor the proxy admin), which is exactly why it has to be
+  // reported explicitly rather than left to appear in prose alone.
+  const forkParty = (confirmed: boolean): ForkParty => ({
+    address: guardian,
+    type: guardianClass.type,
+    safeThreshold: guardianClass.threshold,
+    safeOwners: guardianClass.owners,
+    signature: "pause(bool,bool,bool,bool,bool)",
+    relation: "can pause withdrawals of",
+    confirmed,
+  });
+  notifyFork(req.observer, "onForkStart", "mutation");
   const diffSnap = await fork.snapshot();
   const candidateStart = evidence.length;
   const pausedBefore = await read("isWithdrawPaused", "before candidate mutation") as boolean;
@@ -374,11 +442,46 @@ async function runCometArchetype(
   let result: RestrictionCandidate["result"] = "inconclusive";
   let detail = "the guardian mutation reverted; no effect on withdrawal was established";
   try {
-    if (pause.status === "success") {
+    if (pause.status !== "success") {
+      notifyFork(req.observer, "onForkStep", {
+        phase: "mutation",
+        outcome: "inconclusive",
+        detail: `The guarding party's call reverted, so nothing was learned about the exit. A failed mutation is NOT evidence that the exit is safe — it is an absence of evidence either way.`,
+        evidence: evidence.slice(candidateStart),
+      });
+    } else {
       const pausedAfter = await read("isWithdrawPaused", "after candidate mutation") as boolean;
+      notifyFork(req.observer, "onForkStep", {
+        phase: "mutation",
+        // The false→true transition is the mutation's whole content. Without
+        // it there is no cause to attribute a later revert to.
+        outcome: !pausedBefore && pausedAfter ? "completed" : "inconclusive",
+        detail:
+          !pausedBefore && pausedAfter
+            ? `${guardian} (${guardianClass.type}${guardianClass.type === "safe" ? ` ${guardianClass.threshold}-of-${guardianClass.owners}` : ""}) called pause(bool,bool,bool,bool,bool) with withdraw-pause = true, other pause flags preserved. isWithdrawPaused observed false → true.`
+            : `The call succeeded but the required isWithdrawPaused false→true transition was not observed (before=${pausedBefore}, after=${pausedAfter}), so no cause is established.`,
+        evidence: evidence.slice(candidateStart),
+        // Not yet `confirmed`: the party has been shown able to flip the flag,
+        // but whether that actually closes the exit is decided by the re-exit
+        // below. Claiming it here would be one step ahead of the evidence.
+        party: forkParty(false),
+      });
+      notifyFork(req.observer, "onForkStart", "reexit");
+      const reexitStart = evidence.length;
       const beforeMutationExit = await observe("before withdrawal after candidate");
       const afterWithdraw = await send("holder withdraw after candidate", HOLDER, withdrawTx);
       const afterMutationExit = await observe("after withdrawal after candidate");
+      notifyFork(req.observer, "onForkStep", {
+        phase: "reexit",
+        // Either way this step RAN AND ANSWERED. Which answer it gave is the
+        // differential's content, decided below — not this step's status.
+        outcome: "completed",
+        detail:
+          afterWithdraw.status === "reverted"
+            ? `The identical withdrawal, from the same starting position at the same fork block and timestamp, REVERTED${afterWithdraw.revertData ? ` with ${afterWithdraw.revertData}` : ""}. The holder's tokens and principal are unchanged.`
+            : `The identical withdrawal still succeeded after the mutation.`,
+        evidence: evidence.slice(reexitStart),
+      });
       const timesMatch = beforeBaseline.block === beforeMutationExit.block && beforeBaseline.timestamp === beforeMutationExit.timestamp &&
         afterBaseline.block === afterMutationExit.block && afterBaseline.timestamp === afterMutationExit.timestamp;
       const stateMatches = samePosition(beforeBaseline, beforeMutationExit);
@@ -418,6 +521,15 @@ async function runCometArchetype(
     evidence: evidence.slice(candidateStart),
   };
   const conclusion = classifyCandidateEvaluation([candidate], req.enumeration);
+  notifyFork(req.observer, "onForkStep", {
+    phase: "verdict",
+    // Only a demonstrated restrictor is a completed conclusion. The clean tier
+    // and the inconclusive tier both leave a question open, and neither may
+    // wear the same status as a decisive result.
+    outcome: conclusion.outcome === "restrictor_found" ? "completed" : "inconclusive",
+    detail: candidate.detail,
+    party: forkParty(conclusion.outcome === "restrictor_found"),
+  });
   return {
     restrictorRoute: conclusion.restrictors.length ? buildRestrictorRoute(target, candidate, guardianClass) : null,
     exitRestriction: mkRestriction(req, exitAction, {

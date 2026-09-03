@@ -54,6 +54,14 @@ jobs:
       # holds whether or not live data was ever fetched. See docs/MOBULA.md.
       - run: pnpm verify:boundary
 
+      # The webapp's own structural boundary, the sibling of verify:boundary.
+      # It needs the BUILT frontend, because two of its six properties are
+      # measured on the shipped bundle rather than on the sources: a VITE_*
+      # variable is inlined at build time, so "no secret in the bundle" is only
+      # meaningful against the artifact that actually ships.
+      - run: pnpm build:webapp
+      - run: pnpm verify:webapp
+
   # Secret scan over the FULL history, every run.
   #
   # This deliberately does NOT use gitleaks/gitleaks-action@v2. That action

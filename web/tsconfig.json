@@ -1,0 +1,29 @@
+{
+  // Browser code. Separate from both the CLI build and the server build:
+  // it needs DOM libs and JSX, and neither of the others should ever have them.
+  // Compiling web/ inside the server config would let a server module import
+  // browser code with nothing to object.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "types": ["vite/client"],
+    "paths": {
+      // The one thing the browser and the server share. It is types and pure
+      // constants only — no Node imports — so nothing server-side can ride in
+      // on this path.
+      "@shared/*": ["../server/shared/*"]
+    }
+  },
+  "include": ["src", "../server/shared"]
+}

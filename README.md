@@ -77,6 +77,9 @@ nowhere in the calibration set; it must not be read as a third form of “safe�
 | **[vitest](https://vitest.dev)** | Unit tests and a local Anvil integration test; no external network or RPC key. The integration test skips when Anvil is unavailable. |
 | **[gitleaks](https://github.com/gitleaks/gitleaks)** | Secret scanning over the full history, in CI on every push. |
 | **commander** | CLI argument parsing. |
+| **[Fastify](https://fastify.dev)** | The webapp's HTTP server: API, Server-Sent Events, and the built frontend, all from one process on one port. One light server rather than a second backend framework. |
+| **[React](https://react.dev) + [Vite](https://vite.dev)** | The webapp frontend. Vite's output is static assets; no `VITE_*` variable is defined, so no provider key can be inlined into a public bundle at build time. |
+| **[React Flow](https://reactflow.dev)** | The interactive authority graph, with a deterministic layered layout rather than a force simulation — so an arriving node never moves the one a viewer is reading, and two runs of the same target draw the same picture. |
 
 ## Partner technologies
 
@@ -139,12 +142,17 @@ A cold run and a warm run must be **byte-identical** — `compare-reports.mjs` n
 
 ## Deployment
 
-There is **no backend and no hosted scanner** — Ripcord is a local CLI, and the only thing deployed is a set of pre-generated static pages.
+Two separate things ship, and they are deliberately not the same artifact.
+
+**The static report site** carries the calibration evidence: pre-generated pages, no JavaScript beyond native `<details>`, no network request at view time.
+
+**The webapp** (`server/` + `web/`) is the live demonstration: a visitor enters an address, watches the analysis happen, follows the fork experiment and gets a report with its evidence attached. One Railway service, one replica, one public port; `anvil` is spawned transiently by a job worker, binds loopback, and is never exposed. It imports the engine functions directly — it does not shell out to the CLI or parse its output — and the optional progress hooks it uses cannot change a report, which `test/observer.test.ts` asserts by building the same report with and without an observer and comparing the bytes. See **[docs/WEBAPP.md](docs/WEBAPP.md)** and **[docs/RAILWAY.md](docs/RAILWAY.md)**.
 
 - **Report site:** `https://thomasdevving.github.io/ripcord/` — 22 rendered calibration pages, no JavaScript beyond native `<details>`, no network request at view time. Generated ahead of time from the pinned JSON reports by `scripts/render.ts`, so a page cannot show a result that differs from its committed report. Published by [`.github/workflows/pages.yml`](.github/workflows/pages.yml), which runs `verify:pages` and `verify:claims` first and deploys only if both pass.
 - **Source:** `https://github.com/thomasdevving/ripcord`
 - **Chain:** Ethereum mainnet (chain 1), everything pinned to **block 25800000**.
 - **No contracts were deployed.** Ripcord deploys nothing on-chain and holds no address. The one piece of bytecode it produces — the minimal sweep implementation used in the proof — exists **only inside an ephemeral local fork** and is never sent to a network.
+- **Webapp deployment status:** the image definition, its pinned Foundry install and every assumption it makes are verified against this repository, and the server has been run end to end from its compiled output — including a full Comet `scan + withdrawal test` against a mainnet archive RPC. `docker build` itself has **not** been run: no container runtime was available on the build machine. That is the one outstanding step, and `docs/RAILWAY.md` §7 says so rather than implying otherwise.
 - **Calibration targets** (all mainnet, all read-only): the full set of 26 with their addresses is in [`calibration/run-manifest.json`](calibration/run-manifest.json); the two used above are PAID Network `0x1614f18fc94f47967a3fbe5ffcd46d4e7da3d787` and Compound III cUSDCv3 `0xc3d688B66703497DAA19211EEdff47f25384cdc3`.
 
 ## What we built during Common S3nse

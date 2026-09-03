@@ -1,0 +1,26 @@
+{
+  // The webapp's server build. Separate from tsconfig.json ON PURPOSE:
+  //
+  //   - tsconfig.json keeps `rootDir: "src"` and `outDir: "dist"`, so the
+  //     existing CLI build and its `bin` entry (./dist/cli.js) are untouched.
+  //     Widening that config's rootDir to the repo root would move cli.js to
+  //     dist/src/cli.js and silently break `ripcord` for everyone.
+  //
+  //   - This config compiles `src` AND `server` with rootDir ".", producing
+  //     dist-server/src/… and dist-server/server/…. The server imports the
+  //     engine directly (never the CLI, which parses argv), so both trees have
+  //     to be emitted together for the relative `../../src/...` specifiers to
+  //     resolve at runtime.
+  //
+  // `web/` is deliberately NOT included: it is browser code, compiled by Vite
+  // against its own tsconfig with DOM libs. Compiling it here would pull DOM
+  // types into the server build and, worse, make it possible for a server
+  // module to import browser code without anything objecting.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist-server",
+    "sourceMap": true
+  },
+  "include": ["src", "server"]
+}
