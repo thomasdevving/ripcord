@@ -94,16 +94,13 @@ export interface PowerHolderSources {
  * classification logic.
  */
 export async function collectPowerHolders(chain: ChainReader, sources: PowerHolderSources): Promise<PowerHolder[]> {
-  // Addresses reach this function in two different casings and comparing
-  // them raw would be a real bug: viem's decodeFunctionResult returns
-  // EIP-55 checksummed addresses (owner, pendingOwner, role members), while
-  // slotToAddress slices raw storage words and returns lowercase (proxy
-  // admin, implementation). A proxy whose admin IS its owner would
-  // otherwise produce two separate power-holder entries for one address,
-  // each carrying only half its viaCapabilities. Everything is therefore
-  // keyed on the lowercase form, while the first-seen casing is kept for
-  // display so the report still shows checksummed addresses where we have
-  // them.
+  // Addresses arrive in two casings and comparing them raw would be a real bug:
+  // viem's decodeFunctionResult returns EIP-55 checksummed addresses (owner,
+  // pendingOwner, role members) while slotToAddress slices raw storage words and
+  // returns lowercase (proxy admin, implementation). A proxy whose admin IS its
+  // owner would otherwise produce two power-holder entries for one address, each
+  // carrying half its viaCapabilities. Everything is keyed on the lowercase form,
+  // with the first-seen casing kept for display.
   const key = (a: string) => a.toLowerCase();
   const eq = (a: string | null | undefined, b: string) => Boolean(a) && key(a!) === b;
 

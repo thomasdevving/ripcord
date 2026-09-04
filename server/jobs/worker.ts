@@ -3,26 +3,18 @@ import { verifyBlockIdentity } from "../identity.js";
  * THE JOB WORKER — a forked child process that runs the real engine.
  *
  * It imports `buildReport`, `runProofEngine`, `runExitRestrictionEngine` and
- * `applyExitRestriction` DIRECTLY. It does not shell out to the CLI and does not
- * parse its human-readable output: those strings are written for a person, and
- * treating them as a protocol makes every wording change a silent breakage.
+ * `applyExitRestriction` DIRECTLY: it does not shell out to the CLI and does not
+ * parse its human-readable output, because those strings are written for a
+ * person and treating them as a protocol makes every wording change a breakage.
+ * A child process also keeps minutes of RPC work off the HTTP event loop and
+ * makes a hard kill a real cancellation.
  *
- * WHY A CHILD PROCESS. A Comet run is minutes of RPC round-trips, an anvil
- * spawn and heavy synchronous bigint work; on the HTTP event loop that stalls
- * SSE heartbeats and /healthz, and a health check timing out mid-demo restarts
- * the container. Isolation also makes a hard kill a real cancellation.
- *
- * WHAT IT REFUSES TO DO: accept an RPC URL, cache path or anvil argument from
- * the HTTP request (all come from server config, so a request cannot point the
- * fork at an arbitrary endpoint); send unsanitised error text to the parent (a
- * viem or anvil failure routinely embeds the full RPC URL, key included); or
- * invent a phase result.
- *
- * ORDER OF WORK matches the CLI's semantics per mode, deliberately:
+ * It refuses to accept an RPC URL, cache path or anvil argument from a request
+ * (all come from server config), to send unsanitised error text to the parent (a
+ * viem or anvil failure routinely embeds the full RPC URL), or to invent a phase
+ * result. Order of work matches the CLI's semantics per mode, deliberately:
  * `scan_withdrawal_test` does NOT run the drain proof while
- * `scan_withdrawal_test_upgrade_proof` does, because the CLI's `restrict` is the
- * superset and quiet drift from the documented command is what CALIBRATION.md
- * §11 exists to catch.
+ * `scan_withdrawal_test_upgrade_proof` does.
  */
 import { resolve } from "node:path";
 import { createPublicClient, http, type Hex } from "viem";
@@ -47,17 +39,12 @@ function send(message: WorkerMessage): void {
 /**
  * Sends a message and RESOLVES ONLY ONCE IT HAS BEEN FLUSHED to the parent.
  *
- * `process.send` is asynchronous: for a payload above the pipe buffer it queues
- * the write and returns immediately, and `process.exit()` discards whatever is
- * still queued. A finished report is several hundred kilobytes, so exiting
- * straight after sending it dropped the result every time — the parent saw a
- * worker that had completed every phase and then died without delivering
- * anything, and reported "stopped unexpectedly" about an analysis that had in
- * fact succeeded. Found by running a real Comet job end to end.
- *
- * Every TERMINAL message goes through here. Progress events do not need it:
- * they are small, and losing the last one to a shutdown costs a frame, not a
- * result.
+ * `process.send` is asynchronous: above the pipe buffer it queues the write and
+ * returns, and `process.exit()` discards whatever is still queued. A finished
+ * report is several hundred kilobytes, so exiting straight after sending it
+ * dropped the result every time, and the parent reported "stopped unexpectedly"
+ * about an analysis that had succeeded. Progress events do not need this —
+ * losing the last one to a shutdown costs a frame, not a result.
  */
 function sendAndFlush(message: WorkerMessage): Promise<void> {
   return new Promise((resolve, reject) => {

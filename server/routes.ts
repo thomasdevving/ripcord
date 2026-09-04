@@ -1,28 +1,19 @@
 import { verifyBlockIdentity } from "./identity.js";
 /**
- * The HTTP surface.
+ * The HTTP surface. The choices that are not obvious:
  *
- * Notes on the choices that are not obvious:
- *
- *  - `POST /api/jobs` answers 202 with a job id, immediately. The analysis is
- *    minutes long; holding a request open for it would tie the run's lifetime to
- *    one TCP connection, and a browser refresh would then look like a cancelled
- *    scan. Nothing about the job depends on the submitter staying connected.
- *
+ *  - `POST /api/jobs` answers 202 with a job id immediately. The analysis is
+ *    minutes long, and holding a request open would tie the run's lifetime to
+ *    one TCP connection, so a browser refresh would look like a cancelled scan.
  *  - SSE is the progress channel and POLLING IS A FIRST-CLASS FALLBACK, not a
- *    degraded mode. Corporate proxies buffer text/event-stream, and a demo that
- *    dies behind conference wifi is worse than one that polls. Both read the
+ *    degraded mode: corporate proxies buffer text/event-stream. Both read the
  *    same event log through the same cursor, so they cannot disagree.
- *
- *  - Every report body goes through `ReportService.loadPublishable`. There is no
- *    route that reads a report file directly, which is what makes "the gate
- *    holds on all transports" checkable rather than aspirational.
- *
- *  - `/healthz` touches no chain. It answers whether THIS PROCESS is healthy.
- *    Making it probe mainnet would (a) bill an RPC call per health check and
- *    (b) restart the container whenever the provider hiccups, which is the
- *    opposite of what a health check is for. Whether live analysis can run is a
- *    separate, explicitly separate, field in /api/config.
+ *  - Every report body goes through `ReportService.loadPublishable`; no route
+ *    reads a report file directly.
+ *  - `/healthz` touches no chain — it answers whether THIS PROCESS is healthy.
+ *    Probing mainnet would bill an RPC call per check and restart the container
+ *    whenever the provider hiccups. Whether live analysis can run is a separate
+ *    field in /api/config.
  */
 import { reportStructure } from "./report-structure.js";
 import type { Report } from "../src/report/schema.js";
@@ -300,13 +291,11 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
 
   /**
    * Asset coverage: which assets were observed, which balances were verified at
-   * the analysis block, and which assets were in a fork experiment.
-   *
-   * Goes through `loadPublishable` like every other report transport, so a
-   * blocked report cannot leak its findings sideways through coverage labels,
-   * counts or evidence references. Composed on demand from artifacts that
-   * already exist — it performs no chain read, no fork and no Mobula fetch, so
-   * a missing snapshot makes the panel PARTIAL and never fails the request.
+   * the analysis block, and which were in a fork experiment. Goes through
+   * `loadPublishable` like every other report transport, so a blocked report
+   * cannot leak findings sideways through coverage labels or counts. Composed on
+   * demand from existing artifacts — no chain read, fork or Mobula fetch — so a
+   * missing snapshot makes the panel PARTIAL and never fails the request.
    */
   app.get("/api/reports/:id/coverage", async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
     const loaded = await reports.loadPublishable(req.params.id);

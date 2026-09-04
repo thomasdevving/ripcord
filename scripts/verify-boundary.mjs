@@ -1,22 +1,16 @@
 /**
- * THE MOBULA BOUNDARY, AS A TEST RATHER THAN A PROMISE.
+ * THE MOBULA BOUNDARY, AS A TEST RATHER THAN A PROMISE. A report is pinned and
+ * byte-identical cold or warm; the live layer is a third-party read of the
+ * present. Mixing them destroys the first, and "we were careful" is not a
+ * control. Four properties, checked in CI:
  *
- * A report is a deterministic, block-pinned artifact: same target, same block,
- * byte-identical output, cold or warm. The live layer is the exact opposite — a
- * third-party read of the present. Both are useful; mixing them destroys the
- * first, and "we were careful" is not a control. Four properties, checked in CI:
- *
- *  1. NO IMPORT PATH from the pinned code (src/chain, src/detect, src/report,
- *     src/fork, src/cli.ts) into src/live. Checked as a real transitive walk,
- *     not a grep, because an indirect import is still an import.
- *  2. NO MOBULA REFERENCE anywhere in the pinned path — no hostname, env var or
- *     URL. Belt and braces with (1): that catches structure, this catches a
- *     stray inline call that skipped the module.
- *  3. NO LIVE DATA IN A PINNED REPORT. A report that grew a live field would be
- *     non-deterministic even if nothing read it.
- *  4. NO SECRET IN A COMMITTED ARTIFACT. Sidecars and pages are committed; the
- *     key lives only in the build environment. gitleaks covers the general case,
- *     this the specific one this feature introduces.
+ *  1. No import path from the pinned code (src/chain, src/detect, src/report,
+ *     src/fork, src/cli.ts) into src/live — a real transitive walk, not a grep,
+ *     because an indirect import is still an import.
+ *  2. No Mobula hostname, env var or URL anywhere in the pinned path.
+ *  3. No live data in a pinned report, which would make it non-deterministic
+ *     even if nothing read it.
+ *  4. No secret in a committed artifact.
  *
  * It also states in one place that the sidecars are DELIBERATELY not
  * deterministic, so nobody mistakes a changing sidecar for a regression.

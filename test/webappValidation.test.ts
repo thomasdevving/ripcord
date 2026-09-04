@@ -1,19 +1,15 @@
 /**
- * Request validation and error sanitisation.
- *
- * The two properties worth testing hardest here are not "does it reject a bad
- * address" (it does, and that is cheap) but:
+ * Request validation and error sanitisation. The two properties worth testing
+ * hardest are not "does it reject a bad address" but:
  *
  *  1. `"latest"` IS RESOLVED ONCE AND PINNED. Every phase of a multi-minute run
- *     must use the same block. If resolution failed and the validator fell back
+ *     must use the same block; if resolution failed and the validator fell back
  *     to a default, the analysis would silently describe a different chain state
- *     than the one requested — so a failure to resolve must be a hard error.
- *
+ *     than the one requested, so a failure to resolve must be a hard error.
  *  2. NO RPC URL EVER SURVIVES SANITISATION. viem embeds the request URL in its
  *     error text and anvil prints its --fork-url; on every mainstream provider
- *     that URL is the API key. Those strings reach HTTP responses, SSE frames
- *     and a screen-shared terminal, so the redaction is tested against the
- *     shapes those libraries actually produce.
+ *     that URL is the API key. The redaction is tested against the shapes those
+ *     libraries actually produce.
  */
 import { describe, expect, it } from "vitest";
 import { validateCreateJob, type ValidationContext } from "../server/validate.js";

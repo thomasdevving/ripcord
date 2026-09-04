@@ -79,28 +79,24 @@ export interface ChainReader {
 }
 
 /**
- * Bounded retry for TRANSIENT network failures (day 4, resolving KNOWN EDGE
- * #13's deferred work).
+ * Bounded retry for TRANSIENT network failures.
  *
  * The AccessControl role scan can fire ~1500 `eth_getLogs` requests against a
- * range-capped provider. On a rate-limited endpoint a single 429 among them
- * raised a ChainReadError that — correctly, per "fail loud" — aborted the whole
- * stage, so an ordinary scan needed several manual re-runs to complete. That is
- * honest but useless, and it was blocking real validation.
+ * range-capped provider, and on a rate-limited endpoint a single 429 among them
+ * aborted the whole stage — honest, but it meant an ordinary scan needed several
+ * manual re-runs.
  *
- * The reason this was deferred was the worry that a transient 429 cannot be
- * told from a permanent failure reliably. That worry is answered by making the
- * classification ASYMMETRIC rather than accurate:
- *   - Something that looks transient is retried a bounded number of times.
- *     If it was actually permanent, we fail loud anyway, just later.
- *   - Anything else fails immediately, exactly as before.
- * So a misclassification in either direction costs time, never correctness, and
- * no result is ever softened into a default. Crucially this is NOT a catch that
- * swallows: after the last attempt the original error is rethrown unchanged.
+ * The worry that a transient 429 cannot be told from a permanent failure
+ * reliably is answered by making the classification ASYMMETRIC rather than
+ * accurate: something that looks transient is retried a bounded number of times
+ * (if it was permanent we fail loud anyway, just later), and anything else fails
+ * immediately. A misclassification in either direction costs time, never
+ * correctness, and after the last attempt the original error is rethrown
+ * unchanged.
  *
  * A provider's getLogs RANGE rejection must NOT be caught here — probeMaxLogRange
  * binary-searches on exactly that rejection, and retrying it would triple the
- * cost of every scan's preflight. Range errors do not match the patterns below.
+ * cost of every preflight. Range errors do not match the patterns below.
  */
 const TRANSIENT_PATTERNS = [
   /429/,
@@ -150,24 +146,24 @@ async function withTransientRetry<T>(fn: () => Promise<T>): Promise<T> {
 /**
  * Positively identifies a CONTRACT REVERT.
  *
- * The inverted question is the point. Asking "does this failure look
- * transient?" and treating everything else as a revert is fail-OPEN: ~20 call
- * sites read a revert as a fact about the CONTRACT (`owner()` reverted therefore
- * no owner), so an infrastructure failure became a permanently cached absence.
- * A non-archive endpoint fails exactly that way on every pinned read, and the
+ * The inverted question is the point. Asking "does this failure look transient?"
+ * and treating everything else as a revert is fail-OPEN: ~20 call sites read a
+ * revert as a fact about the CONTRACT (`owner()` reverted therefore no owner),
+ * so an infrastructure failure became a permanently cached absence. A
+ * non-archive endpoint fails exactly that way on every pinned read, and the
  * resulting clean report is byte-identical cold and warm, so the determinism
  * gate cannot catch it.
  *
- * So a result is a revert only when something positively says so — all four
- * signals derived from live observation (scripts/audit-error-shapes.ts): raw
- * revert bytes in the cause chain, viem's ExecutionRevertedError, RPC code 3,
- * or the node's own "execution reverted". Genuine reverts carry the last three
- * together, including no-data and custom-error reverts.
+ * A result is therefore a revert only when something positively says so — all
+ * four signals derived from live observation (scripts/audit-error-shapes.ts):
+ * raw revert bytes in the cause chain, viem's ExecutionRevertedError, RPC code
+ * 3, or the node's own "execution reverted". Genuine reverts carry the last
+ * three together, including no-data and custom-error reverts.
  *
  * Deliberately excluded: viem's regex also matches "gas required exceeds
- * allowance", a gas-configuration failure rather than a contract decision. The
- * cost is the right way round — a revert all four tests miss becomes a loud
- * errors[] entry instead of a silent absence.
+ * allowance", a gas-configuration failure rather than a contract decision. A
+ * revert all four tests miss becomes a loud errors[] entry, which is the right
+ * way round.
  */
 const REVERT_MESSAGE = /execution reverted/i;
 
@@ -316,19 +312,14 @@ export class PinnedChain implements ChainReader {
           return { result: result.data, reverted: false };
         } catch (err) {
           // A revert is a legitimate, informative outcome (e.g. `owner()` not
-          // implemented) — it is cached like any other result, not thrown as a
-          // ChainReadError.
-          //
-          // But an INFRASTRUCTURE failure must never take that path, because
-          // ~20 detectors downstream read a revert as a fact about the
-          // CONTRACT. Day 4 narrowed this catch from unconditional to
-          // "transient-looking failures throw" (KNOWN EDGE #14); day 6's
-          // semantic audit INVERTED it, because the day-4 shape was still
-          // fail-open — a bad API key, an unreachable host and a
-          // block-not-found all matched no transient pattern and were being
-          // cached as "this function reverted." Now the revert must be
-          // positively identified; anything else is infrastructure and lands
-          // in errors[] where it belongs. See looksLikeContractRevert.
+          // implemented) and is cached like any other result. But an
+          // INFRASTRUCTURE failure must never take that path, because ~20
+          // detectors downstream read a revert as a fact about the CONTRACT.
+          // Asking "does this look transient?" was still fail-open — a bad API
+          // key, an unreachable host and a block-not-found all matched no
+          // transient pattern and were cached as "this function reverted." The
+          // revert must now be positively identified; anything else lands in
+          // errors[]. See looksLikeContractRevert.
           if (!looksLikeContractRevert(err)) {
             throw new ChainReadError(
               "call",

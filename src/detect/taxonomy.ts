@@ -1,28 +1,24 @@
 /**
  * Versioned capability taxonomy: known function signatures grouped by the POWER
  * they grant, not by name. This table — not scattered conditionals — drives a
- * report's capability grouping, and is what `rulesetVersion` refers to: bump it
- * whenever the table changes.
+ * report's capability grouping, and is what `rulesetVersion` refers to.
  *
  * Every entry is a FULL signature, matched by computing its selector with viem
- * against the dispatcher's extracted set — never by matching a bare name, since
- * the extractor has no access to source-level names at all.
- * `mint(address,uint256)` and `mint(uint256)` are different entries.
+ * against the dispatcher's extracted set, never by matching a bare name (the
+ * extractor has no access to source-level names at all): `mint(address,uint256)`
+ * and `mint(uint256)` are different entries.
  *
  * `specificity` says how safely a matched NAME can be assumed to carry the
  * significance this table assigns it. It is not a certainty score, and is
- * surfaced as `nameMatchSpecificity` precisely so it is never read as one; the
- * selector match itself is always an exact keccak comparison.
- *   "standard" — widely-adopted signatures where the name reliably implies the
- *            capability (OZ Ownable/AccessControl/Pausable, common ERC20 mint
- *            and burn extensions, EIP-1967-adjacent upgrade functions).
- *   "generic"  — reused names with no dominant standard behind them (sweep,
- *            skim, emergencyWithdraw, rescueTokens, ad hoc setters). The match
- *            is exact; what the name IMPLIES varies by project.
+ * surfaced as `nameMatchSpecificity` precisely so it is never read as one.
+ * "standard" — widely-adopted signatures where the name reliably implies the
+ * capability; "generic" — reused names with no dominant standard behind them
+ * (sweep, skim, emergencyWithdraw, ad hoc setters), where the match is exact but
+ * what the name IMPLIES varies by project.
  *
- * A selector absent from this table is simply unclassified, never "no
- * capability". There is no reverse-lookup against a 4byte-style database: that
- * would be a live, non-deterministic dependency.
+ * A selector absent from this table is unclassified, never "no capability".
+ * There is no reverse-lookup against a 4byte-style database: that would be a
+ * live, non-deterministic dependency.
  */
 import { toFunctionSelector, type Hex } from "viem";
 import type { CapabilityCategory } from "../report/schema.js";
@@ -63,22 +59,17 @@ const RAW_TAXONOMY: TaxonomyEntry[] = [
   // --- SUPPLY ---
   { signature: "mint(address,uint256)", category: "SUPPLY", specificity: "standard" },
   // Argument-swapped mint. A different selector, so it needs its own entry —
-  // added day 5 after calibration found it live on Rocket Pool's rETH
-  // (0xae78736C…, selector 0x94bf804d), where its absence was the sole reason a
-  // contract with a real privileged minter came back as having no rule-change
-  // route at all. Probing it there returns "Invalid or outdated contract",
-  // Rocket Pool's onlyLatestNetworkContract guard.
+  // found live on Rocket Pool's rETH (selector 0x94bf804d), where its absence
+  // was the sole reason a contract with a real privileged minter came back as
+  // having no rule-change route at all.
   //
-  // `generic`, and this is the clearest example in the table of why that field
-  // exists. This exact selector is ALSO ERC-4626's `mint(uint256 shares,
-  // address receiver)` — the public deposit function every vault exposes to
-  // everybody. Ripcord matched it on Ethena's sUSDe in the same calibration run
-  // and got InvalidAmount() back, a zero-amount precondition, because there is
-  // no privilege there to find. Selectors are not names: one signature, two
-  // unrelated meanings, and the report must not imply the privileged reading.
-  // The probe still tells the two apart on evidence — rETH's guard fires,
-  // sUSDe's amount check fires — which is the point of probing rather than
-  // reasoning from the name.
+  // `generic`, and the clearest example in the table of why that field exists:
+  // this exact selector is ALSO ERC-4626's `mint(uint256 shares, address
+  // receiver)`, the public deposit function every vault exposes to everybody.
+  // Matching it on Ethena's sUSDe returns InvalidAmount(), a zero-amount
+  // precondition, because there is no privilege there to find. Selectors are not
+  // names — the probe tells the two apart on evidence, which is the point of
+  // probing rather than reasoning from the name.
   { signature: "mint(uint256,address)", category: "SUPPLY", specificity: "generic" },
   { signature: "mint(uint256)", category: "SUPPLY", specificity: "standard" },
   { signature: "mint(address,uint256,bytes)", category: "SUPPLY", specificity: "standard" },

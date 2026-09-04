@@ -1,14 +1,13 @@
 /**
  * Exit-window unit tests. Network-free: every chain read is served by a fake
- * ChainReader, so these run in CI alongside the rest.
+ * ChainReader.
  *
- * The revert strings asserted here are the EXACT bytes read from mainnet
- * before exitWindow.ts was written (Compound Timelock 0x6d903f60… and the ENS
- * DAO TimelockController 0xfe89cc7a… at block 25800000, via eth_call from an
- * unrelated sender). They are the evidence behind `proven_binding`, which is
- * the one determination in this project that must never be reached
- * optimistically — so it gets tested against real bytes rather than against a
- * string this file made up.
+ * The revert strings asserted here are the EXACT bytes read from mainnet before
+ * exitWindow.ts was written (Compound Timelock 0x6d903f60… and the ENS DAO
+ * TimelockController 0xfe89cc7a… at block 25800000). They are the evidence behind
+ * `proven_binding`, the one determination in this project that must never be
+ * reached optimistically, so it is tested against real bytes rather than against
+ * a string this file made up.
  */
 import { describe, expect, it } from "vitest";
 import { encodeAbiParameters, keccak256, toBytes, toFunctionSelector, type Hex } from "viem";
@@ -651,15 +650,13 @@ describe("exit-window composition", () => {
   });
 });
 
-// --- ENUMERATION COMPLETENESS MUST REACH THE VERDICT (day 5.5) ---
+// --- ENUMERATION COMPLETENESS MUST REACH THE VERDICT ---
 //
-// The class these guard against: role enumeration goes partial whenever the
-// provider caps eth_getLogs, so the exit window computes its MINIMUM notice over
-// only the routes it happened to see. An un-enumerated role holding a zero-notice
-// power then produces a reassuring verdict about a protocol nobody can leave in
-// time. Found live on two of 26 calibration protocols.
-//
-// The cap is SIMULATED here — no provider is involved — so these are
+// Role enumeration goes partial whenever the provider caps eth_getLogs, so the
+// exit window computes its MINIMUM notice over only the routes it happened to
+// see. An un-enumerated role holding a zero-notice power then produces a
+// reassuring verdict about a protocol nobody can leave in time — found live on
+// two of 26 calibration protocols. The cap is SIMULATED here, so these are
 // deterministic and cannot rot when an endpoint changes.
 
 describe("enumeration completeness gates the reassuring assessments", () => {

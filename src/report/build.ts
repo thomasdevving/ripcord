@@ -53,34 +53,26 @@ function blocksPublication(entry: { reason: ManualVerificationReason }): boolean
  * `needsManualVerification` entry, at the target or anywhere in the dependency
  * graph, makes the report non-publishable. Deliberately conservative — it gates
  * on the presence of the uncertainty itself, never on how serious the entry
- * happens to look, so calibration day is a mechanical check rather than a
- * per-protocol ethics call under time pressure.
+ * looks, so calibration is a mechanical check rather than a per-protocol ethics
+ * call under time pressure.
  *
- * DAY 5: only `reason: "no_auth_revert_observed"` blocks. The day-5 sibling
- * reason `reverted_before_auth_check` does not, and the distinction is a
- * correctness fix rather than a relaxation. The gate exists because "no
- * recognised auth revert" cannot be told apart from "no guard at all," and
- * publishing the second reading would be a vulnerability claim about a live
- * contract. When the contract demonstrably rejected the probe on a state or
- * argument precondition — Ripcord's own zero-valued argument coming back as
- * "ERC20: approve from the zero address" — no auth check ran, so there is no
- * unguarded reading to protect against and nothing to disclose to anyone. It is
- * still reported in needsManualVerification, because an untested capability must
- * stay visible; it simply no longer pretends to be a possible vulnerability.
+ * Only `reason: "no_auth_revert_observed"` blocks. `reverted_before_auth_check`
+ * does not, and the distinction is a correctness fix rather than a relaxation:
+ * the gate exists because "no recognised auth revert" cannot be told apart from
+ * "no guard at all". When the contract demonstrably rejected the probe on a
+ * state or argument precondition, no auth check ran, so there is no unguarded
+ * reading to protect against. It is still reported in needsManualVerification,
+ * because an untested capability must stay visible.
  */
 export function assessDisclosure(chainId: number, capabilities: CapabilitiesResult, dependencies: DependencyGraph): Disclosure {
   // SURFACE COVERAGE. This gate must see every needsManualVerification entry
-  // anywhere it can arise. Today those arise in exactly two places: the
-  // target's own `capabilities`, and each dependency token's `capabilities`
-  // (below). The day-3 authority path (authorityResolution) does NOT appear
-  // here, and that omission is CORRECT ONLY BECAUSE the recursion runs
-  // ownership/AccessControl/timelock detection but NOT capability probing — so
-  // it structurally cannot produce a needsManualVerification entry. If capability
-  // probing is ever added to the recursion (e.g. probing a resolved controller's
-  // own functions), it will start producing that surface, and THIS function must
-  // be extended to fold authorityResolution's entries into `blockedBy` — or a
-  // new unguarded-looking capability would silently escape the publication gate.
-  // Do not add capability probing to authority.ts without updating this gate.
+  // anywhere it can arise: today the target's own `capabilities` and each
+  // dependency token's. `authorityResolution` does NOT appear here, and that is
+  // correct ONLY BECAUSE the recursion runs ownership/AccessControl/timelock
+  // detection but NOT capability probing, so it structurally cannot produce such
+  // an entry. If capability probing is ever added to the recursion, this
+  // function must fold its entries into `blockedBy` — otherwise a new
+  // unguarded-looking capability would silently escape the publication gate.
   const cleared: Disclosure["cleared"] = [];
 
   // The TARGET's own needsManualVerification ALWAYS blocks — the cleared
@@ -368,22 +360,20 @@ export async function buildReport(chain: ChainReader, target: Hex, observer?: Ru
     }
   }
 
-  // --- Day 4: the Exit Window, the time to exit, and the verdict. ---
+  // --- The Exit Window, the time to exit, and the verdict. ---
   //
-  // Ordering matters and is not incidental. Both stages consume what the
-  // earlier ones produced (authorityResolution for the routes, capabilities
-  // for the guard attributions and the dispatcher's selector set), so they run
-  // AFTER them and never re-derive any of it — a route whose delay came from
-  // one walk of the authority tree and whose controller came from another
-  // would be exactly the kind of quiet attribution error this project forbids.
+  // Ordering is not incidental: both stages consume what the earlier ones
+  // produced (authorityResolution for the routes, capabilities for the guard
+  // attributions and the selector set), so they run AFTER them and never
+  // re-derive any of it — a route whose delay came from one walk of the
+  // authority tree and whose controller came from another is exactly the quiet
+  // attribution error this project forbids.
   //
-  // A null result here means the STAGE FAILED (and said so in errors[]). It
-  // never means the window is fine: the verdict below degrades to
-  // "undetermined" on a null, it does not skip the question.
-  // Day-5 authority-indirection markers. Runs BEFORE the exit window because
-  // the window's "clean" status is conditional on it: a null here (stage
-  // failure) is treated as "a delegated-authorisation handle cannot be ruled
-  // out," not as "there is none" — see the inverted default in exitWindow.ts.
+  // A null result means the STAGE FAILED (and said so in errors[]). It never
+  // means the window is fine: the verdict degrades to "undetermined".
+  // Authority-indirection markers run BEFORE the exit window because the
+  // window's "clean" status is conditional on them: a null here is treated as "a
+  // delegated-authorisation handle cannot be ruled out", not as "there is none".
   const authorityIndirection = await runStage<AuthorityIndirection | null>(
     "authorityIndirection",
     () => detectAuthorityIndirection(chain, target),
@@ -597,12 +587,11 @@ export async function buildReport(chain: ChainReader, target: Hex, observer?: Ru
  * Runs one detector stage, converting an exception into an `errors[]` entry plus
  * a safe fallback value rather than a crash.
  *
- * The observer notifications added here are PURELY ADDITIVE: `notify` cannot
- * throw (see observer.ts), the hooks receive already-computed values, and
- * nothing on this path is read back into the report. A stage that threw is
- * reported to the observer as `degraded`, never as a completion — the fallback
- * value it returns is a placeholder, and a UI painting it green would be
- * asserting a clean result the engine never produced.
+ * The observer notifications here are PURELY ADDITIVE: `notify` cannot throw,
+ * the hooks receive already-computed values, and nothing on this path is read
+ * back into the report. A stage that threw is reported as `degraded`, never as a
+ * completion — the fallback value is a placeholder, and a UI painting it green
+ * would assert a clean result the engine never produced.
  */
 async function runStage<T>(
   stage: string,

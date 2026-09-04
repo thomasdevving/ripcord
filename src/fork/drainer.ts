@@ -1,20 +1,19 @@
 /**
- * A minimal "sweep these ERC20s to one address" contract, assembled as raw
- * EVM bytecode in TypeScript — no Solidity source, no solc, no forge. It
- * exists only to make the CODE_CHANGE capability CONCRETE on a sandbox fork:
- * once the resolved admin upgrades a proxy to this implementation, any call
- * to the proxy delegatecalls here and the proxy's own token holdings move.
+ * A minimal "sweep these ERC20s to one address" contract, assembled as raw EVM
+ * bytecode in TypeScript — no Solidity source, no solc, no forge. It exists only
+ * to make the CODE_CHANGE capability CONCRETE on a sandbox fork: once the
+ * resolved admin upgrades a proxy to this implementation, any call to the proxy
+ * delegatecalls here and the proxy's own token holdings move.
  *
- * The runtime ignores calldata entirely and, for each configured token,
- * executes `balanceOf(address(this))` then `transfer(recipient, balance)`.
- * Run under delegatecall from the proxy, `address(this)` is the PROXY, so it
- * reads and moves the PROXY's balances. This is deliberately the smallest
- * thing that demonstrates the capability — it is not a general-purpose
- * exploit and is never deployed anywhere but an ephemeral fork.
+ * The runtime ignores calldata and, for each configured token, executes
+ * `balanceOf(address(this))` then `transfer(recipient, balance)`. Under
+ * delegatecall from the proxy, `address(this)` IS the proxy, so it reads and
+ * moves the proxy's balances. Deliberately the smallest thing that demonstrates
+ * the capability — not a general-purpose exploit, and never deployed anywhere
+ * but an ephemeral fork.
  *
- * Assembling it by hand (rather than compiling) keeps the whole codebase in
- * one language and makes the bytecode auditable inline. Every opcode is
- * commented at the sequence level in `drainOne`.
+ * Assembling it by hand keeps the codebase in one language and the bytecode
+ * auditable inline; every opcode is commented at the sequence level in `drainOne`.
  */
 import type { Hex } from "viem";
 

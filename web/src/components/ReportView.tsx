@@ -1,34 +1,77 @@
 import { formatTokenUnits } from "../report-types.js";
 /**
- * The finished report.
- *
- * Continues the analysis page's visual structure rather than sending the reader
- * to a raw JSON dump: the report is the destination of the same story, not a
- * different artifact. JSON is one click away for anyone who wants it.
+ * The finished report, continuing the analysis page's visual structure rather
+ * than sending the reader to a raw JSON dump: the report is the destination of
+ * the same story, not a different artifact.
  *
  * THE RULES THIS COMPONENT ENFORCES BY RENDERING, not by commenting:
  *
  *  - NOTHING IS RECOMPUTED. Verdict, minimum notice, per-route notice and every
- *    uncertainty come from the server. The frontend does not take a minimum
- *    across routes, does not decide what is binding, and does not soften a
- *    status. A second implementation of that logic would eventually disagree
- *    with the first, and the one on screen is the one people believe.
- *
+ *    uncertainty come from the server. A second implementation of that logic
+ *    would eventually disagree with the first, and the one on screen is the one
+ *    people believe.
  *  - UNKNOWN NOTICE IS NOT ZERO. A route with no established notice renders as
- *    "not established", visually distinct from a route measured at 0s. Those
- *    mean opposite things: one is an open question, the other is a demonstrated
- *    absence of delay.
- *
+ *    "not established", visually distinct from one measured at 0s.
  *  - A ZERO LOWER BOUND ON TIME-TO-EXIT IS NOT AN INSTANT EXIT. It means no
- *    duration was established. Rendering it as "0s — you can leave immediately"
- *    would invent the most reassuring possible reading of a missing measurement.
- *
+ *    duration was established.
  *  - AN UNDETERMINED VERDICT NEVER WEARS THE HEALTHY TONE. See `verdictTone`.
+ *  - THE ANSWER LEADS. Both figures are read straight off the server's
+ *    `verdict.exitWindowSeconds` / `verdict.timeToExitSeconds`; a null is
+ *    rendered in the LABEL voice, never as a numeral.
  */
 import type { Report } from "../report-types.js";
-import { formatDuration, verdictTone, VERDICT_GLOSS } from "../report-types.js";
+import {
+  formatDuration,
+  verdictTone,
+  groupDigits,
+  VERDICT_GLOSS,
+  EXIT_WINDOW_QUALIFIER,
+  TIME_TO_EXIT_QUALIFIER,
+} from "../report-types.js";
 import { CopyButton } from "./CopyButton.js";
 import type { ReactElement } from "react";
+
+/**
+ * The two figures the verdict compares, side by side.
+ *
+ * A null is NOT a zero and must not be drawn as one. An established figure is set
+ * in the display numeral; an unestablished one drops to the mono label voice and
+ * says "not established" in words, so there is no length to read off it — the
+ * typographic form of the hatched bar the rendered pages use.
+ */
+function Clocks({ report }: { report: Report }): ReactElement | null {
+  const verdict = report.verdict;
+  if (!verdict) return null;
+
+  const windowText = formatDuration(verdict.exitWindowSeconds);
+  const exitText = formatDuration(verdict.timeToExitSeconds);
+  const windowStatus = report.exitWindow?.assessment.status ?? null;
+  const exitStatus = report.timeToExit?.status ?? null;
+  // `tight` is the report's own word for "this floor is believed to be the
+  // whole story". Without it a lower bound would print as a duration.
+  const floor = report.timeToExit ? !report.timeToExit.tight : false;
+
+  return (
+    <dl className="clocks">
+      <div className={`clock${windowText === null ? " unestablished" : ""}`}>
+        <dt>Notice before the rules can change</dt>
+        <dd className="clock-v">{windowText ?? "Not established"}</dd>
+        <dd className="clock-q">
+          {windowStatus ? (EXIT_WINDOW_QUALIFIER[windowStatus] ?? windowStatus.replace(/_/g, " ")) : "no exit-window assessment was produced"}
+        </dd>
+      </div>
+      <div className={`clock${exitText === null ? " unestablished" : ""}`}>
+        <dt>Time needed to leave</dt>
+        <dd className="clock-v">
+          {exitText === null ? "Not established" : floor ? <>at least <span>{exitText}</span></> : exitText}
+        </dd>
+        <dd className="clock-q">
+          {exitStatus ? (TIME_TO_EXIT_QUALIFIER[exitStatus] ?? exitStatus.replace(/_/g, " ")) : "no time-to-exit analysis was produced"}
+        </dd>
+      </div>
+    </dl>
+  );
+}
 
 function Routes({ report }: { report: Report }): ReactElement {
   const routes = report.exitWindow?.routes ?? [];
@@ -50,7 +93,13 @@ function Routes({ report }: { report: Report }): ReactElement {
           <div className={`route ${tone}`} key={i}>
             <header>
               <span className="r-label">{route.label}</span>
-              <span className="chip">{route.noticeStatus}</span>
+              {/* CAUTION-ONLY, like every other signal in this codebase. A route
+                  that needs no waiting is marked; a delayed one stays neutral.
+                  Tinting "delayed" green would say the route is safe, which is
+                  the one reading this project never lets a colour make. */}
+              <span className={`chip${tone === "immediate" ? " crit" : tone === "unknown" ? " warn" : ""}`}>
+                {route.noticeStatus}
+              </span>
               {route.confirmationMethod === "fork_confirmed" && <span className="chip crit">fork-confirmed</span>}
               <span className="r-notice">
                 {/* An unproven delay shows its nominal value AND says it is
@@ -214,6 +263,8 @@ export function ReportView({
   reportId,
   forkEvidence,
   assetEvidence,
+  powerMap,
+  showHead = false,
 }: {
   report: Report;
   reportId: string | null;
@@ -231,6 +282,21 @@ export function ReportView({
    * end of the report where a demo reader is likely to miss it.
    */
   assetEvidence?: ReactElement | null;
+  /**
+   * The power map, rendered directly BELOW the verdict rather than above it.
+   * A slot for the same reason `forkEvidence` is one: the map is the mechanism
+   * behind the answer, and a reader who arrives on a shared link should meet
+   * the answer first. The live analysis screen passes nothing — it shows the
+   * map while the run is still happening, which is a different job.
+   */
+  powerMap?: ReactElement | null;
+  /**
+   * Whether to print the document head naming the target. The analysis screen
+   * already carries address, chain and block in its sticky run bar, so a second
+   * masthead there would be duplication; a shared report link has no run bar
+   * and needs to say what it is about.
+   */
+  showHead?: boolean;
 }): ReactElement {
   const verdict = report.verdict;
   const tone = verdictTone(verdict?.status);
@@ -239,22 +305,56 @@ export function ReportView({
 
   return (
     <>
-      <section className={`card hero ${tone}`}>
-        <div className="verdict-badge">{(verdict?.status ?? "no verdict").toUpperCase().replace(/_/g, " ")}</div>
-        {verdict && <span className="chip" style={{ marginLeft: 10 }}>confidence: {verdict.confidence}</span>}
-        <p className="statement">{verdict?.statement ?? "This report carries no verdict."}</p>
-        {verdict && VERDICT_GLOSS[verdict.status] && (
-          <p className="note" style={{ maxWidth: "76ch" }}>
-            {VERDICT_GLOSS[verdict.status]}
+      {showHead && (
+        <header className="report-head">
+          {/* The subject of the report is the ADDRESS, and it is the h1. A
+              protocol name would be a label nothing on chain verified, and this
+              project does not print one. The copy control sits BESIDE the
+              heading rather than inside it: a button's text has no business in
+              the document's accessible name. */}
+          <div className="rh-line">
+            <h1 className="rh-target">{report.target.address}</h1>
+            <CopyButton value={report.target.address} />
+          </div>
+          <p className="rh-meta">
+            <span>chain {report.chainId}</span>
+            <span>block {groupDigits(report.block.number)}</span>
+            <span>ruleset {report.rulesetVersion}</span>
+            <span>schema {report.schemaVersion}</span>
           </p>
-        )}
-        {verdict && verdict.marginSeconds !== null && (
-          <p className="note small">
-            Margin between leaving and the rules changing: {formatDuration(verdict.marginSeconds) ?? `${verdict.marginSeconds}s`}.
+          <p className="rh-note">
+            A historical checkpoint. Opening it performs no new chain reads, and full provenance — generation time,
+            block hash and bytecode digest — is kept once at the foot of the page.
           </p>
-        )}
+        </header>
+      )}
+
+      <section className={`card verdict-card ${tone}`}>
+        {/* Two columns on a wide screen: the figures answer the question, the
+            prose says what they rest on. One stacked column below 1180px. */}
+        <div className="verdict-body">
+          <div className="verdict-figures">
+            <div className="verdict-line">
+              <h2 className="verdict-badge">{(verdict?.status ?? "no verdict").toUpperCase().replace(/_/g, " ")}</h2>
+              {verdict && <span className="chip">confidence: {verdict.confidence}</span>}
+            </div>
+            <Clocks report={report} />
+          </div>
+
+          <div className="verdict-prose">
+            <p className="statement">{verdict?.statement ?? "This report carries no verdict."}</p>
+            {verdict && VERDICT_GLOSS[verdict.status] && <p className="note">{VERDICT_GLOSS[verdict.status]}</p>}
+            {verdict && verdict.marginSeconds !== null && (
+              <p className="note small">
+                Margin between leaving and the rules changing:{" "}
+                {formatDuration(verdict.marginSeconds) ?? `${verdict.marginSeconds}s`}.
+              </p>
+            )}
+          </div>
+        </div>
+
         {verdict && verdict.missing.length > 0 && (
-          <div className="banner warn" style={{ marginTop: 12, marginBottom: 0 }}>
+          <div className="banner warn" style={{ marginTop: 16, marginBottom: 0 }}>
             <strong>Why this verdict is not crisper</strong>
             <ul className="plain" style={{ marginBottom: 0 }}>
               {verdict.missing.map((item, i) => (
@@ -264,6 +364,8 @@ export function ReportView({
           </div>
         )}
       </section>
+
+      {powerMap}
 
       <section className="card">
         <h2>Notice before the rules can change</h2>
@@ -350,7 +452,7 @@ export function ReportView({
       {er && (
         <section className="card">
           <h2>Fork experiment result</h2>
-          <div className="row" style={{ marginBottom: 12 }}>
+          <div className="chip-row">
             <span className="chip">{er.outcome.replace(/_/g, " ")}</span>
             <span className="chip">{er.restrictionState.replace(/_/g, " ")}</span>
             <span className={`chip ${er.confirmationMethod === "fork_confirmed" ? "crit" : "warn"}`}>
@@ -610,7 +712,9 @@ export function ReportView({
             <button className="shrink" type="button" onClick={() => window.print()}>
               Print / save as PDF
             </button>
-            <CopyButton value={new URL(`/report/${reportId}`, window.location.origin).href} label="Copy link to this report" />
+            <span className="shrink">
+              <CopyButton value={new URL(`/report/${reportId}`, window.location.origin).href} label="Copy link to this report" />
+            </span>
           </div>
         )}
       </section>

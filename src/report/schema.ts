@@ -23,13 +23,11 @@ export type Evidence = z.infer<typeof evidenceSchema>;
 
 /**
  * The ONE certainty vocabulary, shared across every layer that expresses "how
- * much to trust this" as a degree: authority-depth confidence (high at a direct
- * hop, degrading with each hop), role-reconstruction completeness (high for a
- * full scan / authoritative getters, lower for a partial window), and any
- * future certainty axis. Deliberately NOT reused for things that are not
- * certainty — e.g. taxonomy `nameMatchSpecificity` ("is this a standard name")
- * is a different question and has its own enum, so a generic name is never
- * silently read as low confidence. One scale for certainty, and only certainty.
+ * much to trust this" as a degree: authority-depth confidence, role-
+ * reconstruction completeness, and any future certainty axis. Deliberately NOT
+ * reused for things that are not certainty — taxonomy `nameMatchSpecificity`
+ * ("is this a standard name") is a different question with its own enum, so a
+ * generic name is never silently read as low confidence.
  */
 export const depthConfidenceSchema = z.enum(["high", "medium", "low"]);
 export type DepthConfidence = z.infer<typeof depthConfidenceSchema>;
@@ -92,22 +90,18 @@ export type RoleEntry = z.infer<typeof roleEntrySchema>;
 
 /**
  * How complete the role reconstruction is, and how much to trust it — the
- * weakest-link principle applied to the AccessControl event scan. The role
- * history is reconstructed by replaying RoleGranted/RoleRevoked over a block
- * range chunked to the provider's real eth_getLogs limit (probed, see
- * rpcPreflight.ts). When the full range can't be covered within the request
- * budget, the scan degrades to a bounded recent window and says so HERE —
- * `complete: false`, a lowered `confidence`, and the exact `scannedFromBlock`
- * so a reader knows precisely what was and wasn't observed. This is never a
- * silent truncation: a partial reconstruction that reads as a full one would
- * be exactly the false-confidence the project forbids.
+ * weakest-link principle applied to the AccessControl event scan. When the full
+ * range cannot be covered within the request budget, the scan degrades to a
+ * bounded recent window and says so HERE: `complete: false`, a lowered
+ * `confidence`, and the exact `scannedFromBlock`, so a reader knows precisely
+ * what was and was not observed. A partial reconstruction reading as a full one
+ * would be exactly the false confidence the project forbids.
  *
- * `confidence` uses the same high/medium/low certainty scale as authority-depth
- * confidence (one vocabulary): high = full scan or authoritative Enumerable
- * getters; medium = Enumerable membership is authoritative but the role-hash
- * discovery scan was partial (a role never touched in the covered window could
- * be missed); low = non-Enumerable membership reconstructed from a partial
- * event window (both the role set and its membership may be incomplete).
+ * `confidence` uses the shared high/medium/low certainty scale: high = full scan
+ * or authoritative Enumerable getters; medium = Enumerable membership is
+ * authoritative but the role-hash discovery scan was partial; low =
+ * non-Enumerable membership reconstructed from a partial event window, so both
+ * the role set and its membership may be incomplete.
  */
 export const roleReconstructionSchema = z.object({
   complete: z.boolean(),
@@ -124,22 +118,15 @@ export type RoleReconstruction = z.infer<typeof roleReconstructionSchema>;
  * ENUMERATION COMPLETENESS — the aggregate witness.
  *
  * `roleReconstructionSchema` says whether ONE scan saw everything. This says
- * whether EVERY enumeration the verdict rests on did: the target, every
- * contract the authority recursion walked at any depth, and every dependency
- * token. The per-scan flag was recorded and read by nothing, so the exit
- * window's minimum-across-routes ran over a route set that could be missing
- * entries — a reassuring verdict about a protocol nobody can leave.
- *
- * Two live instances, and the second is why this aggregates rather than sitting
- * on the target: Ethena Minting's own scan covered 6,750 of 5.66M blocks yet
- * reported `can_exit_in_time` with `missing: []`; Ethena USDe is not an
- * AccessControl contract at all, but its single route terminates at a
- * TimelockController whose OWN roles were partially enumerated.
+ * whether EVERY enumeration the verdict rests on did: the target, every contract
+ * the authority recursion walked at any depth, and every dependency token. The
+ * per-scan flag was recorded and read by nothing, so the exit window's
+ * minimum-across-routes ran over a route set that could be missing entries.
  *
  * FAIL-CLOSED: `complete` is a POSITIVE claim, true only where completeness was
- * established at every site. A missing reconstruction, an undefined flag, a
- * stage that threw — all incomplete. Reading an absent flag as complete would
- * launder a failed read into a fact, the exact bug this witness closes.
+ * established at every site. A missing reconstruction, an undefined flag, a stage
+ * that threw — all incomplete. Reading an absent flag as complete would launder a
+ * failed read into a fact, the exact bug this witness closes.
  */
 /**
  * The STRUCTURAL identity of an enumeration site.
@@ -147,11 +134,10 @@ export type RoleReconstruction = z.infer<typeof roleReconstructionSchema>;
  * `where` is prose for a reader; `site` is the same thing as data. Two layers
  * narrate the same gap — the exit-window assessment and the verdict — and the
  * second must tell "the gap already stated" from "a different gap sharing some
- * words". The dedup used to compare `where` as a SUBSTRING, which works on the
- * current set by an accident of wording: `where` for the target is the bare
- * string "target", so any unrelated sentence containing that word would
- * suppress a real gap. Comparing identities means a suppression can only
- * collapse two representations of the SAME site.
+ * words". The dedup used to compare `where` as a SUBSTRING, and `where` for the
+ * target is the bare string "target", so any unrelated sentence containing that
+ * word would suppress a real gap. Comparing identities means a suppression can
+ * only collapse two representations of the SAME site.
  */
 export const enumerationSiteSchema = z.object({
   kind: z.enum(["stage", "target", "authority", "dependency", "authorityResolution", "capabilitySurface"]),
@@ -248,31 +234,27 @@ export type CapabilityCategory = z.infer<typeof capabilityCategorySchema>;
 
 /**
  * How SPECIFIC a taxonomy signature's NAME is — NOT a certainty score, and
- * deliberately named so it can never be misread as one (it is not on the
- * shared high/medium/low `depthConfidenceSchema` certainty scale). The
- * selector match itself is always exact (a keccak comparison). This field only
- * says how safely the name's conventional MEANING can be assumed:
+ * deliberately named so it can never be misread as one. The selector match
+ * itself is always an exact keccak comparison; this field only says how safely
+ * the name's conventional MEANING can be assumed:
  *   "standard" — a widely-adopted signature (OZ upgradeTo, transferOwnership,
  *     ERC20 mint) whose name reliably implies the capability.
  *   "generic"  — a commonly-reused name with no single dominant meaning
- *     (sweep/skim/emergencyWithdraw/rescueTokens). The match is exact, but what
- *     the name IMPLIES varies by project, so a reader should not assume intent
- *     from the name alone. This is a semantic caveat, not lower confidence in
- *     the detection.
+ *     (sweep/skim/emergencyWithdraw). The match is exact, but what the name
+ *     IMPLIES varies by project. A semantic caveat, not lower confidence in the
+ *     detection.
  */
 export const nameMatchSpecificitySchema = z.enum(["standard", "generic"]);
 export type NameMatchSpecificity = z.infer<typeof nameMatchSpecificitySchema>;
 
 /**
- * Guard attribution as a discriminated union on `status` — this is the
- * type-level enforcement of weakest-link provenance for capabilities: only
- * the "attributed" variant has a `holders` field, and zod's
- * discriminatedUnion rejects any object that doesn't match one shape
- * exactly, so a capability finding is structurally incapable of claiming an
- * attributed holder without also carrying the evidence a real attribution
- * requires. `holders` (not `holder`) because an AccessControl role can have
- * more than one member — attribution must not silently drop members to fit
- * a single-address shape.
+ * Guard attribution as a discriminated union on `status` — the type-level
+ * enforcement of weakest-link provenance for capabilities. Only the "attributed"
+ * variant has a `holders` field, and zod's discriminatedUnion rejects any object
+ * that does not match one shape exactly, so a capability finding is structurally
+ * incapable of claiming an attributed holder without also carrying the evidence
+ * a real attribution requires. `holders` (not `holder`) because an AccessControl
+ * role can have more than one member.
  */
 export const guardAttributedSchema = z.object({
   status: z.literal("attributed"),
@@ -320,26 +302,24 @@ export const capabilityFindingSchema = z.object({
 export type CapabilityFinding = z.infer<typeof capabilityFindingSchema>;
 
 /**
- * Why a privileged-taxonomy capability could not become a normal finding.
- * Day 2 had one reason; day-5 calibration showed it was carrying two very
- * different meanings, and that the conflation was making the disclosure gate
- * fire on the wrong thing.
+ * Why a privileged-taxonomy capability could not become a normal finding. One
+ * reason originally carried two very different meanings, and the conflation made
+ * the disclosure gate fire on the wrong thing.
  *
  *  - `no_auth_revert_observed`    — nothing recognisable came back from any of
- *    the three probes. This is NEVER a claim that the function is unguarded
- *    (probing cannot prove that, and asserting it would be a vulnerability
- *    claim about a live contract) — but it cannot rule that reading out
- *    either, so it BLOCKS publication.
+ *    the three probes. NEVER a claim that the function is unguarded (probing
+ *    cannot prove that, and asserting it would be a vulnerability claim about a
+ *    live contract), but it cannot rule that reading out either, so it BLOCKS
+ *    publication.
  *  - `reverted_before_auth_check` — the contract rejected the probe on a
  *    recognised state or argument precondition, so execution never reached an
- *    authorisation check. Ripcord probes with zero-valued arguments, so this
- *    is a fact about the PROBE, not about the contract's guards. It supports
- *    no vulnerability reading at all, and therefore does NOT block
- *    publication. It is still surfaced, because "we could not test this" must
- *    never silently vanish into a clean-looking report.
+ *    authorisation check. Ripcord probes with zero-valued arguments, so this is a
+ *    fact about the PROBE and supports no vulnerability reading; it does NOT
+ *    block publication, but is still surfaced, because "we could not test this"
+ *    must never silently vanish into a clean-looking report.
  *
  * Neither reason ever asserts a guard exists. That claim requires a recognised
- * auth revert, and it lives in `guard.status`, not here.
+ * auth revert and lives in `guard.status`, not here.
  */
 export const manualVerificationReasonSchema = z.enum(["no_auth_revert_observed", "reverted_before_auth_check"]);
 export type ManualVerificationReason = z.infer<typeof manualVerificationReasonSchema>;
@@ -384,19 +364,17 @@ export type CapabilitiesResult = z.infer<typeof capabilitiesResultSchema>;
 // --- timelock (day 3) ---
 
 /**
- * A timelock is a terminal authority worth its own shape: what matters is
- * not just "a contract" but "a contract that imposes a delay," and how long.
- * `kind` records which family the delay accessor came from; `delaySeconds`
- * is null (with a note) when the contract smells like a timelock — has the
- * roles or the neighbouring accessors — but its delay itself could not be
- * read, which is reported as "timelock: delay undetermined," never dropped.
+ * A timelock is a terminal authority worth its own shape: what matters is not
+ * just "a contract" but "a contract that imposes a delay", and how long. `kind`
+ * records which family the delay accessor came from; `delaySeconds` is null
+ * (with a note) when the contract smells like a timelock — it has the roles or
+ * the neighbouring accessors — but its delay could not be read, which is
+ * reported as "delay undetermined", never dropped.
  *
- * `adminCanShortenDelay` is a day-3 FLAG, not a day-3 answer: it records
- * whether the delay-mutation selector (updateDelay/setDelay) is present in
- * the timelock's own bytecode. Presence means the delay is not immutable —
- * the fuller question of who can reach that path and under what constraint
- * (it is normally itself gated by the current delay) is explicitly day-4
- * Exit Window work. `null` = not determined.
+ * `adminCanShortenDelay` is a FLAG, not an answer: it records whether the
+ * delay-mutation selector is present in the timelock's own bytecode, i.e. the
+ * delay is not immutable. Who can reach that path, and under what constraint, is
+ * exit-window work. `null` = not determined.
  */
 export const timelockInfoSchema = z.object({
   kind: z.enum(["openzeppelin", "compound_bravo", "unknown"]),
@@ -557,20 +535,17 @@ export type DependencyGraph = z.infer<typeof dependencyGraphSchema>;
 
 /**
  * Machine-checkable publication gate, so the disclosure policy is process
- * discipline rather than a judgement call made per protocol under time
- * pressure on calibration day.
+ * discipline rather than a judgement call made per protocol under time pressure.
  *
- * The rule: a report whose `needsManualVerification` is non-empty — at the
- * target or anywhere in its dependency graph — is NOT publishable. Those
- * entries are exactly the cases where probing could not tell "guarded by a
- * scheme Ripcord doesn't recognize" apart from "not guarded at all," and the
- * second reading is a vulnerability claim about a live contract. Such a
- * report stays local until either (a) a human clears the entry as a design
- * property, or (b) disclosure to the project has happened.
+ * The rule: a report whose `needsManualVerification` is non-empty — at the target
+ * or anywhere in its dependency graph — is NOT publishable. Those entries are
+ * exactly the cases where probing could not tell "guarded by a scheme Ripcord
+ * does not recognize" apart from "not guarded at all", and the second reading is
+ * a vulnerability claim about a live contract. Such a report stays local until a
+ * human clears the entry as a design property, or disclosure has happened.
  *
- * `publishable: true` therefore means "contains only admin-capability
- * findings," which the README's disclosure policy publishes freely. It is
- * deliberately conservative: it gates on the presence of the uncertainty,
+ * `publishable: true` therefore means "contains only admin-capability findings".
+ * It is deliberately conservative: it gates on the presence of the uncertainty,
  * not on anyone's assessment of how serious it looks.
  */
 export const disclosureSchema = z.object({
@@ -609,23 +584,20 @@ export type Disclosure = z.infer<typeof disclosureSchema>;
 
 /**
  * The result of trying to turn a static CODE_CHANGE capability claim into an
- * executed demonstration on a sandbox fork. This is the pillar of the tool,
- * and its honesty rules are load-bearing:
+ * executed demonstration on a sandbox fork. Its honesty rules are load-bearing:
  *
- *  - `attempted: false` — no proof was tried (e.g. the target archetype
- *    wasn't present). Neutral.
- *  - `attempted: true, produced: false` — a proof was attempted and could
- *    NOT be produced. `failureReason` says why. A missing proof is honest;
- *    the alternative (a hand-waved or fabricated trace) is disqualifying.
+ *  - `attempted: false` — no proof was tried (e.g. the archetype was absent).
+ *  - `attempted: true, produced: false` — a proof was attempted and could NOT be
+ *    produced; `failureReason` says why. A missing proof is honest, while a
+ *    hand-waved or fabricated trace is disqualifying.
  *  - `attempted: true, produced: true` — the admin's own legitimate path was
  *    executed on a fork and funds were observed to move. Every string here is
- *    CAPABILITY, not intent: "this authority CAN move $X," never "will,"
- *    never "malicious."
+ *    CAPABILITY, not intent: "this authority CAN move $X", never "will".
  *
- * Everything happens on an anvil mainnet fork pinned to the report's block.
- * No mainnet transaction is ever sent, no key is held. `reproduceCommand`
- * lets a judge replay the exact simulation; `traceArtifact` points at the
- * stored human-readable call trace.
+ * Everything happens on an anvil mainnet fork pinned to the report's block; no
+ * mainnet transaction is sent and no key is held. `reproduceCommand` lets a
+ * judge replay the exact simulation, and `traceArtifact` points at the stored
+ * call trace.
  */
 export const proofDeltaSchema = z.object({
   token: address,
@@ -645,15 +617,14 @@ export const proofSchema = z.object({
   produced: z.boolean(),
   archetype: z.string(),
   /**
-   * The notice period attached to the impersonated authority, from the day-4
-   * exit window. Added on day 4 to close an honesty gap the exit-window work
-   * exposed in the day-3 engine: anvil impersonation executes as the
-   * controller WITHOUT its queue, so a proof driven from a timelocked
-   * authority demonstrates a capability that in reality requires N seconds of
-   * public notice first. "This authority CAN move $X" was true and misleading
-   * at once. The fork cannot skip a delay it never simulated, so the delay is
-   * stated instead: null means no notice applies (or none was established, per
-   * `noticeNote`), "0" means a genuinely zero-notice authority.
+   * The notice period attached to the impersonated authority, from the exit
+   * window. It closes an honesty gap in the proof engine: anvil impersonation
+   * executes as the controller WITHOUT its queue, so a proof driven from a
+   * timelocked authority demonstrates a capability that in reality requires N
+   * seconds of public notice first. The fork cannot skip a delay it never
+   * simulated, so the delay is stated instead: null means no notice applies (or
+   * none was established, per `noticeNote`), "0" means a genuinely zero-notice
+   * authority.
    */
   noticeSeconds: z.string().nullable(),
   /** How `noticeSeconds` was derived, or why it is null. Always populated. */
@@ -680,17 +651,16 @@ export type Proof = z.infer<typeof proofSchema>;
 // --- exit window (day 4) ---
 
 /**
- * Whether a detected delay is actually BINDING on the authority it is meant
- * to constrain. This is the crux of day 4 and the single most dangerous place
- * in the whole tool to be optimistic: reporting a comforting delay that an
- * admin can cut to zero is worse than reporting nothing at all.
+ * Whether a detected delay is actually BINDING on the authority it is meant to
+ * constrain — the single most dangerous place in the tool to be optimistic:
+ * reporting a comforting delay that an admin can cut to zero is worse than
+ * reporting nothing at all.
  *
- * Determined by PROBE, never by reading source or guessing from a name (see
- * exitWindow.ts). The four outcomes are deliberately asymmetric — the only way
- * to reach `proven_binding` is positive evidence that the delay mutator can be
- * reached ONLY through the timelock itself (so changing the delay is itself
- * subject to the current delay), or that no delay mutator exists in the
- * timelock's own interface at all. Everything else degrades.
+ * Determined by PROBE, never by reading source or guessing from a name. The four
+ * outcomes are deliberately asymmetric — the only way to reach `proven_binding`
+ * is positive evidence that the delay mutator can be reached ONLY through the
+ * timelock itself, or that no delay mutator exists in the timelock's own
+ * interface at all. Everything else degrades.
  */
 export const delayBindingSchema = z.enum([
   /** The delay cannot be shortened faster than the delay itself. Positive evidence required. */
@@ -751,32 +721,27 @@ export const routeNoticeStatusSchema = z.enum([
 export type RouteNoticeStatus = z.infer<typeof routeNoticeStatusSchema>;
 
 /**
- * Whether an AccessControl role route was established to confer any privilege
- * at all.
+ * Whether an AccessControl role route was established to confer any privilege at
+ * all.
  *
  * This exists because of a false positive found live on Ethena's sUSDe: three
- * plain EOAs hold `FULL_RESTRICTED_STAKER_ROLE`, and the day-1/day-3 authority
- * seeding treats every role member as an authority — so the exit window
- * initially reported "3 of 4 routes can change the rules with zero notice"
- * about three addresses that are BLACKLISTED USERS and can change nothing.
- * OpenZeppelin AccessControl roles are used as markers and tags at least as
- * often as they are used for privilege (restricted-staker, KYC, whitelist
- * patterns), and membership alone establishes neither.
+ * plain EOAs hold `FULL_RESTRICTED_STAKER_ROLE`, and seeding every role member
+ * as an authority made the exit window report "3 of 4 routes can change the
+ * rules with zero notice" about three BLACKLISTED USERS who can change nothing.
+ * OZ AccessControl roles are used as markers and tags at least as often as for
+ * privilege, and membership alone establishes neither.
  *
- * So a role route must EARN its place in the window arithmetic, by one of
- * three pieces of real evidence:
- *   - it is DEFAULT_ADMIN_ROLE, which is privileged by construction in OZ
- *     AccessControl (it administers every role by default);
- *   - it is the `adminRole` of some other role, so it can grant roles; or
- *   - a day-2 capability probe attributed a guard to this exact role hash.
+ * So a role route must EARN its place in the window arithmetic, by one of three
+ * pieces of real evidence: it is DEFAULT_ADMIN_ROLE (privileged by construction
+ * in OZ AccessControl); it is the `adminRole` of some other role, so it can
+ * grant roles; or a capability probe attributed a guard to this exact role hash.
  * Anything else is `unverified`, and an unverified route contributes
  * `undetermined` — never a proven zero.
  *
- * That direction is deliberate and its safety rests on one property: an
- * unverified route can never produce a confident window either. A single
- * unverified route forces the whole assessment out of `binding`, so this can
- * only ever turn a false "zero notice" into an honest "not established" — it
- * can never turn a real risk into a clean bill.
+ * That direction is safe because of one property: an unverified route can never
+ * produce a confident window either. A single one forces the whole assessment
+ * out of `binding`, so this can only turn a false "zero notice" into an honest
+ * "not established", never a real risk into a clean bill.
  */
 export const rolePrivilegeSchema = z.enum(["not_a_role", "verified", "unverified"]);
 export type RolePrivilege = z.infer<typeof rolePrivilegeSchema>;
@@ -891,14 +856,11 @@ export type BypassCheck = z.infer<typeof bypassCheckSchema>;
  *
  * The old `no_rule_change_route_found` treated the ABSENCE OF A FOUND ROUTE as
  * the ABSENCE OF A ROUTE. It fired on three mainnet contracts and was wrong on
- * two, both delegating authority through an indirection Ripcord does not model
- * (Balancer's `getAuthorizer()`, rETH's RocketStorage registry), so a human read
- * "No exit-window risk was identified" about fully controllable contracts.
- *
- * So THE DEFAULT IS INVERTED: `undetermined` is what falling through produces,
- * and `immutable_within_checks` is a positive claim carrying the `basis[]` that
- * earned it — every condition a read Ripcord actually performed — with its bound
- * in `caveats[]`.
+ * two, both delegating authority through an indirection Ripcord does not model,
+ * so a human read "No exit-window risk was identified" about fully controllable
+ * contracts. THE DEFAULT IS THEREFORE INVERTED: `undetermined` is what falling
+ * through produces, and `immutable_within_checks` is a positive claim carrying
+ * the `basis[]` that earned it, with its bound in `caveats[]`.
  */
 export const exitWindowAssessmentSchema = z.discriminatedUnion("status", [
   z.object({
@@ -968,34 +930,29 @@ export type ExitWindow = z.infer<typeof exitWindowSchema>;
 // --- exit-restriction fork evaluation (day 7) ---
 
 /**
- * THE EXIT-RESTRICTION ENGINE (day 7).
+ * THE EXIT-RESTRICTION ENGINE.
  *
  * Every layer before this REASONS about whether a privileged party could shut a
  * holder's exit. This layer TESTS it: on a sandbox fork pinned to the report
- * block it establishes a real baseline exit, then — one restriction candidate
- * registered by the matched archetype at a time — impersonates its guarding party, calls it with a
- * bounded-adversarial argument, and re-runs the exit. If the exit then fails,
- * the function is a DIRECT exit-restrictor, demonstrated rather than inferred.
+ * block it establishes a real baseline exit, then — one registered candidate at
+ * a time — impersonates its guarding party, calls it with a bounded-adversarial
+ * argument, and re-runs the exit. If the exit then fails, the function is a
+ * DIRECT exit-restrictor, demonstrated rather than inferred.
  *
  * THE EPISTEMIC CEILING, honoured in the types, not just the copy. You cannot
- * prove a protocol is safe to exit — the absence of ANY restriction path over
- * an open space (arguments, call sequences, oracle/liquidity manipulation) is
- * not provable by testing, for anyone. So a clean run is NEVER `can_exit_in_time`
- * and never claims safety. Its positive outcome is the deliberately weaker
- * `no_direct_restriction_found`, whose scope is stated on every rendering:
- * "evaluated N registered candidates on a fork; none directly blocked a baseline
- * withdrawal. Not a guarantee — argument space and indirect/economic
- * restrictions were not exhausted." A FOUND restrictor, by contrast, is
- * decisive: a party can close the exit, and if un-timelocked it is a zero-notice
- * route that caps the verdict.
+ * prove a protocol is safe to exit — the absence of ANY restriction path over an
+ * open space (arguments, call sequences, oracle/liquidity manipulation) is not
+ * provable by testing, for anyone. So a clean run is NEVER `can_exit_in_time`
+ * and never claims safety; its positive outcome is the deliberately weaker
+ * `no_direct_restriction_found`, whose scope is stated on every rendering. A
+ * FOUND restrictor, by contrast, is decisive, and if un-timelocked it is a
+ * zero-notice route that caps the verdict.
  *
- * THE RISKIEST NEW FALSE-CLEAN is misidentifying the exit action. Testing
- * against the wrong exit function would clear a protocol that is actually
- * trappable. So exit-action identification is weakest-link: `no_direct_
- * restriction_found` is unreachable unless the exit action was confidently
- * identified AND a baseline exit was established. Anything less is
- * `exit_action_unconfident` / `baseline_unestablished`, both of which keep the
- * verdict `undetermined`.
+ * THE RISKIEST NEW FALSE-CLEAN is misidentifying the exit action, which would
+ * clear a protocol that is actually trappable. So identification is
+ * weakest-link: `no_direct_restriction_found` is unreachable unless the exit
+ * action was confidently identified AND a baseline exit established. Anything
+ * less keeps the verdict `undetermined`.
  */
 export const exitActionStatusSchema = z.enum(["identified", "unconfident", "none"]);
 
@@ -1030,9 +987,9 @@ export type ExitBaseline = z.infer<typeof exitBaselineSchema>;
  *
  * `result` is the whole point and is POSITIVELY established: `restrictor` only
  * when the baseline exit succeeded before and reverted after this party's
- * mutation; `no_effect` when the exit still succeeded after; `inconclusive`
- * when the mutation itself could not be executed (so nothing about the exit was
- * learned — never read as `no_effect`); `not_evaluated` when the candidate was
+ * mutation; `no_effect` when the exit still succeeded after; `inconclusive` when
+ * the mutation itself could not be executed, so nothing about the exit was
+ * learned (never read as `no_effect`); `not_evaluated` when the candidate was
  * outside the bounded budget and is reported, not silently dropped.
  */
 export const restrictionCandidateSchema = z.object({
@@ -1135,22 +1092,18 @@ export type ExitRestriction = z.infer<typeof exitRestrictionSchema>;
 // --- time to exit (day 4) ---
 
 /**
- * One measured (or explicitly unmeasured) leg of the journey out. Legs
- * compose SEQUENTIALLY in the request → wait → claim shape these mechanisms
- * almost always take, so the model sums measured legs — see timeToExit.ts for
- * that assumption stated in full.
+ * One measured (or explicitly unmeasured) leg of the journey out. Legs compose
+ * SEQUENTIALLY in the request → wait → claim shape these mechanisms almost
+ * always take, so the model sums measured legs.
  *
  * `measured: false` is a first-class outcome: a two-step withdrawal whose
- * duration Ripcord cannot read is a leg of UNKNOWN length, which makes the
- * whole time-to-exit "at least X, possibly more." It is never quietly treated
- * as zero, which would flatter the protocol in exactly the direction that
- * matters.
+ * duration Ripcord cannot read is a leg of UNKNOWN length, making the whole
+ * time-to-exit "at least X, possibly more". It is never quietly treated as zero,
+ * which would flatter the protocol in exactly the direction that matters.
  *
- * `mutableBy` records that the leg's own duration is a privileged SETTING
- * rather than a constant — e.g. a cooldown an owner can raise. A time-to-exit
- * that the same authority can extend is not a property of the protocol, it is
- * a property of that authority's current choice, and the distinction belongs
- * in the report.
+ * `mutableBy` records that the leg's own duration is a privileged SETTING rather
+ * than a constant — a time-to-exit the same authority can extend is a property
+ * of that authority's current choice, not of the protocol.
  */
 export const exitLegKindSchema = z.enum([
   "cooldown",
@@ -1219,8 +1172,8 @@ export type ExitBlockability = z.infer<typeof exitBlockabilitySchema>;
  *                             unbounded, not large.
  *  - `undetermined`           the interface could not be read at all.
  *
- * `atLeastSeconds` is always a floor. `tight` says whether Ripcord believes
- * that floor is the whole story; it is the only thing that lets the verdict
+ * `atLeastSeconds` is always a floor. `tight` says whether that floor is
+ * believed to be the whole story; it is the only thing that lets the verdict
  * make a two-sided comparison, and it is deliberately hard to earn.
  */
 export const timeToExitSchema = z.object({
@@ -1243,15 +1196,13 @@ export type TimeToExit = z.infer<typeof timeToExitSchema>;
 
 /**
  * A handle to authority that Ripcord found but deliberately does NOT follow —
- * see src/detect/authorityIndirection.ts for why this exists and what
- * calibration failure produced it.
+ * see src/detect/authorityIndirection.ts.
  *
  * Its only effect on the report is subtractive: a marker prevents the exit
- * window from claiming `immutable_within_checks`. It never establishes a
- * window, never shortens one, and never attributes power to the address it
- * names. `gettersProbed` is present for the same reason `checksPerformed[]` is:
- * without it, an empty `markers` array cannot be told apart from a check that
- * never ran.
+ * window from claiming `immutable_within_checks`. It never establishes a window,
+ * never shortens one, and never attributes power to the address it names.
+ * `gettersProbed` is present for the same reason `checksPerformed[]` is: without
+ * it, an empty `markers` array cannot be told apart from a check that never ran.
  */
 export const indirectionMarkerSchema = z.object({
   signature: z.string(),

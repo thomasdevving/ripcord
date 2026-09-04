@@ -7,10 +7,10 @@ import type { StructuralSnapshot } from "@shared/dto";
  * NO ANALYSIS ANIMATION HERE. Opening a saved report must not replay a phase
  * timeline: this is a historical artifact being read, not a scan being run, and
  * animating it would suggest fresh work is happening against the chain. The
- * provenance block inside the report states when it was generated, at which
- * block, and under which ruleset.
+ * provenance block states when it was generated, at which block, and under which
+ * ruleset.
  *
- * A blocked report renders the server's neutral refusal. The body never reached
+ * A blocked report renders the server's neutral refusal; the body never reached
  * this process, so there is nothing here to accidentally reveal.
  */
 import { useEffect, useState } from "react";
@@ -81,26 +81,26 @@ export function ReportScreen({ reportId }: { reportId: string }): ReactElement {
 
   return (
     <main className="container wide">
-      <div className="split report-map-layout">
-        <section className="card report-map-card">
-          <h1>Power map</h1>
-          <p className="note report-map-description">
-            Authority rises from the analyzed contract to the addresses and contracts that can control it. Select any
-            node to inspect the observed relation and the reads behind it.
-          </p>
-          <PowerMap snapshot={structure} selected={selected} onSelect={setSelected} />
-        </section>
-        <DetailPanel snapshot={structure} selected={selected} onClose={() => setSelected(null)} />
-      </div>
-
-      <div className="banner info">
-        <strong>Historical checkpoint:</strong> this stored report describes Ethereum at block{" "}
-        <span className="mono">{report.block.number}</span>. Opening it performs no new chain reads; exact generation,
-        ruleset and block-hash details are kept once under Provenance.
-      </div>
       <ReportView
         report={report}
         reportId={reportId}
+        showHead
+        // Below the verdict, not above it. The map explains HOW the answer
+        // comes about; a reader arriving on a shared link should meet the
+        // answer first and the mechanism second.
+        powerMap={
+          <div className="split report-map-layout">
+            <section className="card report-map-card">
+              <h2>Power map</h2>
+              <p className="note report-map-description">
+                Authority rises from the analyzed contract to the addresses and contracts that can control it. Select
+                any node to inspect the observed relation and the reads behind it.
+              </p>
+              <PowerMap snapshot={structure} selected={selected} onSelect={setSelected} />
+            </section>
+            <DetailPanel snapshot={structure} selected={selected} onClose={() => setSelected(null)} />
+          </div>
+        }
         assetEvidence={
           coverage ? <AssetCoveragePanel coverage={coverage} enriched={enriched} stalled={coverageStalled} /> : null
         }

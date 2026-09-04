@@ -1,25 +1,18 @@
 /**
- * File-backed job and report storage for a SINGLE replica.
+ * File-backed job and report storage for a SINGLE replica. A database is not
+ * warranted — one service, one replica, a mounted volume — but five properties
+ * are easy to get wrong with plain `writeFile`:
  *
- * A database is not warranted here: one service, one replica, a mounted volume.
- * What this layer owes the rest of the system is five properties that are easy
- * to get wrong with plain `writeFile`:
- *
- *  1. ATOMIC WRITES — temp file in the same directory, then `rename`. A reader
- *     or a restart never observes a half-written document; without it a SIGTERM
- *     mid-write leaves a job record that fails to parse forever after.
- *  2. SAFE ID → PATH RESOLUTION. An id from a URL never becomes a path: strict
- *     character class, and the resolved path must still be inside its directory.
- *     The same process also holds committed reports and an RPC cache.
+ *  1. ATOMIC WRITES — temp file in the same directory, then `rename`, so a
+ *     SIGTERM mid-write cannot leave a record that fails to parse forever.
+ *  2. SAFE ID → PATH RESOLUTION. An id from a URL never becomes a path; the
+ *     same process also holds committed reports and an RPC cache.
  *  3. INTERRUPTED ≠ COMPLETED. On boot a job still `running` becomes
- *     `interrupted`. Resuming or completing it would manufacture a result — the
- *     same false-clean this project refuses everywhere else, through a restart.
- *  4. BOUNDED RETENTION by count, so a demo left running does not fill the
- *     volume. Publishable reports are pruned last and separately, because their
- *     URLs are meant to keep working.
- *  5. ORDERED ASSET-CONTEXT WRITES. Atomic replacement protects a reader from a
- *     partial document, but two valid concurrent replacements can still land out
- *     of order, so sidecar writes are serialised per report id.
+ *     `interrupted`; resuming it would manufacture a result through a restart.
+ *  4. BOUNDED RETENTION by count, with publishable reports pruned last and
+ *     separately, because their URLs are meant to keep working.
+ *  5. ORDERED ASSET-CONTEXT WRITES — two valid concurrent replacements can land
+ *     out of order, so sidecar writes are serialised per report id.
  */
 import { mkdir, readFile, rename, writeFile, readdir, rm, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";

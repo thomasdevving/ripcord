@@ -1,27 +1,22 @@
 /**
- * The hero band: the thesis, and the two controls that act on it.
- *
- * One primary and one plain link, not equals. The band held the address input
- * for one revision; it moved to /scan because a form short enough to sit under a
- * headline cannot show its own settings, and the run mode is the most
- * consequential control in the product. What that arrangement protected was the
- * DISTANCE to a running analysis, and that is still one click.
+ * The hero band: the thesis, and the two controls that act on it. One primary
+ * and one plain link, not equals — the address input moved to /scan because a
+ * form short enough to sit under a headline cannot show its own settings, and
+ * the run mode is the most consequential control in the product.
  *
  * THE EXAMPLE CARD IS A QUOTATION, NOT A PREVIEW. Every figure is read from
- * calibration/reports/compound-comet-cusdcv3.json at block 25,800,000 and the
+ * calibration/reports/compound-comet-cusdcv3.json at block 25,800,000, and the
  * card carries the address and block it was measured at, because nothing here
  * may look like a result the visitor's own run has not produced.
  *
  * THE SOURCE REPORT MUST BE PUBLISHABLE. The first draft quoted sUSDe, whose
- * report the disclosure gate blocks — putting its verdict and figures on the
- * front page would have published exactly what the gate withholds, through a
- * surface nobody thought to check. The figures are hardcoded strings because
- * that is what a quotation is, and verify-claims.mjs re-derives every one from
- * that report so it cannot drift. No verdict is computed here.
+ * report the disclosure gate blocks — putting its figures on the front page
+ * would have published exactly what the gate withholds. The figures are
+ * hardcoded strings because that is what a quotation is, and verify-claims.mjs
+ * re-derives every one. No verdict is computed here.
  *
  * The background is a sparse authority graph whose query walks a CONNECTED PATH
- * of edges — the visual echo of authority.ts resolving an upgrade path back to
- * whoever holds it. Decoration would have been a random flare.
+ * of edges — the visual echo of authority.ts resolving an upgrade path.
  */
 import { useEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
@@ -39,11 +34,11 @@ const SUBHEAD: Record<View, string> = {
  * Quoted from calibration/reports/compound-comet-cusdcv3.json. Changing any of
  * these means re-reading that report, not editing the string — the point of a
  * quotation is that somewhere a source says the same thing, and
- * scripts/verify-claims.mjs fails the build if one of them stops being true.
+ * scripts/verify-claims.mjs fails the build if one stops being true.
  *
- * The pair is the whole thesis in two numbers: the upgrade path carries two
- * days of notice, and the exit itself can be shut with none. They are different
- * routes, and the window is the minimum.
+ * The pair is the whole thesis in two numbers: the upgrade path carries two days
+ * of notice, and the exit itself can be shut with none. Different routes, and
+ * the window is the minimum.
  */
 const EXAMPLE = {
   protocol: "Compound III",
@@ -443,17 +438,19 @@ export function Hero({
               </p>
             </div>
 
-            <p className="hb-card-source">
-              Quoted from a committed calibration report for <span className="mono">{EXAMPLE.address}</span>. The two
-              days are the upgrade path; the zero is a pause a fork confirmed. Your own run produces its own numbers.
-            </p>
+            <div className="hb-card-source">
+              <p>
+                The two days are the upgrade path; the zero is a pause a fork confirmed. Your own run produces its own
+                numbers.
+              </p>
+              <p className="hb-source-addr">
+                <span>Quoted from a committed calibration report for</span>
+                <span className="mono">{EXAMPLE.address}</span>
+              </p>
+            </div>
           </aside>
         </div>
 
-        <p className="hb-footline">
-          <span className="hb-tick" aria-hidden="true" />
-          Try it on a live vault
-        </p>
       </div>
     </section>
   );

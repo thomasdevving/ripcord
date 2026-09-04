@@ -1,28 +1,24 @@
 /**
  * Guard attribution by PROBING, not by static analysis. Looking for
- * hasRole/onlyOwner byte patterns near a jump destination looks clever and
- * fails silently — a modifier check can be arranged in more shapes than are
- * worth enumerating, and a wrong answer there is a false "no guard" or a false
+ * hasRole/onlyOwner byte patterns near a jump destination looks clever and fails
+ * silently — a modifier check can be arranged in more shapes than are worth
+ * enumerating, and a wrong answer there is a false "no guard" or a false
  * attribution rather than a loud failure.
  *
  * Instead we ask the contract: a real `eth_call` at the pinned block, `from` a
  * probe address unrelated to the protocol, with zero-valued arguments for the
- * capability's known signature, reading the revert:
- *   - OZ v4 AccessControl: Error(string) "AccessControl: account 0x… is missing
- *     role 0x…" — the role hash is parsed out of the message.
- *   - OZ v5 AccessControl: AccessControlUnauthorizedAccount(address,bytes32).
- *   - OZ v4 Ownable: Error(string) "Ownable: caller is not the owner".
- *   - OZ v5 Ownable: OwnableUnauthorizedAccount(address).
- * All four selectors are derived via viem (see test/guardProbe.test.ts), never
- * hardcoded — the same discipline day 1 applied to storage slots. This is a
- * plain historical read, not a fork, so it goes through PinnedChain's disk cache
- * like every other read here.
+ * capability's known signature, reading the revert — OZ v4 AccessControl's
+ * Error(string) (the role hash is parsed out of the message), OZ v5's
+ * AccessControlUnauthorizedAccount, OZ v4 Ownable's "caller is not the owner",
+ * and OZ v5's OwnableUnauthorizedAccount. All four selectors are derived via
+ * viem, never hardcoded. This is a plain historical read, so it goes through
+ * PinnedChain's disk cache like every other read.
  *
  * Every capability is probed from three deterministic unrelated addresses
  * (hash-derived, never random). One recognised auth-shaped revert is sufficient
  * evidence of a guard; the three-probe protocol exists for the opposite case —
- * "no auth-shaped revert was observed" — which is never reported as
- * "unguarded", only routed to manual verification.
+ * "no auth-shaped revert was observed" — which is never reported as "unguarded",
+ * only routed to manual verification.
  */
 import {
   decodeAbiParameters,

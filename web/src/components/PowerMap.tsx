@@ -1,30 +1,24 @@
 /**
  * The authority graph.
  *
- * LAYOUT IS DETERMINISTIC AND LAYERED, not a force simulation. Three reasons,
- * and the first is the one that matters:
- *
- *  1. The graph grows while the analysis runs. A force layout would rearrange
- *    every existing node each time one arrives, so the thing a viewer was
- *    reading moves out from under them — during a live demo, repeatedly. Here a
- *    node's position depends only on its depth and its address, so an arriving
- *    node takes a new slot and nothing already on screen moves.
- *  2. Two runs of the same target produce the same picture, which matters for a
- *    tool whose whole claim is reproducibility.
- *  3. Depth is meaningful in this domain — it is distance from the contract
- *    along the authority chain — so encoding it as vertical position tells the
- *    reader something true rather than being an arbitrary aesthetic.
+ * LAYOUT IS DETERMINISTIC AND LAYERED, not a force simulation. The graph grows
+ * while the analysis runs, and a force layout would rearrange every existing node
+ * each time one arrives, so what a viewer is reading moves out from under them —
+ * during a live demo, repeatedly. Here a node's position depends only on its
+ * depth and its address, so an arriving node takes a new slot and nothing already
+ * on screen moves. It also makes two runs of the same target produce the same
+ * picture, and depth is meaningful in this domain — distance from the contract
+ * along the authority chain — so encoding it as vertical position says something
+ * true rather than being an arbitrary aesthetic.
  *
  * EVERY NODE COMES FROM A FOUND FACT. Nothing is inferred from an address's
- * shape. A Safe threshold is shown only where the classifier read one. An
+ * shape, a Safe threshold is shown only where the classifier read one, and an
  * unresolved controller stays on the graph as a visibly distinct node carrying
- * its termination reason, because dropping it would read as "nothing there" —
- * and "we stopped looking here" is the opposite of that.
+ * its termination reason, because dropping it would read as "nothing there".
  *
- * AN EDGE IS NOT A PROOF. It records an observed relation. That the holder can
- * actually pass its own authorisation (a Safe reaching its threshold, a timelock
- * queue elapsing) is not something a line on a diagram can establish, which is
- * why the labels describe the relation and never the outcome.
+ * AN EDGE IS NOT A PROOF. It records an observed relation; that the holder can
+ * actually pass its own authorisation is not something a line on a diagram can
+ * establish, which is why labels describe the relation and never the outcome.
  */
 import { useCallback, useMemo, useEffect, useRef } from "react";
 import { ReactFlow, Background, Controls, Handle, MarkerType, Position, type Edge, type Node, type NodeProps, type ReactFlowInstance } from "@xyflow/react";

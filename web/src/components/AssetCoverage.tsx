@@ -1,28 +1,18 @@
 /**
  * "Assets & analysis coverage" — the panel that makes the SCOPE of the evidence
- * legible.
- *
- * Its job is to let a reader point at one asset and answer five questions: was
- * it seen by the vendor, was its balance established on the analysis block, was
- * it in a fork experiment, what did that experiment actually show, and what was
- * never looked at.
+ * legible: was an asset seen by the vendor, was its balance established at the
+ * analysis block, was it in a fork experiment, what did that experiment show,
+ * and what was never looked at.
  *
  * WHAT THIS COMPONENT REFUSES TO DO:
- *
- *  - It renders no coverage percentage, no safety score and no share of value
- *    tested. There is no denominator: nothing here establishes a complete asset
- *    inventory, so any percentage would be arithmetic over an unknown whole.
- *
- *  - It never sorts or styles market value above evidence. "Estimated value" is
- *    a subordinate column in muted type, because it is not value at risk, not
- *    drainable value and not trapped funds.
- *
- *  - It never hides a row for lack of a price. A row with real balance or fork
+ *  - No coverage percentage, safety score or share of value tested. There is no
+ *    denominator, so any percentage would be arithmetic over an unknown whole.
+ *  - Never sort or style market value above evidence. "Estimated value" is a
+ *    subordinate column in muted type: it is not value at risk.
+ *  - Never hide a row for lack of a price. A row with real balance or fork
  *    evidence and no usable USD figure is exactly the row worth showing.
- *
- *  - It shows names and logos as explicitly unverified. Live wallet data
- *    contains phishing lures as token names; identity is the address and chain,
- *    which is what the mono column carries.
+ *  - Show names and logos as explicitly unverified. Live wallet data contains
+ *    phishing lures as token names; identity is the address and chain.
  */
 import { Fragment, useState } from "react";
 import type { ReactElement } from "react";

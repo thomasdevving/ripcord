@@ -31,14 +31,12 @@ export const SLOTS = {
   eip1822Proxiable: keccak256(toBytes("PROXIABLE")),
 
   /**
-   * Legacy "unstructured storage" proxy slots predating EIP-1967, used by
-   * early OpenZeppelin (zos-lib / openzeppelin-sdk, pre-2.0) upgradeable
-   * proxies. Source: zos-lib's `Proxy.sol` / `AdminUpgradeabilityProxy.sol`,
-   * which used these ad hoc (non EIP-1967) preimages before EIP-1967 existed:
+   * Legacy "unstructured storage" proxy slots predating EIP-1967, used by early
+   * OpenZeppelin (zos-lib / openzeppelin-sdk, pre-2.0) upgradeable proxies:
    *   implementation: keccak256("org.zeppelinos.proxy.implementation")
    *   admin:          keccak256("org.zeppelinos.proxy.admin")
-   * Note: no "- 1" here — the legacy scheme did not adopt the EIP-1967
-   * "avoid collision with Solidity's storage layout" convention.
+   * Note: no "- 1" here — the legacy scheme predates EIP-1967's collision
+   * convention.
    */
   legacyZosImplementation: keccak256(toBytes("org.zeppelinos.proxy.implementation")),
   legacyZosAdmin: keccak256(toBytes("org.zeppelinos.proxy.admin")),
@@ -65,20 +63,17 @@ export const SELECTORS = {
 } as const;
 
 /**
- * Timelock accessors (day 3), derived from signatures like every other
- * selector here — never hand-copied. Two dominant families exist and are
- * detected by their delay accessor:
+ * Timelock accessors, derived from signatures like every other selector here.
+ * Two dominant families, detected by their delay accessor:
  *   - OpenZeppelin TimelockController exposes `getMinDelay()` and is
- *     AccessControl-based (PROPOSER_ROLE/EXECUTOR_ROLE/CANCELLER_ROLE/
- *     TIMELOCK_ADMIN_ROLE, all already in KNOWN_ROLE_HASHES). Its delay can
- *     only be changed by a scheduled `updateDelay(uint256)` operation the
- *     timelock issues to itself — subject to the current delay.
+ *     AccessControl-based. Its delay changes only through a scheduled
+ *     `updateDelay(uint256)` the timelock issues to itself, subject to the
+ *     current delay.
  *   - Compound / Governor-Bravo Timelock exposes `delay()` plus `admin()`,
  *     `GRACE_PERIOD()`, `MINIMUM_DELAY()`, `MAXIMUM_DELAY()`, and changes its
  *     delay via `setDelay(uint256)` (guarded by `msg.sender == address(this)`).
- * `updateDelay`/`setDelay` are what the day-3 "can the admin shorten its own
- * delay?" sub-finding probes for in bytecode — flagged, not fully solved
- * (that's day 4).
+ * `updateDelay`/`setDelay` are what the "can the admin shorten its own delay?"
+ * sub-finding probes for in bytecode.
  */
 export const TIMELOCK_SELECTORS = {
   getMinDelay: toFunctionSelector("getMinDelay()"),

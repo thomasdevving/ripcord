@@ -1,12 +1,10 @@
 /**
- * Day-7 exit-restriction tests.
- *
- * The fork engine itself needs anvil and is exercised live (see
- * docs/CALIBRATION.md §14), but everything AROUND it is pure and is pinned here:
- * exit-action identification (the riskiest new false-clean), the selector
- * constants (derived, never hand-copied), the route injection, and the two new
- * verdict behaviours — a fork-confirmed restrictor collapsing the window to
- * no_notice, and the strictly-gated `no_direct_restriction_found` tier.
+ * Exit-restriction tests. The fork engine itself needs anvil and is exercised
+ * live, but everything AROUND it is pure and is pinned here: exit-action
+ * identification (the riskiest new false-clean), the selector constants (derived,
+ * never hand-copied), the route injection, and the two verdict behaviours — a
+ * fork-confirmed restrictor collapsing the window to no_notice, and the
+ * strictly-gated `no_direct_restriction_found` tier.
  */
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";

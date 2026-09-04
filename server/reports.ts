@@ -3,29 +3,22 @@ import { publicValue } from "./sanitize.js";
  * THE READ SIDE OF REPORTS, and the single place the publication gate is
  * enforced for every outward transport.
  *
- * `disclosure.publishable` is not advice. It is false when Ripcord probed a
- * privileged-looking function and could not attribute it to a recognised guard —
- * which means the "this live contract may be unguarded" reading could not be
- * ruled out. Shipping that report to a browser would publish a vulnerability
- * claim about a real contract, whatever the UI then chose to render.
- *
- * So the gate lives HERE, once, in the function that loads a report, rather than
- * in each route. Three consequences, all deliberate:
+ * `disclosure.publishable` is not advice: it is false when Ripcord probed a
+ * privileged-looking function and could not attribute it to a recognised guard,
+ * so the "this live contract may be unguarded" reading could not be ruled out.
+ * The gate therefore lives HERE, once, in the function that loads a report.
  *
  *  - HTML, JSON and download all go through `loadPublishable`. There is no
  *    second path to a report body.
- *  - A blocked report is never serialised toward the client "to be hidden in the
- *    UI". The bytes do not leave the process. Hiding with CSS is not withholding.
- *  - The refusal is NEUTRAL. It names no signature, no selector and no address
- *    beyond the one the caller already asked about, because the refusal message
- *    is itself published, and a message describing what was blocked would leak
- *    the very thing the gate exists to hold back.
+ *  - A blocked report is never serialised toward the client "to be hidden in
+ *    the UI". Hiding with CSS is not withholding.
+ *  - The refusal is NEUTRAL: the refusal message is itself published, so one
+ *    describing what was blocked would leak what the gate holds back.
  *
- * Committed calibration reports are served alongside live ones, from an explicit
- * ALLOWLIST built at startup by reading each file and checking the same gate —
- * never by exposing `calibration/` as a directory. A filesystem served by prefix
- * is one traversal bug away from serving the RPC cache and the job store that
- * sit beside it.
+ * Committed calibration reports are served from an explicit ALLOWLIST built at
+ * startup by checking the same gate, never by exposing `calibration/` as a
+ * directory — a filesystem served by prefix is one traversal bug away from
+ * serving the RPC cache and job store beside it.
  */
 import { readdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -53,14 +46,11 @@ export class ReportService {
 
   /**
    * Mobula snapshots, indexed by `<chainRef>|<lowercased target>` — never by
-   * file name or protocol name.
-   *
-   * Keying on the address is what lets a FRESH scan of a target reuse the
-   * committed snapshot for that same address: it is the same account, and the
-   * snapshot keeps its original `fetchedAt`, which the panel renders so its age
-   * is visible. Keying on a name would instead match "the Comet report" to "the
-   * Comet sidecar" by convention, which is exactly the kind of inference this
-   * feature refuses everywhere else.
+   * file name or protocol name. Keying on the address lets a FRESH scan reuse
+   * the committed snapshot for that same account, keeping its original
+   * `fetchedAt` so its age is visible; keying on a name would match "the Comet
+   * report" to "the Comet sidecar" by convention, which is the kind of inference
+   * this feature refuses everywhere else.
    */
   private readonly liveSidecars = new Map<string, string>();
 

@@ -2,19 +2,15 @@
  * THE OBSERVER MUST NOT CHANGE THE REPORT.
  *
  * This is the load-bearing property of the whole webapp integration. Ripcord's
- * central claim is that a report is a deterministic, block-pinned artifact:
- * same target, same block, byte-identical output. Adding progress hooks to the
- * engine put that claim at risk in a way no amount of care in the hook bodies
- * would settle — so it is tested directly, at the only level that matters:
- * build the same report twice, once with an observer attached and once without,
- * and compare the serialised bytes.
+ * central claim is that a report is a deterministic, block-pinned artifact, and
+ * adding progress hooks to the engine put that at risk in a way no amount of care
+ * in the hook bodies would settle — so it is tested directly: build the same
+ * report twice, once with an observer and once without, and compare the bytes.
  *
  * The second test is the other half: a hook that THROWS must be contained. A
- * broken SSE consumer, or a browser closing its tab mid-scan, must not be able
- * to alter what a report says about a contract. Rule 3 of this project forbids
- * silent catches, and this one is neither silent (it warns on stderr) nor a
- * swallowed chain failure — it contains a presentation fault so it cannot
- * corrupt an analysis.
+ * broken SSE consumer must not be able to alter what a report says about a
+ * contract, and that catch is neither silent (it warns on stderr) nor a swallowed
+ * chain failure.
  */
 import { describe, expect, it, vi } from "vitest";
 import type { Hex } from "viem";

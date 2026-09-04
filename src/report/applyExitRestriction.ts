@@ -1,23 +1,19 @@
 /**
- * Merges a day-7 exit-restriction fork evaluation into a report and RE-COMPOSES
- * the verdict — the same pattern the proof engine uses (`buildReport` static,
- * then a fork pass merges and re-validates), extended to also update the exit
- * window and the verdict because, unlike the proof, a fork-confirmed restrictor
- * changes the conclusion.
+ * Merges an exit-restriction fork evaluation into a report and RE-COMPOSES the
+ * verdict — the same pattern the proof engine uses, extended to also update the
+ * exit window and the verdict, because unlike the proof a fork-confirmed
+ * restrictor changes the conclusion.
  *
  * A fork-confirmed restrictor is injected as a synthetic exit-window ROUTE with
- * zero notice, so the window arithmetic (the MINIMUM notice across routes) sees
- * it and collapses to `no_notice`. The route carries `confirmationMethod:
- * "fork_confirmed"` and its `restrictionState`, so a reader can tell a delay we
- * could not verify apart from a kill switch we watched fire. Nothing here
- * touches the chain; it is a pure recomposition of already-produced facts, so it
- * is unit-testable without a fork.
+ * zero notice, so the minimum-notice arithmetic collapses to `no_notice`. The
+ * route carries `confirmationMethod: "fork_confirmed"` and its
+ * `restrictionState`, so a reader can tell a delay we could not verify from a
+ * kill switch we watched fire. Nothing here touches the chain, so it is
+ * unit-testable without a fork.
  *
  * DIRECTION: this can only ADD a zero-notice route or leave the window
  * unchanged. It never removes a route and never softens a finding — a
- * `no_direct_restriction_found` outcome injects no route at all and lets the
- * verdict layer decide (strictly gated) whether the otherwise-undetermined
- * window may be upgraded to the weak positive tier.
+ * `no_direct_restriction_found` outcome injects no route at all.
  */
 import { composeVerdict } from "./verdict.js";
 import type { ExitWindow, ExitWindowAssessment, Report } from "./schema.js";

@@ -1,22 +1,18 @@
 /**
- * THE ENRICHED ASSESSMENT — the one place sidecar evidence is allowed to reach
- * a conclusion.
+ * THE ENRICHED ASSESSMENT — the one place sidecar evidence is allowed to reach a
+ * conclusion.
  *
- * Everything else in the second Mobula layer is deliberately inert. But refusing
+ * Everything else in the second Mobula layer is deliberately inert, but refusing
  * to connect the two forever has its own cost: a run can hold a fork-confirmed
  * zero-notice restriction on four collateral assets while the report beside it
- * names only the base asset — two artifacts disagreeing about how much was
- * tested, with nothing reconciling them, and a reader doing that join by hand is
- * how a finding gets missed.
+ * names only the base asset, with nothing reconciling them.
  *
  * Four rules make composing them safe, each enforced by the types below:
- *  1. THE REPORT IS NEVER MODIFIED. `changesVerdict` is a literal `false`, so
- *     the schema cannot express a version of this that edited the verdict.
+ *  1. THE REPORT IS NEVER MODIFIED. `changesVerdict` is a literal `false`.
  *  2. CAUTION-ONLY. No outcome variant softens anything; a clean sidecar
- *     produces `no_change` and nothing else, ever.
+ *     produces `no_change` and nothing else.
  *  3. THE LINK MUST BE EARNED. Target, chain, block number, block hash and fork
- *     block must all match; anything else is `unusable` with the mismatch
- *     named. Attaching a fork result to the wrong block is a fabricated finding.
+ *     block must all match; anything else is `unusable` with the mismatch named.
  *  4. SCOPE TRAVELS WITH THE CLAIM. Every outcome names the assets it rests on
  *     and the ones it does not, so a total is always reconcilable.
  *

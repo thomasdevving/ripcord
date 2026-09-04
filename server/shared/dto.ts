@@ -1,27 +1,20 @@
 /**
  * THE TRANSPORT CONTRACT, and the one file both the server and the browser
- * compile against.
+ * compile against. Two rules, both because this layer sits directly against a
+ * deterministic artifact it must not contaminate:
  *
- * Two rules govern everything here, and both exist because this layer sits
- * directly against a deterministic artifact it must not contaminate:
- *
- *  1. NOTHING IN THIS FILE MAY IMPORT NODE. The browser bundle compiles it, so
- *     a `node:fs` import here would either break the build or (worse) drag
- *     server code into a client bundle. It is types and pure constants only —
- *     `scripts/verify-webapp.mjs` fails the build if that changes.
- *
+ *  1. NOTHING HERE MAY IMPORT NODE. The browser bundle compiles it, so a
+ *     `node:fs` import would break the build or drag server code into a client
+ *     bundle. Types and pure constants only — verify-webapp.mjs enforces it.
  *  2. TRANSPORT METADATA IS NOT REPORT CONTENT. Job ids, sequence numbers,
- *     server wall-clock timestamps and queue positions live here and ONLY here.
- *     They never enter a Report, because a report is compared byte-for-byte
- *     cold-vs-warm and a job id would make every run differ from every other.
- *     The engine emits observations; this layer stamps them with transport
- *     facts on the way out. The two directions never cross.
+ *     wall-clock timestamps and queue positions live here and ONLY here: a
+ *     report is compared byte-for-byte cold-vs-warm, and a job id would make
+ *     every run differ from every other.
  *
- * The DISCLOSURE BOUNDARY is also expressed here rather than left to caller
- * discipline: a `JobSummary` carries no report payload at all, and the only
- * type that can carry one (`ReportEnvelope`) is produced exclusively by the
- * route that has already checked `disclosure.publishable`. A blocked report is
- * never serialised toward a browser to be hidden with CSS.
+ * The DISCLOSURE BOUNDARY is expressed here rather than left to caller
+ * discipline: a `JobSummary` carries no report payload, and the only type that
+ * can (`ReportEnvelope`) is produced exclusively by the route that has already
+ * checked `disclosure.publishable`.
  */
 
 // --- run modes ---------------------------------------------------------------
@@ -30,14 +23,12 @@
  * What a run actually executes. These are NOT cosmetic labels: each maps to a
  * different set of engine calls, and the UI must never present one as another.
  *
- * `scan` — buildReport only. No anvil, no fork, `exitRestriction: null`.
+ * `scan` — buildReport only. No anvil, `exitRestriction: null`.
  * `scan_withdrawal_test` — buildReport → runExitRestrictionEngine →
- *   applyExitRestriction. The primary web flow. Note this is NOT what the CLI's
- *   `restrict` does: the CLI additionally runs the upgrade-drain proof, and that
- *   difference is deliberate and must stay visible (see docs/WEBAPP.md).
- * `scan_withdrawal_test_upgrade_proof` — the CLI `restrict` semantics exactly:
- *   proof engine AND withdrawal differential. Offered as an explicit advanced
- *   option so the extra fork work is a choice, never a surprise.
+ *   applyExitRestriction. NOT what the CLI's `restrict` does: the CLI also runs
+ *   the upgrade-drain proof, and that difference must stay visible.
+ * `scan_withdrawal_test_upgrade_proof` — the CLI `restrict` semantics exactly.
+ *   An explicit advanced option, so the extra fork work is never a surprise.
  */
 export type RunMode = "scan" | "scan_withdrawal_test" | "scan_withdrawal_test_upgrade_proof";
 
@@ -179,14 +170,11 @@ export function phasesForMode(mode: RunMode): readonly PhaseDescriptor[] {
 }
 
 /**
- * A phase outcome.
- *
- * `completed` means the phase RAN AND ANSWERED. `inconclusive` means it ran and
- * could not answer — which is a first-class result in this project, not a
- * failure. `degraded` means it produced a value only via a fallback after an
- * error, and it exists so such a phase can never wear the same green as a clean
- * one: an unconditional green on a stage that actually threw is precisely the
- * false-clean this codebase is built to refuse.
+ * A phase outcome. `completed` means the phase RAN AND ANSWERED;
+ * `inconclusive` means it ran and could not answer, which is a first-class
+ * result here rather than a failure; `degraded` means it produced a value only
+ * via a fallback after an error, and exists so such a phase can never wear the
+ * same green as a clean one.
  */
 export type PhaseStatus = "pending" | "running" | "completed" | "inconclusive" | "degraded" | "failed" | "skipped";
 
@@ -208,17 +196,14 @@ export interface PhaseSnapshot {
 // --- structural streaming ----------------------------------------------------
 
 /**
- * The structural facts that may stream BEFORE the disclosure gate has run.
- *
- * These are day-1 reads — a proxy slot, an owner address, a role holder, an
- * authority path. None of them is ever what the publication gate blocks on: the
- * gate blocks on capability PROBE results it could not attribute to a
- * recognised guard, because that carries a possible "unguarded" reading about a
- * live contract. Nothing in this type carries such a reading.
+ * The structural facts that may stream BEFORE the disclosure gate has run — a
+ * proxy slot, an owner address, a role holder, an authority path. None of them
+ * is what the gate blocks on: it blocks on capability PROBE results it could not
+ * attribute to a recognised guard, because those carry a possible "unguarded"
+ * reading about a live contract.
  *
  * Capability signatures, selectors, probe reverts and manual-verification
  * entries are deliberately ABSENT and stay server-side until the gate has run.
- * See docs/WEBAPP.md "What may stream early".
  */
 export interface StructuralNode {
   /** Available after publication; empty before the gate. */
@@ -326,13 +311,10 @@ export type JobEventType = JobEvent["type"];
 
 /**
  * `Omit` does NOT distribute over a union — it collapses `JobEvent` to the keys
- * every member shares, which is only the base three, and then rejects every
- * event-specific field. `T extends unknown ? … : never` forces distribution, so
- * each member is omitted from individually and the discriminated union survives.
- *
- * This matters because the payload type below is what the worker sends before
- * the parent stamps on transport fields, and without distribution the compiler
- * would reject every real event while accepting an empty object.
+ * every member shares and then rejects every event-specific field.
+ * `T extends unknown ? … : never` forces distribution, so the discriminated
+ * union survives. Without it the compiler would reject every real event while
+ * accepting an empty object.
  */
 export type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 

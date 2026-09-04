@@ -2,21 +2,18 @@ import { forkTransactions as extractForkTransactions } from "../shared/fork.js";
 /**
  * ENGINE OBSERVATIONS → TRANSPORT EVENTS, and the disclosure boundary governing
  * which of them may leave the process early. The only adapter between
- * src/report/observer.ts (in-process, sees everything) and the SSE stream
- * (public, sees what the gate allows).
+ * src/report/observer.ts (in-process, sees everything) and the SSE stream.
  *
  *  1. THE EARLY-STREAM BOUNDARY. During a run the publication gate has not run,
- *     so a capability whose guard could not be attributed is still undecided.
- *     Streaming its signature would publish a possible "this live contract may
- *     be unguarded" claim the gate might be about to block, and once a browser
- *     holds it no later decision takes it back. So `onCapabilities` forwards
- *     COUNTS ONLY. The structural layer — proxy slots, owner, role holders,
- *     authority paths — may stream, because the gate never blocks on it.
- *  2. THE POWER MAP IS BUILT FROM FOUND FACTS ONLY. Nothing is inferred from an
- *     address's shape, no edge is drawn because it "should" exist, and an
- *     unresolved authority stays in the graph as an explicit unknown node with
- *     its termination reason — a missing node reads as "nothing there", which is
- *     the one thing it must never read as.
+ *     so a capability whose guard could not be attributed is still undecided;
+ *     streaming its signature would publish a possible "this live contract may
+ *     be unguarded" claim, and once a browser holds it no later decision takes
+ *     it back. `onCapabilities` forwards COUNTS ONLY. The structural layer —
+ *     proxy slots, owner, role holders, authority paths — may stream, because
+ *     the gate never blocks on it.
+ *  2. THE POWER MAP IS BUILT FROM FOUND FACTS ONLY. An unresolved authority
+ *     stays in the graph as an explicit unknown node with its termination
+ *     reason, because a missing node reads as "nothing there".
  *  3. EDGE DIRECTION IS EXPLICIT. `implementation` is drawn as "supplies code
  *     to", never as an owner: an implementation holds no power over the proxy.
  */
@@ -135,15 +132,12 @@ export class TransportObserver implements RunObserver, ForkObserver {
   }
 
   /**
-   * Adds an edge, or UPGRADES one already present.
-   *
-   * `identity` separates "which relation is this" from "how it is currently
-   * worded". The fork differential emits the same relation twice — once when the
-   * party has been shown able to make the call, and again once the differential
-   * confirms that call actually closes the exit — and the wording changes
-   * between them. Deduping on the label alone drew both, so the map showed one
-   * relation twice at two different confidences. Deduping on identity lets the
-   * later, stronger observation replace the earlier one.
+   * Adds an edge, or UPGRADES one already present. `identity` separates "which
+   * relation is this" from "how it is currently worded": the fork differential
+   * emits the same relation twice — once when the party is shown able to make
+   * the call, again once the differential confirms it closes the exit — and
+   * deduping on the label alone drew both, so the map showed one relation twice
+   * at two different confidences.
    */
   private link(
     from: string,

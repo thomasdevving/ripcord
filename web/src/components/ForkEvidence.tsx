@@ -1,26 +1,19 @@
 /**
- * The withdrawal differential, as three evidence blocks.
- *
- * This is the part a technical reviewer will read hardest, so the component's
- * job is to show what happened and refuse to imply anything more:
+ * The withdrawal differential, as three evidence blocks. A technical reviewer
+ * will read this hardest, so the component shows what happened and refuses to
+ * imply anything more:
  *
  *  - NOTHING IS CLAIMED BEFORE THE OUTCOME ARRIVES. A block that has not run
- *    says so. It never shows a placeholder amount, a projected duration or a
- *    greyed-out result that reads as "about to be fine".
- *
+ *    says so — never a placeholder amount or a greyed-out result that reads as
+ *    "about to be fine".
  *  - A RECEIPT IS NOT AN EXIT, AND A REVERT IS NOT A CAUSE. The baseline is
- *    called established only when the engine verified the economics — assets
- *    actually received, principal cleared, no debt — not merely that the
- *    transaction succeeded. The re-exit is called a restriction only when the
+ *    established only when the engine verified the economics (assets received,
+ *    principal cleared, no debt), and the re-exit is a restriction only when the
  *    engine confirmed the expected revert cause AND unchanged balances AND
- *    matching times. Those judgements are made in `exitRestriction.ts`; this
- *    component renders them and adds none of its own.
- *
+ *    matching times. Those judgements live in `exitRestriction.ts`.
  *  - THE IMPERSONATION ASSUMPTION IS STATED NEXT TO THE RESULT, not in a
- *    footnote. anvil ignores signatures, so a Safe-guarded call demonstrates
- *    "this Safe can, if it authorises" — its own signature checks, transaction
- *    guards and modules did not execute. A reader who misses that would take
- *    the result for more than it is.
+ *    footnote: anvil ignores signatures, so a Safe-guarded call demonstrates
+ *    "this Safe can, if it authorises".
  */
 import type { ForkTxView } from "@shared/dto";
 import type { ForkBlockView } from "../useJob.js";
@@ -77,7 +70,7 @@ function Block({
   return (
     <div className="evidence-block">
       <header>
-        <span className="step">{step}</span>
+        <span className="evidence-step">{step}</span>
         <h4>{title}</h4>
         {view && view.established === true && <span className="chip good">established</span>}
         {view && view.established === false && <span className="chip warn">not established</span>}

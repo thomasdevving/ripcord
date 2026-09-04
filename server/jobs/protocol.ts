@@ -1,24 +1,16 @@
 /**
  * The parent↔worker IPC contract.
  *
- * Heavy analysis runs in a forked child process, not on the HTTP event loop.
- * A single Comet run does thousands of RPC round-trips, spawns anvil, and does
- * real bigint work; on the server's own loop that would stall SSE heartbeats,
- * /healthz and every other request for minutes, which on a platform with an
- * HTTP health check means the deploy gets restarted mid-demo.
+ * Heavy analysis runs in a forked child, not on the HTTP event loop: a single
+ * Comet run does thousands of RPC round-trips, spawns anvil and does real bigint
+ * work, which would stall SSE heartbeats and /healthz for minutes — and on a
+ * platform with an HTTP health check that restarts the deploy mid-demo.
  *
- * TWO THINGS THIS PROTOCOL DELIBERATELY IS NOT:
- *
- *  - It is not stdout parsing. Nothing here reads the CLI's human-facing text.
- *    Those strings exist for a person reading a terminal; treating them as a
- *    progress protocol makes every wording change a breaking change, and it
- *    silently loses anything the CLI chose not to print. The worker imports the
- *    engine functions directly and reports through typed messages.
- *
- *  - It is not a shell. The worker is started with `fork()` and receives its
- *    parameters as a structured message. No user input is ever interpolated
- *    into a command line, and the worker accepts no RPC URL, no anvil flags and
- *    no path from the request — those come from server configuration only.
+ * It is deliberately NOT stdout parsing: the CLI's strings exist for a person
+ * reading a terminal, so treating them as a progress protocol makes every
+ * wording change a breaking change. And it is not a shell: the worker is started
+ * with `fork()` and receives structured parameters, accepting no RPC URL, anvil
+ * flag or path from a request.
  */
 import type { JobEventPayload, RunMode } from "../shared/dto.js";
 

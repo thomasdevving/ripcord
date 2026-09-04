@@ -1,10 +1,9 @@
 /**
  * Dispatcher-based selector extraction.
  *
- * Day 1's `containsOpcode` walks bytecode linearly with no notion of
- * reachability, so it happily decodes a CODECOPY'd child contract's creation
- * bytecode embedded by `new Foo(...)` — a real contract's real init code — and
- * extracts the CHILD's selectors as if they were the parent's. That is a phantom
+ * A linear `containsOpcode`-style walk has no notion of reachability, so it
+ * happily decodes a CODECOPY'd child contract's creation bytecode embedded by
+ * `new Foo(...)` and extracts the CHILD's selectors as the parent's — a phantom
  * capability, the worst class of false positive for this tool.
  *
  * The fix is a minimal static reachability walk, not full CFG analysis: from
@@ -13,13 +12,12 @@
  * terminator with no fallthrough. A CODECOPY'd blob is never the target of a
  * real jump and always sits past a terminator, so it is structurally
  * unreachable. This under-approximates (a dynamic jump table is not followed),
- * but solc's own dispatcher always uses static targets, so nothing real is lost.
+ * but solc's own dispatcher always uses static targets.
  *
  * Selector collection: a `PUSH4 <value> EQ PUSHn <dest> JUMPI` window is a real
  * comparison and the value is recorded. GT/LT in the same shape is a
  * binary-search pivot — counted, never added to the selector set — because
- * solc's binary search always terminates each leaf in a direct EQ check against
- * the real selector. Verified empirically in dispatcher.test.ts.
+ * solc's binary search always terminates each leaf in a direct EQ check.
  */
 import type { Hex } from "viem";
 import { stripSolidityMetadata } from "./bytecode.js";
@@ -154,18 +152,13 @@ export function extractDispatcherSelectors(code: Hex): DispatcherResult {
 
       // Selector-load shape: CALLDATALOAD then one of —
       //   modern:      PUSH1 0xe0 SHR
-      //   old (a):     PUSHn[2^224] [SWAP1] DIV        (divisor pushed AFTER calldataload)
-      //   old (b):     DIV [AND 0xffffffff]            (divisor already on the stack from
-      //                                                  BEFORE calldataload — real shape seen
-      //                                                  in WBTC's 2019-era bytecode: PUSH4
-      //                                                  0xffffffff PUSH29 2^224 PUSH1 0x00
-      //                                                  CALLDATALOAD DIV AND). DIV landing
-      //                                                  immediately after CALLDATALOAD is on
-      //                                                  its own a strong enough signal — a
-      //                                                  false positive here would require an
-      //                                                  unrelated DIV coincidentally placed
-      //                                                  right after loading calldata, which
-      //                                                  real Solidity codegen doesn't produce.
+      //   old (a):     PUSHn[2^224] [SWAP1] DIV   (divisor pushed AFTER calldataload)
+      //   old (b):     DIV [AND 0xffffffff]       (divisor already on the stack,
+      //                the real shape in WBTC's 2019-era bytecode). DIV landing
+      //                immediately after CALLDATALOAD is a strong enough signal
+      //                on its own — a false positive needs an unrelated DIV
+      //                placed right after a calldata load, which real Solidity
+      //                codegen does not produce.
       if (instr.opcode === CALLDATALOAD) {
         const next1 = instrs.get(pc + instr.len);
         const next2 = next1 ? instrs.get(pc + instr.len + next1.len) : undefined;

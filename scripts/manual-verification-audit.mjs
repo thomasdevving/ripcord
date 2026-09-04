@@ -10,22 +10,11 @@ import { join } from "node:path";
 function decodeRevert(raw) {
   if (typeof raw !== "string" || !raw.startsWith("0x")) return { kind: "non-hex", text: JSON.stringify(raw) };
   // "0x" is NOT an empty revert — it is a SUCCESSFUL call that returned no data.
-  //
-  // client.ts's probeCall records `rawValue = revertData ?? "reverted"` when the
-  // call reverted, and `result ?? "0x"` when it did not. So the literal "0x"
-  // can only be produced by a call that RAN TO COMPLETION. Labelling it "(no
-  // revert data returned)" was a real error in this script: it made the
-  // strongest-looking observation in the whole set — a privileged-looking
-  // function executing for a stranger — read as the weakest one, a provider
-  // quirk (KNOWN EDGE #4). Found day 6 while auditing the four blocked reports
-  // before publication.
-  //
-  // It is not a vulnerability on the one target where it occurs: PAID proxy 2's
-  // mint(address,uint256) succeeds for ANY caller including the owner and
-  // changes NO state — verified on a fork, tx status success, Δsupply 0,
-  // Δbalance 0. A dead stub, not an open mint. But the distinction has to be
-  // visible in the output, because "it ran" and "we could not read the revert"
-  // are different facts and only one of them would matter if it were real.
+  // probeCall records `revertData ?? "reverted"` on a revert and `result ?? "0x"`
+  // otherwise, so the literal "0x" can only come from a call that ran to
+  // completion. "It ran" and "we could not read the revert" are different facts,
+  // and only one of them would matter if it were real, so the output separates
+  // them (EXECUTED versus a revert class).
   if (raw === "0x") return { kind: "EXECUTED", text: "(call SUCCEEDED — no revert at all)" };
   if (raw.startsWith("0x08c379a0")) {
     try {

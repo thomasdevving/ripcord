@@ -3,22 +3,17 @@
  *
  * The disclosure gate makes a report non-publishable if ANY capability — at the
  * target or anywhere in its dependency graph — routes to needsManualVerification.
- * That rule is correct, but without this registry it trips on essentially every
- * protocol on earth, because almost all of them hold USDC, whose
- * blacklist/pause/mint are exactly the powerful probe-resistant capabilities the
- * gate is built to catch.
+ * Without this registry that trips on essentially every protocol on earth,
+ * because almost all of them hold USDC, whose blacklist/pause/mint are exactly
+ * the powerful probe-resistant capabilities the gate is built to catch.
  *
- * Those are not latent vulnerabilities; they are the documented, audited design
- * of a centrally-issued fiat stablecoin. Circle CAN freeze a USDC balance — the
- * defining public property of the asset, not something Ripcord discovered. So
- * this registry records, per (token, capability), that the capability is
- * DOCUMENTED DESIGN with a justification and a source, and clears it from the
- * gate. The discipline around it matters as much as the data:
- *   - VERSIONED (`clearedRegistryVersion`), and every report records the version
- *     it used — a clearing is auditable and reversible, never a silent allowlist.
- *   - Cleared only on the SPECIFIC token it documents; the same signature on
- *     another token still blocks.
- *   - NEVER clears the target's own capabilities, only dependencies.
+ * Those are not latent vulnerabilities but the documented, audited design of a
+ * centrally-issued fiat stablecoin. So this registry records, per (token,
+ * capability), that the capability is DOCUMENTED DESIGN with a justification and
+ * a source, and clears it from the gate. It is VERSIONED and recorded in every
+ * report, so a clearing is auditable and reversible rather than a silent
+ * allowlist; it clears only the SPECIFIC token it documents; and it NEVER clears
+ * the target's own capabilities.
  */
 import type { Hex } from "viem";
 

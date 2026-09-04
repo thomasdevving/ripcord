@@ -1,11 +1,8 @@
 /**
- * Hand-verification helper for the day-5 rolePrivilege calibration.
- *
- * Performs a raw eth_call at the pinned block from a chosen `from` address and
- * prints the raw return/revert bytes. The point is to establish what a role
- * ACTUALLY does on-chain — whether holding it grants power over others, or
- * (the sUSDe case) removes power from the holder — by observation rather than
- * by reading a name and assuming.
+ * Hand-verification helper: a raw eth_call at the pinned block from a chosen
+ * `from` address, printing the raw return/revert bytes. Establishes what a role
+ * ACTUALLY does on-chain — grants power, or removes it from the holder — by
+ * observation rather than by reading a name and assuming.
  *
  * usage: probe-call.ts <to> <calldata> <from>...
  */

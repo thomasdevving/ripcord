@@ -1,21 +1,19 @@
 /**
  * THE PORT-COLLISION REGRESSION.
  *
- * `startAnvilFork` used to derive its port as `8600 + (blockNumber + pid) %
- * 300`. Two forks started from one process at one pinned block therefore chose
- * the SAME port — an ordinary event once post-analysis asset-context runs began
- * starting forks outside the job-capacity limiter.
+ * `startAnvilFork` used to derive its port from the block number and pid, so two
+ * forks started from one process at one pinned block chose the SAME port — an
+ * ordinary event once asset-context runs began starting forks outside the
+ * job-capacity limiter.
  *
- * The collision itself was survivable. The silence was not: the second anvil
- * fails to bind, but the readiness poll gets a healthy answer from the FIRST
- * anvil, whose fork block — and therefore whose `expectedBlockHash` check — is
- * identical. The second engine then drove the first engine's fork, interleaving
- * transactions into somebody else's before/after comparison.
+ * The collision was survivable; the silence was not. The second anvil fails to
+ * bind, but the readiness poll gets a healthy answer from the FIRST, whose fork
+ * block and `expectedBlockHash` are identical, so the second engine drove the
+ * first's fork and interleaved transactions into somebody else's comparison.
  *
- * These tests need no real Anvil and no upstream RPC. A tiny child fixture does
- * the actual bind, announces only after it owns the socket, and serves the two
- * JSON-RPC reads used during readiness. A separate HTTP server stands in for a
- * foreign node already occupying an explicit port.
+ * These tests need no real Anvil and no upstream RPC: a tiny child fixture does
+ * the bind, announces only after it owns the socket, and serves the two JSON-RPC
+ * reads used during readiness.
  */
 import { createServer as createHttpServer, type Server } from "node:http";
 import { createServer as createNetServer } from "node:net";

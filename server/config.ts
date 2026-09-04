@@ -1,22 +1,18 @@
 /**
  * Environment → typed configuration, validated once at startup.
  *
- * Two properties this module is responsible for:
+ * An invalid configuration fails loudly and immediately, naming the variable: a
+ * service that boots with `RIPCORD_MAX_ACTIVE_JOBS="one"` coerced to 0 would
+ * accept jobs and never run them, which looks exactly like a hung queue.
  *
- *  1. AN INVALID CONFIGURATION FAILS LOUDLY AND IMMEDIATELY, with a message
- *     naming the variable. A service that boots with `RIPCORD_MAX_ACTIVE_JOBS=
- *     "one"` silently coerced to NaN and then to 0 would accept jobs and never
- *     run them, which looks exactly like a hung queue.
+ * A MISSING RPC IS A VALID STATE, not a crash. The service boots, saved reports
+ * stay readable, and the UI says plainly why Analyze is unavailable — an RPC
+ * outage is a fact about our infrastructure and must never be presented as a
+ * property of the contract under examination.
  *
- *  2. A MISSING RPC IS A VALID STATE, not a crash. `RIPCORD_ENABLE_LIVE_RUNS=
- *     false` (or an unset RPC) must still boot: saved reports stay readable and
- *     the UI says plainly why Analyze is unavailable. An RPC outage is a fact
- *     about our infrastructure and must never be presented as a property of the
- *     contract under examination.
- *
- * The RPC URL itself never leaves this module except as a HOST (describeProvider).
- * The full URL carries the API key, and viem/anvil error text routinely embeds
- * it — see sanitize.ts, which is the other half of that guarantee.
+ * The RPC URL never leaves this module except as a HOST (describeProvider): the
+ * full URL carries the API key, and viem/anvil error text routinely embeds it.
+ * See sanitize.ts for the other half of that guarantee.
  */
 import { resolve } from "node:path";
 import type { RunMode } from "./shared/dto.js";

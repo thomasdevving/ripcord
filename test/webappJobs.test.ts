@@ -1,17 +1,14 @@
 /**
- * The job manager, the store and the publication boundary.
- *
- * These cover the behaviour that is genuinely risky in this layer — the parts
- * where being wrong is invisible rather than loud:
+ * The job manager, the store and the publication boundary — the behaviour where
+ * being wrong is invisible rather than loud:
  *
  *  - A JOB THAT DIES MUST NOT STAY `running`. A spinner that never stops is
  *    indistinguishable from work in progress.
- *  - AN INTERRUPTED JOB IS NOT A COMPLETED ONE. After a restart, a job that was
- *    mid-flight has no result, and manufacturing one would be the same
- *    false-clean this project refuses everywhere else, reached through a deploy.
+ *  - AN INTERRUPTED JOB IS NOT A COMPLETED ONE. Manufacturing a result through a
+ *    restart is the same false-clean this project refuses everywhere else.
  *  - A RECONNECT CURSOR THAT HAS FALLEN OFF THE HISTORY MUST SAY SO. Silently
- *    returning the surviving tail renders as a complete timeline that is missing
- *    its middle.
+ *    returning the surviving tail renders as a complete timeline missing its
+ *    middle.
  *  - CANCELLATION NEEDS THE TOKEN, NOT THE ID. Job ids travel in shareable URLs.
  *  - A BLOCKED REPORT'S BYTES MUST NOT LEAVE THE PROCESS on any transport.
  */

@@ -1,27 +1,12 @@
 /**
- * EVIDENCE for the day-6 semantic cache audit: what an eth_call failure
- * actually looks like from a live provider, and whether a CONTRACT REVERT can
- * be told from an INFRASTRUCTURE failure by positive evidence.
- *
- * This script is the reason `looksLikeContractRevert` (src/chain/client.ts) is
- * shaped the way it is. It was written BEFORE the classifier, and the
- * classifier was derived from what it printed — the same rule the rest of the
- * project follows for slots, selectors and guard dialects: derive from an
- * observation, never from memory.
- *
- * What it established, against a real mainnet endpoint at the pinned block:
- *
- *   GENUINE REVERTS  — Error(string), custom-error, and no-data-at-all — every
- *     one carries ExecutionRevertedError + RPC code 3 + "execution reverted".
- *   INFRASTRUCTURE   — a bad API key (-32600 "Must be authenticated!"), an
- *     unreachable host ("fetch failed"), and a block the node does not have
- *     (-32001 "block not found") — carry NONE of those, and match NONE of the
- *     transient patterns either, which is exactly why the old fail-open
- *     classifier was caching all three as "this function reverted".
+ * Prints what an eth_call failure actually looks like from a live provider, so
+ * `looksLikeContractRevert` (src/chain/client.ts) is derived from an observation
+ * rather than from memory. Genuine reverts carry ExecutionRevertedError + RPC
+ * code 3 + "execution reverted"; infrastructure failures carry none of those and
+ * match none of the transient patterns either.
  *
  * Run: npx tsx scripts/audit-error-shapes.ts   (needs RPC_URL_1)
- * The shapes it prints are pinned as unit tests in test/readFailures.test.ts,
- * so CI does not depend on this script or on a network.
+ * The shapes are pinned in test/readFailures.test.ts, so CI needs no network.
  */
 process.loadEnvFile(".env");
 import { createPublicClient, http, encodeFunctionData } from "viem";

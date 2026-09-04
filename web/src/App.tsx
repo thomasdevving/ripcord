@@ -1,12 +1,10 @@
 /**
  * The shell: top bar, route switch, and the one-time config fetch everything
- * else depends on.
- *
- * `/api/config` is loaded once here and passed down. It carries whether live
- * runs are possible AT ALL (and if not, why), which modes this deployment can
- * execute, and the provider host. Screens read those rather than guessing:
- * offering a fork mode on a deployment with no anvil, and only discovering it
- * when the job fails, is a worse experience than not offering it.
+ * else depends on. `/api/config` carries whether live runs are possible at all
+ * (and if not, why), which modes this deployment can execute, and the provider
+ * host. Screens read those rather than guessing: offering a fork mode on a
+ * deployment with no anvil, and only discovering it when the job fails, is worse
+ * than not offering it.
  */
 import { useEffect, useState } from "react";
 import type { ConfigResponse } from "@shared/dto";

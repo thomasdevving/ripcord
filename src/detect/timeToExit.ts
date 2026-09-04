@@ -1,27 +1,24 @@
 /**
- * Time to exit: how long a holder actually needs to leave, as a LOWER BOUND
- * with its gaps named.
+ * Time to exit: how long a holder actually needs to leave, as a LOWER BOUND with
+ * its gaps named.
  *
  * Measured: cooldown/unstaking accessors from a curated versioned table
  * (selectors derived via viem, matched exactly); two-step request/claim shapes
  * detected structurally from the dispatcher's selector set, yielding a leg of
  * UNKNOWN length; the pause state at the pinned block (a halted exit is
- * unbounded, not "large"); and exit-blockability from day-2 ACCESS_RESTRICTION
+ * unbounded, not "large"); and exit-blockability from ACCESS_RESTRICTION
  * capabilities attributed to a holder — capability, never prediction.
  *
  * Measured legs are SUMMED, because these mechanisms are sequential. A claim
- * window adds zero duration — it is a deadline, not a delay — but is recorded
- * so the hazard stays visible.
- *
- * `atLeastSeconds` is always a floor. `tight` is deliberately hard to earn:
- * readable dispatcher, every detected leg measured, nothing currently
- * blocking. An unmeasured leg removes `tight` entirely.
+ * window adds zero duration — a deadline, not a delay — but is recorded so the
+ * hazard stays visible. `atLeastSeconds` is always a floor, and `tight` is
+ * deliberately hard to earn: readable dispatcher, every detected leg measured,
+ * nothing currently blocking.
  *
  * Liquidity depth is not modelled — that needs an indexer, and every shortcut
- * produces an authoritative-looking wrong number; `modelled` is a literal
- * false so one cannot be expressed. Where a cooldown's own setter exists the
- * leg records `mutableBy`: a duration the authority can raise is not a
- * protocol constant.
+ * produces an authoritative-looking wrong number, so `modelled` is a literal
+ * false. Where a cooldown's own setter exists the leg records `mutableBy`: a
+ * duration the authority can raise is not a protocol constant.
  */
 import { decodeFunctionResult, encodeFunctionData, parseAbiItem, toFunctionSelector, type Hex } from "viem";
 import type { ChainReader } from "../chain/client.js";
@@ -42,17 +39,13 @@ export const exitPatternsVersion = "0.1.0";
 
 /**
  * Cooldown/unstaking accessors, as FULL signatures. Every one returns a
- * duration; the units are stated per entry because getting seconds and blocks
- * confused would silently scale the answer by ~12x in the flattering
- * direction for a blocks-denominated value read as seconds.
+ * duration; the units are stated per entry because confusing seconds and blocks
+ * would silently scale the answer by ~12x in the flattering direction.
  *
  * `specificity` mirrors taxonomy.ts's meaning exactly and is NOT a certainty
- * score: "standard" is a widely-adopted accessor whose name reliably implies
- * an exit delay; "generic" is a plausible-but-reusable name where the match is
- * exact but the meaning varies by project. A generic match still produces a
- * real leg — it just carries a lower confidence, because what the protocol
- * means by `lockPeriod()` is genuinely less certain than what Aave means by
- * `COOLDOWN_SECONDS()`.
+ * score. A generic match still produces a real leg — it just carries lower
+ * confidence, because what a protocol means by `lockPeriod()` is genuinely less
+ * certain than what Aave means by `COOLDOWN_SECONDS()`.
  */
 export interface CooldownAccessor {
   signature: string;
@@ -402,15 +395,13 @@ function assessBlockability(
 }
 
 /**
- * Turns the legs into a lower bound plus an honest label. The rules here are
- * the ones an auditor should push on, so they are explicit:
- *   - Only `cooldown` and `queue` legs add waiting. A `claim_window` records a
- *     deadline, not a delay, and contributes zero.
- *   - `tight` requires everything: a readable dispatcher, no unmeasured leg,
- *     and no current block. Any gap removes it.
- *   - No detected mechanism, with a readable dispatcher, is a real positive
- *     observation at MEDIUM confidence — never "high", because the pattern
- *     tables here are curated and finite.
+ * Turns the legs into a lower bound plus an honest label. The rules an auditor
+ * should push on, so they are explicit: only `cooldown` and `queue` legs add
+ * waiting, since a `claim_window` records a deadline rather than a delay;
+ * `tight` requires a readable dispatcher, no unmeasured leg and no current
+ * block, and any gap removes it; and no detected mechanism, with a readable
+ * dispatcher, is a real positive observation at MEDIUM confidence — never
+ * "high", because the pattern tables here are curated and finite.
  */
 function compose(
   legs: ExitLeg[],

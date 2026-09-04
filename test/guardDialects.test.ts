@@ -1,12 +1,11 @@
 /**
  * The dialect dictionary's tests exist mainly to pin its BOUNDARY, not its
- * coverage. Coverage can be extended safely; the boundary cannot be crossed
+ * coverage: coverage can be extended safely, the boundary cannot be crossed
  * safely, so most of what follows checks that an unrecognised revert stays
  * unrecognised and that nothing here can manufacture a guard.
  *
- * Every "recognised" case below quotes a revert string that was read live off
- * mainnet during day-5 calibration at block 25800000 — the provenance is on the
- * dictionary entry itself.
+ * Every "recognised" case quotes a revert string read live off mainnet at block
+ * 25800000; the provenance is on the dictionary entry itself.
  */
 import { describe, expect, it } from "vitest";
 import { toFunctionSelector } from "viem";

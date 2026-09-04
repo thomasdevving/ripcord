@@ -2,25 +2,22 @@
  * The verdict: the two sides composed into one judgement.
  *
  * A PURE function of the two assessments — no chain access — because the
- * composition rules are the part an auditor will argue with, and those should
- * be exhaustively testable without a network.
+ * composition rules are the part an auditor will argue with, and those should be
+ * exhaustively testable without a network.
  *
- * The comparison is `timeToExit >= exitWindow` → trapped. `>=`, not `>`:
- * sUSDe reads an 86400s cooldown against an 86400s owner-timelock, so you
- * become free to move at precisely the moment the change becomes executable.
- * That is a dead heat, not an escape, and `marginSeconds` is published so it
- * reads as one.
+ * The comparison is `timeToExit >= exitWindow` → trapped. `>=`, not `>`: sUSDe
+ * reads an 86400s cooldown against an 86400s owner-timelock, so you become free
+ * to move at precisely the moment the change becomes executable. That is a dead
+ * heat, not an escape, and `marginSeconds` is published so it reads as one.
  *
- * `no_notice` is its own status because with a zero-notice route the
- * comparison COLLAPSES rather than coming out badly — there is nothing to be
- * faster than. Same conclusion, different reason, and the reason is what an
- * auditor checks.
+ * `no_notice` is its own status because with a zero-notice route the comparison
+ * COLLAPSES rather than coming out badly — there is nothing to be faster than,
+ * and the reason is what an auditor checks.
  *
- * A crisp verdict needs both sides determined and the time-to-exit side
- * `tight`; anything less is `undetermined` with `missing[]` naming what is
- * absent. One asymmetry is deliberate: a non-tight bound can still yield
- * `trapped` (a floor above the window can only grow) but never
- * `can_exit_in_time`. Uncertainty pushes toward caution, never away.
+ * A crisp verdict needs both sides determined and the time-to-exit side `tight`;
+ * anything less is `undetermined` with `missing[]` naming what is absent. One
+ * asymmetry is deliberate: a non-tight bound can still yield `trapped` (a floor
+ * above the window can only grow) but never `can_exit_in_time`.
  *
  * Capability, not intent, in every string: "before the rules CAN change".
  */
@@ -58,12 +55,11 @@ export function humanDuration(seconds: bigint): string {
  * Wraps the composition so the enumeration gaps reach `missing[]` on EVERY
  * branch, not just the ones that happen to degrade.
  *
- * Without this a report could say `missing: []` while one of its own
- * reconstruction blocks said the role set may be incomplete — an internally
- * self-contradicting report, and a credibility problem quite apart from the
- * false-clean it used to enable. A `no_notice` or `trapped` verdict keeps its
- * status (unseen routes cannot make a bad finding safer, so the caution-only
- * direction is preserved) but still has to admit what was not enumerated.
+ * Without it a report could say `missing: []` while one of its own reconstruction
+ * blocks said the role set may be incomplete — an internally self-contradicting
+ * report, and a credibility problem quite apart from the false-clean it used to
+ * enable. A `no_notice` or `trapped` verdict keeps its status but still has to
+ * admit what was not enumerated.
  */
 export function composeVerdict(
   exitWindow: ExitWindow | null,
@@ -75,21 +71,16 @@ export function composeVerdict(
   if (enumeration.complete) return verdict;
 
   // Dedupe by SITE IDENTITY. When the exit-window assessment already degraded
-  // over a gap, it named that site in its own words, and appending a second
+  // over a gap it named that site in its own words, and appending a second
   // near-identical sentence makes the report look careless on precisely the
   // finding it exists to communicate.
   //
-  // The identity has to be structural, and this is the day-6 tighten. The first
-  // version of this dedup asked whether any `missing[]` entry CONTAINED the
-  // gap's `where` string. That happens to behave on the current calibration set,
-  // but only by an accident of wording: `where` for the target is the bare word
-  // "target", so any unrelated sentence mentioning a target would have
-  // suppressed a real gap — and suppressing an enumeration gap is exactly the
-  // failure this whole subsystem exists to prevent, arrived at through a
-  // cosmetic tidy-up. Prose is not an identifier. The assessment now publishes
-  // the canonical KEYS of the sites it cited, and this compares keys, so a
-  // suppression can only ever collapse the two representations of the same site
-  // and never a coincidental collision with unrelated text.
+  // The identity has to be structural. The first version asked whether any
+  // `missing[]` entry CONTAINED the gap's `where` string, which behaves on the
+  // current set only by an accident of wording: `where` for the target is the
+  // bare word "target", so any unrelated sentence mentioning a target would have
+  // suppressed a real gap. Prose is not an identifier — the assessment publishes
+  // the canonical KEYS of the sites it cited, and this compares keys.
   const cited = new Set<string>(
     exitWindow && "citedGapSites" in exitWindow.assessment ? exitWindow.assessment.citedGapSites : [],
   );
@@ -229,18 +220,16 @@ function composeVerdictInner(
     };
   }
 
-  // --- THE GRADED POSITIVE TIER (day 7). ---
+  // --- THE GRADED POSITIVE TIER. ---
   //
   // A fork-clean run resolves an otherwise-undetermined window into the
   // deliberately WEAK positive `no_direct_restriction_found`. It is reachable
-  // ONLY on the strict gates the engine already enforces (exit action
-  // confidently identified, baseline established, EVERY registered candidate
-  // evaluated) and ONLY when the static window did not itself find something
-  // worse — a static no_notice above already returned. It NEVER reuses
-  // `can_exit_in_time` and always carries its scope sentence and the count N,
-  // because the absence of a restrictor among the evaluated functions is not a
-  // proof that none exists over the un-swept argument space or the indirect and
-  // economic paths the engine cannot reach.
+  // ONLY on the strict gates the engine already enforces (exit action confidently
+  // identified, baseline established, EVERY registered candidate evaluated) and
+  // ONLY when the static window did not itself find something worse. It never
+  // reuses `can_exit_in_time` and always carries its scope sentence and the count
+  // N, because the absence of a restrictor among the evaluated functions is not a
+  // proof that none exists over the un-swept argument space.
   if (
     exitRestriction &&
     exitRestriction.outcome === "no_direct_restriction_found" &&

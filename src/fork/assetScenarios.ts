@@ -32,11 +32,11 @@ export const assetScenarioVersion = "0.4.0";
  * SHIPPED EXPERIMENTAL, ON PURPOSE, AND SAID SO IN THE ARTIFACT.
  *
  * The mechanical gaps in candidate discovery, sandbox funding and per-asset
- * isolation have been closed. The label remains because this is still one
- * protocol adapter, one exit action and one privileged mutation. A no-effect
- * result cannot establish that another function, sequence or economic state
- * would leave the asset exit open, so this layer deliberately has no clean
- * tier. The flag travels with every batch instead of living only in a document.
+ * isolation are closed; the label remains because this is still one protocol
+ * adapter, one exit action and one privileged mutation. A no-effect result
+ * cannot establish that another function, sequence or economic state would leave
+ * the asset exit open, so this layer has no clean tier. The flag travels with
+ * every batch instead of living only in a document.
  */
 export const assetScenarioExperimental = true;
 
@@ -111,15 +111,14 @@ export interface AssetScenarioInput {
  *   `role_unresolved`    — the role read did not complete, so NOTHING is claimed
  *                          about the protocol. Conflating it with the line above
  *                          would turn an RPC timeout into "Compound does not
- *                          recognise this token" (KNOWN EDGE #31).
+ *                          recognise this token".
  *   `token_interface_rejected`
  *                        — the role WAS established and then the TOKEN's own
  *                          contract refused a setup call: a fact about the token.
- *   `read_failed`        — a later setup read failed as INFRASTRUCTURE. Kept
- *                          separate for the same reason: one is the chain
- *                          answering, the other our connection failing, and a
- *                          state that quietly means both is the shape of every
- *                          conflation this project has had to fix.
+ *   `read_failed`        — a later setup read failed as INFRASTRUCTURE. One is
+ *                          the chain answering, the other our connection
+ *                          failing, and a state that quietly means both is the
+ *                          shape of every conflation this project has had to fix.
  *
  * `baseline_unestablished` keeps its meaning: the chain answered, and the open
  * control exit could not be demonstrated.
@@ -224,11 +223,11 @@ interface WorkingScenario {
 /**
  * Did the CONTRACT reject this call, or did the READ fail?
  *
- * Positive identification only, the same inversion `PinnedChain` made in KNOWN
- * EDGE #31: a revert is a revert when something says so, and everything else is
- * infrastructure. viem's typed revert errors are checked first because these
- * calls go through `readContract` rather than `PinnedChain`, then the shared
- * classifier that was derived from live error shapes.
+ * Positive identification only, the same inversion `PinnedChain` made: a revert
+ * is a revert when something says so, and everything else is infrastructure.
+ * viem's typed revert errors are checked first because these calls go through
+ * `readContract` rather than `PinnedChain`, then the shared classifier derived
+ * from live error shapes.
  */
 /** One short line of failure text. Deliberately not the full error: viem embeds the request URL, and on most providers that URL is the key. */
 function errText(err: unknown): string {
@@ -582,13 +581,12 @@ export async function runAssetExitScenariosOnFork(
   /**
    * Reads one Comet getter and RETURNS its evidence entry alongside the value.
    *
-   * It used to only push into `commonEvidence`, and the mutation phase then
-   * recovered its entries with `commonEvidence.slice(-2)`. That was wrong twice
-   * over: positional recovery put the AFTER reading before the pause
-   * transaction in the evidence array, and when the pause transaction failed
-   * there was no after-reading to recover, so `slice(-2)` silently pulled in an
-   * unrelated `isBuyPaused()` read labelled "before asset setup". An evidence
-   * array whose order does not match the order of events is not evidence.
+   * It used to only push into `commonEvidence`, and the mutation phase recovered
+   * its entries with `commonEvidence.slice(-2)` — wrong twice over: positional
+   * recovery put the AFTER reading before the pause transaction, and when the
+   * pause failed there was no after-reading, so `slice(-2)` silently pulled in an
+   * unrelated read labelled "before asset setup". An evidence array whose order
+   * does not match the order of events is not evidence.
    */
   const readCommon = async (
     functionName: "baseToken" | "pauseGuardian" | "isWithdrawPaused" | "isSupplyPaused" | "isTransferPaused" | "isAbsorbPaused" | "isBuyPaused",

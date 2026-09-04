@@ -1,23 +1,17 @@
 /**
- * The live analysis page: one page that GROWS while the engine works.
- *
- * A run header stays visible throughout (address, chain, pinned block, data
- * source, elapsed time, current phase), then a phase timeline, then the power
- * map with its detail panel, then the fork evidence, then the finished report —
- * in the same visual structure, so the report is where the story arrives rather
- * than a different document the reader is redirected to.
+ * The live analysis page: one page that GROWS while the engine works. A run
+ * header stays visible throughout, then the phase timeline, the power map with
+ * its detail panel, the fork evidence, and the finished report — in the same
+ * visual structure, so the report is where the story arrives rather than a
+ * different document.
  *
  * TWO THINGS THIS SCREEN IS CAREFUL ABOUT:
- *
  *  1. TECHNICAL COMPLETION IS NOT SUBSTANTIVE CERTAINTY. A run can finish every
- *     phase cleanly and still produce `undetermined`. The header says the run
- *     completed; the verdict says what was concluded; they are separate lines
- *     and are never merged into one "done ✓".
- *
- *  2. SECTIONS ARE RESERVED, NOT POPPED IN. The fork block and the report block
- *     hold their place with an explicit "not run yet" rather than appearing from
- *     nowhere, so the page does not jump under a reader mid-sentence — on a
- *     projector a layout jump loses the room.
+ *     phase cleanly and still produce `undetermined`, so "the run completed" and
+ *     "what was concluded" are separate lines, never merged into one "done ✓".
+ *  2. SECTIONS ARE RESERVED, NOT POPPED IN. The fork and report blocks hold
+ *     their place with an explicit "not run yet", so the page does not jump under
+ *     a reader mid-sentence.
  */
 import { useEffect, useState } from "react";
 import { useJob } from "../useJob.js";

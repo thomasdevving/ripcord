@@ -1,16 +1,10 @@
 /**
- * The enriched assessment, rendered alongside the coverage evidence and never
- * in place of the verdict.
- *
- * Two presentation rules follow from what this artifact is:
- *
- *   The report's own verdict is quoted from the assessment's provenance. A
- *   statement that reaches further than the verdict must never be readable as
- *   a replacement for it.
- *
- *   Only a demonstrated restriction gets emphasis. `no_change` and
- *   `not_applicable` are rendered in the neutral tone — this panel has no
- *   reassuring state, so nothing here may ever look like a clean bill.
+ * The enriched assessment, rendered alongside the coverage evidence and never in
+ * place of the verdict. Two presentation rules follow from what this artifact is:
+ * the report's own verdict is quoted from the assessment's provenance, so a
+ * statement reaching further than the verdict can never read as a replacement
+ * for it; and only a demonstrated restriction gets emphasis, since this panel
+ * has no reassuring state and nothing here may look like a clean bill.
  */
 import type { ReactElement } from "react";
 import type { EnrichedAssessment } from "@shared/enriched";

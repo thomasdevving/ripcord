@@ -1,24 +1,21 @@
 /**
  * OpenZeppelin AccessControl detection.
  *
- * DEFAULT_ADMIN_ROLE() succeeding is treated as evidence the contract implements
- * AccessControl — universal across all versions, including non-Enumerable ones.
- *
- * getRoleMemberCount(DEFAULT_ADMIN_ROLE) is an Enumerable-only extension. If it
- * succeeds, a RoleGranted/RoleRevoked scan discovers WHICH role hashes exist
- * (event scanning cannot miss a role, since every role must have been granted at
- * least once for membership to be non-empty) and current membership is then read
- * straight from the Enumerable getters, which is authoritative. If Enumerable is
- * absent, membership is reconstructed by replaying those events in order from
- * the deployment block to the pinned block.
+ * DEFAULT_ADMIN_ROLE() succeeding is evidence the contract implements
+ * AccessControl — universal across versions, including non-Enumerable ones.
+ * getRoleMemberCount is an Enumerable-only extension: when present, a
+ * RoleGranted/RoleRevoked scan discovers WHICH role hashes exist (a role must
+ * have been granted at least once for membership to be non-empty) and current
+ * membership is read from the Enumerable getters, which is authoritative.
+ * Otherwise membership is reconstructed by replaying those events from the
+ * deployment block to the pinned block.
  *
  * The log range is chunked to the provider's PROBED eth_getLogs limit (see
- * rpcPreflight.ts), not a fixed guess — the fix for KNOWN EDGE #7, where a
- * hard-coded 10k chunk silently failed on any smaller cap. If the full range
- * would exceed the request budget the scan degrades to the most recent
- * affordable window and labels the result `reconstruction.complete = false` with
- * a lowered confidence and the exact window covered: never a silent truncation
- * reading as "no roles found", never full confidence over a partial scan.
+ * rpcPreflight.ts), not a fixed guess. If the full range would exceed the
+ * request budget the scan degrades to the most recent affordable window and
+ * labels the result `reconstruction.complete = false` with a lowered confidence
+ * and the exact window covered — never a silent truncation reading as "no roles
+ * found", never full confidence over a partial scan.
  */
 import { decodeFunctionResult, encodeFunctionData, type Hex } from "viem";
 import type { Evidence, ChainReader } from "../chain/client.js";

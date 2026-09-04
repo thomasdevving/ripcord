@@ -1,23 +1,12 @@
 /**
- * Figure provenance for the report renderer.
+ * Figure provenance for the report renderer. Every displayed figure goes through
+ * this class, which records the JSON path it came from alongside the string that
+ * was rendered; scripts/verify-pages.mjs re-checks both against the source
+ * report, so "the page matches the JSON" is a test rather than a promise.
  *
- * The renderer's honesty rule is that no headline number on the page may be
- * computed, rounded, or inferred into something the report did not assert. The
- * cheap way to say that is a comment; the way to make it true is to force every
- * displayed figure through this class, which records the exact JSON path it came
- * from alongside the exact string that was rendered.
- *
- * The resulting log is embedded in the page and re-checked by
- * scripts/verify-pages.mjs against the source report: every entry's path must
- * resolve to the recorded raw value, and the rendered string must actually
- * appear in the HTML. A figure that drifted from its source, or one that was
- * hand-written into the template instead of read, fails that check.
- *
- * Formatting is allowed and expected — "172800" reads better as "2 days" — so
- * the log keeps BOTH: the raw value for the equality check and the rendered
- * string for the presence check. What is not allowed is arithmetic that
- * invents a figure the report never made, which is why there is no path here
- * that takes two values and combines them.
+ * Formatting is expected ("172800" reads better as "2 days"), so both values are
+ * kept. Arithmetic is not: there is no path here that combines two values into a
+ * figure the report never asserted.
  */
 
 export interface FigureEntry {

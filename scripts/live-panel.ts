@@ -1,23 +1,13 @@
 /**
- * Renders the LIVE (Mobula) panel that sits BESIDE a pinned report.
+ * Renders the LIVE (Mobula) panel that sits BESIDE a pinned report. Kept in its
+ * own file and taking an exposure rather than a Report, so the separation is
+ * visible in the module graph: it cannot read a verdict, touch the FigureLog, or
+ * contribute a figure verify-pages would check against the report.
  *
- * In its own file, and taking an exposure rather than a Report, so the
- * separation is visible in the module graph rather than asserted in prose: it
- * cannot read a verdict, touch the FigureLog, or contribute a figure
- * verify-pages would check against the report.
- *
- * Three rendering rules, each answering a way this panel could mislead:
- *  1. IDENTITY IS THE ADDRESS, NEVER THE NAME. Token names are chosen by
- *     whoever minted them, and escaping stops a phishing lure being markup, not
- *     being believed. Every row leads with (chain, address); the vendor's name
- *     and symbol sit underneath, badged "unverified".
- *  2. THE TOTAL IS OURS AND SAYS SO. The vendor's portfolio total is fiction on
- *     at least one calibration target ($11.8tn). The headline sums holdings with
- *     a defensible valuation basis; the vendor's figure is shown beside it when
- *     it differs, both labelled with whose number they are.
- *  3. LIVE IS TIMESTAMPED AND VISUALLY SEPARATE, and never borrows the verdict's
- *     tones — this data cannot make a contract safe or unsafe, so painting it
- *     green or red would be a category error.
+ * Identity is (chain, address) — token names are chosen by whoever minted them,
+ * so the vendor's name and symbol sit underneath, badged "unverified". The
+ * headline total is ours and says so. The panel is timestamped, visually
+ * separate, and never borrows the verdict's tones.
  */
 import { escapeHtml, shortAddress } from "./figures.js";
 import type { LiveExposure, LiveHolding, Valuation } from "../src/live/exposure.js";

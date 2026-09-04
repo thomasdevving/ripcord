@@ -1,16 +1,15 @@
 /**
  * THE BOUNDS ON THE POST-ANALYSIS LAYER.
  *
- * These refreshes start after a job's worker has exited, so `maxActiveJobs` —
- * the limiter that exists to stop N anvil forks running at once — cannot see
- * them. Unbounded, N jobs finishing together meant N vendor fetches and N forks
- * with no ceiling, and a refresh that never finished left a `pending` sidecar
- * that every open browser tab polled forever.
+ * These refreshes start after a job's worker has exited, so `maxActiveJobs` — the
+ * limiter that stops N anvil forks running at once — cannot see them. Unbounded,
+ * N jobs finishing together meant N vendor fetches and N forks with no ceiling,
+ * and a refresh that never finished left a `pending` sidecar that every open tab
+ * polled forever.
  *
- * Network-free: `fetch` is stubbed, so `buildLiveExposure` fails fast and every
- * test here exercises the SERVICE's bounds rather than the vendor's behaviour.
- * The property under test is not "the refresh succeeds" — it is that every way
- * a refresh can fail to happen still writes a sidecar that says so.
+ * Network-free: `fetch` is stubbed, so the property under test is not "the
+ * refresh succeeds" but that every way a refresh can fail to happen still writes
+ * a sidecar that says so.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -200,17 +199,14 @@ describe("post-analysis asset-context bounds", () => {
   /**
    * THE REGRESSION THE FIRST VERSION OF THESE TESTS MISSED.
    *
-   * `Promise.race([complete(), expiry])` LOOKS like a deadline and is not one:
-   * a race does not cancel its loser. The timeout resolved, the slot was
-   * released, `unavailable` was written — and then the vendor answered and
-   * overwrote the terminal record with a stale one. Reproduced exactly:
-   *
-   *     t+100ms  "…exceeded its limit"
-   *     later    "Mobula refresh was unavailable: holdings: HTTP 400"
+   * `Promise.race([complete(), expiry])` LOOKS like a deadline and is not one: a
+   * race does not cancel its loser. The timeout resolved, the slot was released,
+   * `unavailable` was written — and then the vendor answered and overwrote the
+   * terminal record with a stale one.
    *
    * A test that only asserts the state shortly after the deadline passes on the
-   * broken code, which is why the bug survived a green suite. This one waits
-   * for the late answer to arrive and asserts the record did NOT move.
+   * broken code, which is why the bug survived a green suite. This one waits for
+   * the late answer to arrive and asserts the record did NOT move.
    */
   it("keeps a timed-out sidecar terminal when the vendor answers afterwards", async () => {
     const LATE_MS = 800;
@@ -350,15 +346,12 @@ describe("post-analysis asset-context bounds", () => {
    * THE OVER-ADMISSION RACE, TESTED WHERE IT IS REACHABLE.
    *
    * The window is one microtask wide: between `release()` waking a waiter and
-   * that waiter's continuation running. Through `AssetContextService.start()`
-   * it is not reachable at all, because `acquire()` is always preceded by an
-   * awaited filesystem write, which yields to the macrotask queue long after
-   * the waiter has resumed. A service-level test therefore passes against the
-   * broken code — verified, not assumed — so it would be test theatre.
-   *
-   * The invariant is real regardless, and it is the one thing standing between
-   * `maxActiveAssetContexts` and two concurrent anvil forks. So it is tested on
-   * the semaphore directly, where the interleaving can be forced.
+   * that waiter's continuation running. Through `AssetContextService.start()` it
+   * is not reachable at all, because `acquire()` is always preceded by an awaited
+   * filesystem write, so a service-level test passes against the broken code —
+   * verified, not assumed. The invariant is real regardless, and it is the one
+   * thing standing between `maxActiveAssetContexts` and two concurrent anvil
+   * forks, so it is tested on the semaphore directly.
    */
   it("never grants more than the active limit, even when an acquire lands in the release window", async () => {
     const sem = new BoundedSemaphore(1, 8);

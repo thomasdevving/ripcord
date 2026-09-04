@@ -10,17 +10,15 @@
  *
  * Calibration ran three contracts into the old `no_rule_change_route_found`, two
  * wrongly: Balancer's Vault exposes `getAuthorizer()` → a separate
- * TimelockAuthorizer holding every permission, with no owner, roles or proxy for
- * the day-1 checks to find; rETH checks callers against a RocketStorage registry
- * it does not expose at all. The first is catchable with a two-selector probe;
- * the second is why the assessment's DEFAULT was also inverted (exitWindow.ts),
- * so a bespoke registry lands in `undetermined` rather than in a pass.
+ * TimelockAuthorizer holding every permission; rETH checks callers against a
+ * RocketStorage registry it does not expose at all. The first is catchable with
+ * a two-selector probe; the second is why the assessment's DEFAULT was also
+ * inverted (exitWindow.ts).
  *
  * SCOPE: a marker is one zero-argument getter returning a non-zero address, and
- * that is the whole test. Ripcord never calls into what it finds. The effect is
- * always subtractive — a marker can only move an assessment toward
- * `undetermined`, never establish or shorten a window — so a false positive
- * costs a lost "immutable" claim and nothing else.
+ * that is the whole test — Ripcord never calls into what it finds. The effect is
+ * always subtractive, so a false positive costs a lost "immutable" claim and
+ * nothing else.
  */
 import { decodeAbiParameters, toFunctionSelector, type Hex } from "viem";
 import type { ChainReader, Evidence } from "../chain/client.js";

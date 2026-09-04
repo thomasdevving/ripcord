@@ -1,22 +1,20 @@
 /**
- * The Exit Window: the notice before a rule change takes effect, MINUS every
- * way that notice can be cut. Optimism here is the most damaging failure this
- * tool has, so a delay is worth nothing until positive evidence says otherwise.
+ * The Exit Window: the notice before a rule change takes effect, MINUS every way
+ * that notice can be cut. Optimism here is the most damaging failure this tool
+ * has, so a delay is worth nothing until positive evidence says otherwise.
  *
- * The model:
  *  1. The window is a property of a ROUTE, not of a protocol. Each depth-1
- *     authority is its own route; the protocol's window is the MINIMUM across
+ *     authority is its own route and the protocol's window is the MINIMUM across
  *     them — a two-day timelock is worth nothing beside an un-delayed role.
- *  2. A multisig is not a delay. It raises how many parties must agree and
- *     adds zero notice, so a Safe-terminated route is `immediate`.
- *  3. Binding-ness is decided BY PROBE, not by name: a self-call gate on the
- *     delay's own mutator is `proven_binding`, an Ownable/AccessControl gate
- *     is `shortenable`, anything else is `cannot_determine` and is never
- *     credited as binding.
+ *  2. A multisig is not a delay: it raises how many parties must agree and adds
+ *     zero notice, so a Safe-terminated route is `immediate`.
+ *  3. Binding-ness is decided BY PROBE, not by name — a self-call gate on the
+ *     delay's own mutator is `proven_binding`, an Ownable/AccessControl gate is
+ *     `shortenable`, anything else is never credited as binding.
  *  4. An unproven delay is carried as `nominalDelaySeconds`, never as
- *     `windowSeconds` — the schema's discriminated union enforces it.
- *  5. `checksPerformed[]` records every check that ran, so an empty
- *     `bypasses[]` means "checked, found none" rather than "never looked".
+ *     `windowSeconds`; the schema's discriminated union enforces it.
+ *  5. `checksPerformed[]` records every check that ran, so an empty `bypasses[]`
+ *     means "checked, found none" rather than "never looked".
  *
  * Deliberately excluded, recorded as checks rather than dropped: `pendingOwner`
  * (holds no power until it accepts) and cancel/guardian powers (they remove a
@@ -70,14 +68,12 @@ export const TIMELOCK_UNAUTHORIZED_CALLER_SELECTOR = toFunctionSelector("Timeloc
 /**
  * Self-call gate messages, matched EXACTLY on their load-bearing phrase.
  *
- * Deliberately not a loose "contains the word timelock" match. A false
- * `proven_binding` is the worst output this module can produce, so the
+ * A false `proven_binding` is the worst output this module can produce, so the
  * matching is tight in that direction: the only flexibility permitted is the
- * contract-name prefix Compound forks vary (`Timelock::` → `XTimelock::`),
- * because that prefix carries no semantics. Everything else must match the
- * canonical phrase or the result degrades to `cannot_determine`.
- *
- * Both were read from mainnet before being written down:
+ * contract-name prefix Compound forks vary (`Timelock::` → `XTimelock::`), which
+ * carries no semantics. Everything else must match the canonical phrase or the
+ * result degrades to `cannot_determine`. Both were read from mainnet before
+ * being written down:
  *   ENS DAO TimelockController 0xfe89cc7a… updateDelay(0) →
  *     "TimelockController: caller must be timelock"
  *   Compound Timelock 0x6d903f60… setDelay(0) →
@@ -119,20 +115,17 @@ export function classifyDelayGuardRevert(revertData: Hex | undefined): SelfGateS
 }
 
 /**
- * Determines whether a detected timelock's delay is actually binding on the
- * authority it constrains.
+ * Determines whether a detected timelock's delay actually binds the authority it
+ * constrains. Order of reasoning, most-conservative-last: no readable delay →
+ * nothing to bind (`cannot_determine`); no delay mutator in the timelock's own
+ * dispatcher → immutable through this interface (`proven_binding`); a mutator
+ * exists → probe it, where a self-call gate is binding, a role gate is
+ * shortenable, and anything else cannot be determined.
  *
- * Order of reasoning, most-conservative-last:
- *   1. No readable delay at all → nothing to bind (`cannot_determine`).
- *   2. No delay mutator in the timelock's own dispatcher → the delay is
- *      immutable through this contract's interface (`proven_binding`).
- *   3. A mutator exists → probe it. Self-call gate → binding. Role gate →
- *      shortenable. Anything else → cannot determine.
- *
- * Independently of all three, the timelock is checked for being ITSELF behind
- * a proxy. A delay enforced by upgradeable code is only as binding as the
- * authority over that code, so `timelockIsUpgradeable` is surfaced and raises
- * its own bypass rather than being quietly folded into the binding verdict.
+ * Independently, the timelock is checked for being ITSELF behind a proxy: a
+ * delay enforced by upgradeable code is only as binding as the authority over
+ * that code, so `timelockIsUpgradeable` raises its own bypass rather than being
+ * quietly folded into the binding verdict.
  */
 export async function analyseTimelockBinding(
   chain: ChainReader,
@@ -276,12 +269,9 @@ const DEFAULT_ADMIN_ROLE = `0x${"0".repeat(64)}`;
 /**
  * Decides whether an AccessControl role route confers privilege — see
  * `rolePrivilegeSchema` for why this is necessary and why erring toward
- * `unverified` is safe.
- *
- * The route label is `accessControl:<name-or-hash>` (authority.ts's
- * `collectSeeds` uses the role's resolved NAME when it has one and the raw
- * hash otherwise), so the role is recovered by matching that suffix back
- * against the role set rather than by re-deriving it.
+ * `unverified` is safe. The route label is `accessControl:<name-or-hash>`, so
+ * the role is recovered by matching that suffix back against the role set rather
+ * than by re-deriving it.
  */
 export function classifyRolePrivilege(
   label: string,
@@ -746,17 +736,15 @@ function assess(
           "Exit window undetermined: privileged functions exist but their holders could not be identified, so the notice before a rule change cannot be bounded.",
       };
     }
-    // --- THE INVERTED DEFAULT (day 5) ---
+    // --- THE INVERTED DEFAULT ---
     //
-    // Reaching here means no authority route was BUILT. Until day 5 that alone
-    // produced a reassuring status, which conflated "we found nothing" with
-    // "there is nothing" and was wrong on two of the three mainnet contracts it
-    // fired on (see the day-5 split documented on exitWindowAssessmentSchema).
+    // Reaching here means no authority route was BUILT. That alone once produced
+    // a reassuring status, which conflated "we found nothing" with "there is
+    // nothing" and was wrong on two of the three mainnet contracts it fired on.
     //
-    // Now "clean" must be EARNED. Each condition below is a read Ripcord
-    // actually performed and can point at; a condition that is merely absent
-    // never counts. Anything missing sends the assessment to `undetermined`,
-    // which is the safe outcome and the one reached by falling through.
+    // Now "clean" must be EARNED: each condition below is a read Ripcord
+    // actually performed and can point at, and a condition that is merely absent
+    // never counts. Anything missing falls through to `undetermined`.
     const missingBasis: string[] = [];
     const basis: string[] = [];
 
@@ -912,18 +900,14 @@ function assess(
 
   // ...but a minimum is only as good as the set it ranges over. If any role
   // enumeration behind these routes was partial, an un-enumerated role could
-  // hold a zero-notice power, and the true minimum would be lower than this one
-  // — possibly zero. So `binding` requires the witness, and without it the
-  // result degrades rather than being reported.
+  // hold a zero-notice power and the true minimum would be lower — possibly
+  // zero. So `binding` requires the witness, and without it the result degrades.
   //
   // It degrades to `not_proven_binding` rather than `undetermined` on purpose:
-  // that variant's meaning is already "a delay exists but binding-ness OR
-  // ANOTHER ROUTE is unresolved", which is exactly the situation, and it keeps
-  // the observed figure instead of discarding it. The direction stays safe
-  // because verdict.ts's branch for it can only yield `trapped` or
-  // `undetermined`, never a reassuring verdict — and it can still reach
-  // `trapped` when the exit already takes longer than the delay, which unseen
-  // routes could only reinforce.
+  // that variant already means "a delay exists but binding-ness OR ANOTHER ROUTE
+  // is unresolved", and it keeps the observed figure instead of discarding it.
+  // The direction stays safe because verdict.ts's branch for it can only yield
+  // `trapped` or `undetermined`, never a reassuring verdict.
   const witness = witnessOf(args.enumeration);
   if (!witness) {
     const enumerationMissing = args.enumeration.gaps.map(

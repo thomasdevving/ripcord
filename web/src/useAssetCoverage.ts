@@ -5,15 +5,11 @@ import { ApiRequestError, getCoverage } from "./api.js";
 
 const POLL_INTERVAL_MS = 2_000;
 /**
- * How long this hook will chase a `pending` sidecar.
- *
- * Bounded deliberately. The server caps one refresh with its own timeout and
- * rewrites a stranded `pending` at boot, but neither of those helps a browser
- * whose server died and did not come back, or one that was told `pending` by a
- * refresh that never wrote a sidecar at all. Unbounded 2-second polling in that
- * state is one request every two seconds, per open tab, forever.
- *
- * Comfortably longer than the server's own default ceiling, so the normal case
+ * How long this hook will chase a `pending` sidecar. Bounded deliberately: the
+ * server caps one refresh and rewrites a stranded `pending` at boot, but neither
+ * helps a browser whose server died and did not come back, and unbounded
+ * 2-second polling in that state is one request every two seconds, per open tab,
+ * forever. Comfortably longer than the server's own ceiling, so the normal case
  * is always resolved by the server rather than abandoned here.
  */
 const POLL_CEILING_MS = 20 * 60_000;

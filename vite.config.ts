@@ -3,16 +3,13 @@
  *
  * `root: "web"` keeps browser code in one directory that the server build
  * (tsconfig.server.json) does not compile, so the two trees cannot accidentally
- * import each other. The only thing they share is `server/shared/dto.ts`, which
- * is types and pure constants with no Node imports — `scripts/verify-webapp.mjs`
- * checks that the shipped bundle contains no Node builtin, no engine module and
- * no RPC URL.
+ * import each other. The only thing they share is `server/shared/dto.ts` — types
+ * and pure constants, no Node imports.
  *
- * NOTE ON SECRETS: nothing here reads `process.env` into the bundle, and no
- * `VITE_*` variable is defined. The RPC URL and any API key are runtime SERVER
- * configuration; a `VITE_` variable would be inlined into a public asset at
- * BUILD time, which is how provider keys end up in a JS file on a CDN. The image
- * must therefore be buildable with no RPC key at all, and it is.
+ * Nothing here reads `process.env` into the bundle and no `VITE_*` variable is
+ * defined: a `VITE_` variable is inlined into a public asset at BUILD time, which
+ * is how provider keys end up in a JS file on a CDN. The RPC URL and any API key
+ * are runtime SERVER configuration, so the image is buildable with no RPC key.
  */
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";

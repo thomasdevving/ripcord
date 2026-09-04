@@ -2,19 +2,11 @@
 /**
  * Narrative-claim audit: check the SENTENCES against the REPORTS.
  *
- * `verify-pages.mjs` already re-derives every headline figure on every rendered
- * page from its source JSON. The prose in README.md, CLAUDE.md and
- * docs/*.md has no such protection — and on day 6 that gap produced a real
- * error: the PAID demo beat asserted that one contract both had `paused()` true
- * AND produced a $748.90 drain proof. Neither contract has both. The claim
- * survived three days and was caught only when the documented reproduce command
- * was actually run from a clean clone.
- *
- * One conflation found means the class is present, so this checks the rest
- * mechanically. It is deliberately NARROW: it verifies the claims that can be
- * resolved to a report field, and PRINTS the ones a human still has to read.
- * A checker that pretended to cover everything would be its own kind of
- * false-clean.
+ * verify-pages.mjs re-derives every headline figure on every rendered page; the
+ * prose in README.md, CLAUDE.md and docs/*.md had no such protection, and it
+ * drifted. This resolves the claims that map to a report field and PRINTS the
+ * ones a human still has to read — a checker that pretended to cover everything
+ * would be its own kind of false-clean.
  *
  * Usage: node scripts/verify-claims.mjs [docsDir=.] [reportsDir=calibration/reports]
  */
@@ -24,28 +16,14 @@ import { join } from "node:path";
 const reportsDir = process.argv[3] ?? "calibration/reports";
 // test/fixtures/targets.json is included deliberately: it is the manual
 // verification LOG, i.e. prose asserting what was observed, and prose is exactly
-// what drifts. Its claims are as checkable as the README's and no more trusted.
-// docs/MOBULA.md is DELIBERATELY absent from this list, but the exclusion is
-// NARROWER than it looks and is enforced below rather than trusted.
+// what drifts.
 //
-// The reason for excluding it: every figure in it is a LIVE market observation
-// stamped with the instant it was read, not a claim about a pinned report —
-// Lido's native-ETH balance and cbETH's vendor total change whenever anyone
-// fetches them. Checking them against calibration/reports/ would fail by
-// construction, and checking them against the sidecars would fail on the next
-// fetch. That document states its own observation instant instead.
-//
-// THAT RATIONALE HAS AN EXPIRY DATE, and it reached it once already. When the
-// per-asset candidate scenarios were added, MOBULA.md grew per-asset FORK
-// RESULT counts ("N established differentials, all N confirmed …"). Those are
-// not market observations; they are security claims about a pinned block and a
-// real protocol, i.e. exactly the class this script exists for — and the
-// exclusion above silently covered them, with no artifact in the repository
-// behind them. The escape hatch had outlived its argument and nothing noticed.
-//
-// So the exclusion is now conditional and checked: MOBULA.md may hold live
-// market figures, and may NOT hold per-asset scenario counts. See the
-// sidecar-figure guard below.
+// docs/MOBULA.md is excluded because its figures are LIVE market observations
+// stamped with the instant they were read, so checking them against pinned
+// reports would fail by construction. That exclusion is NARROWER than it looks
+// and is enforced below rather than trusted: the document may hold live market
+// figures, and may NOT hold per-asset scenario counts, which are security claims
+// about a pinned block and belong to this script. See the sidecar-figure guard.
 const docs = ["README.md", "CLAUDE.md", "docs/TECHNICAL.md", "docs/CALIBRATION.md", "docs/QUESTIONNAIRES.md", "docs/WEBAPP.md", "docs/RAILWAY.md", "test/fixtures/targets.json"].filter(existsSync);
 
 const reports = {};
@@ -73,15 +51,11 @@ const VERDICTS = [
 ];
 
 /**
- * Human names for reports, so a MARKDOWN TABLE ROW that names a protocol and a
- * verdict is checkable too. This is the class that slipped through on day 6:
- * CALIBRATION.md's per-protocol table listed "Ethena USDe | can_exit_in_time"
- * long after the enumeration fix had moved it to `undetermined`, contradicting
- * another section of the SAME document. Nothing caught it, because the row names
- * no address.
- *
- * Deliberately explicit rather than fuzzy-matched: a wrong alias would silently
- * check the wrong report, which is worse than checking nothing.
+ * Human names for reports, so a MARKDOWN TABLE ROW naming a protocol and a
+ * verdict is checkable too — a row names no address, so nothing else catches it
+ * when the verdict moves. Deliberately explicit rather than fuzzy-matched: a
+ * wrong alias would silently check the wrong report, which is worse than
+ * checking nothing.
  */
 const ALIASES = {
   "weth9": ["WETH9"],
@@ -259,15 +233,11 @@ for (const [label, r] of Object.entries(reports)) {
 
 // --- 7. The hero's example card is a QUOTATION, so it must still be true. ---
 //
-// The card on the product's first screen carries a verdict, an address, a block
-// and four figures. Nothing else checks them: verify-pages covers site/, and
-// this script's other checks read markdown. A TSX literal is exactly the place
-// KNOWN EDGE #34 happened — the tool stayed right while the story about it went
-// wrong — so the quotation is re-derived from its source here.
-//
-// It also enforces the rule the quotation depends on: the source report must be
-// PUBLISHABLE. Quoting a blocked report on a public page publishes what the
-// disclosure gate withholds.
+// The card carries a verdict, an address, a block and four figures, and nothing
+// else checks them: verify-pages covers site/, and this script's other checks
+// read markdown. It also enforces the rule the quotation depends on — the source
+// report must be PUBLISHABLE, since quoting a blocked report on a public page
+// publishes what the disclosure gate withholds.
 {
   const heroPath = "web/src/components/Hero.tsx";
   const doc = "hero";

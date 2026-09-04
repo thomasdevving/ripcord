@@ -1,21 +1,16 @@
 /**
  * Proves that every headline figure on a rendered page came out of the report
- * rather than out of the template.
- *
- * The renderer's honesty rule — "no presentation-layer value is computed or
- * rounded into something the report didn't assert" — is the kind of claim that
- * quietly stops being true the first time someone hard-codes a number into a
- * heading. So each page embeds a manifest of its figures (see scripts/figures.ts),
- * and this script re-derives every one of them independently:
+ * rather than out of the template. Each page embeds a manifest of its figures
+ * (scripts/figures.ts) and this script re-derives every one independently:
  *
  *   1. the recorded jsonPath must resolve, in the SOURCE report, to exactly the
  *      recorded raw value — so a figure cannot drift from its origin;
- *   2. the rendered string must actually appear in the page body — so a figure
- *      cannot be logged as provenance and then displayed as something else.
+ *   2. the rendered string must appear in the page body — so a figure cannot be
+ *      logged as provenance and then displayed as something else.
  *
- * It also enforces the two properties that are easy to lose in a stylesheet:
- * that no page performs network access, and that an undetermined verdict is not
- * rendered with the healthy tone.
+ * It also enforces the two properties easiest to lose in a stylesheet: no page
+ * performs network access, and an undetermined verdict is never rendered with
+ * the healthy tone.
  *
  * Run: node scripts/verify-pages.mjs [siteDir] [reportsDir]
  */
@@ -101,20 +96,14 @@ for (const page of pages.sort()) {
 
   // --- 2b. the live layer, if present, is LABELLED and SEPARATE ---
   //
-  // verify-boundary proves the pinned CODE cannot reach the live layer. This
-  // proves the rendered PAGE keeps them apart, which is a different claim and
-  // the one a reader actually experiences. Three properties:
-  //
-  //   (a) No figure in the provenance manifest may come from live data. Every
-  //       entry must resolve against the pinned report — that is already checked
-  //       above, so this asserts the complementary thing: no manifest path may
-  //       name a live-layer field. Without it, a future refactor could log a
-  //       market number as though the report had asserted it.
-  //   (b) The panel must carry its boundary sentence and a machine-readable
-  //       fetch timestamp. An unlabelled live figure beside a pinned verdict is
-  //       indistinguishable from a pinned figure, which is the whole risk.
-  //   (c) The panel must come AFTER the verdict hero in document order, so it
-  //       reads as commentary beside the verdict and never as part of it.
+  // verify-boundary proves the pinned CODE cannot reach the live layer; this
+  // proves the rendered PAGE keeps them apart, which is the claim a reader
+  // actually experiences. (a) No manifest path may name a live-layer field, or a
+  // refactor could log a market number as though the report had asserted it.
+  // (b) The panel must carry its boundary sentence and a machine-readable fetch
+  // timestamp, since an unlabelled live figure beside a pinned verdict is
+  // indistinguishable from a pinned one. (c) It must come AFTER the verdict hero
+  // in document order, so it reads as commentary and never as part of it.
   const LIVE_FIELDS = /^(liveLayerVersion|fetchedAt|exposureUsd|vendorReportedTotalUsd|holdings|concentration|withheld)\b/;
   for (const fig of figures) {
     if (LIVE_FIELDS.test(fig.jsonPath)) {
@@ -187,21 +176,14 @@ for (const page of pages.sort()) {
 // ---------------------------------------------------------------------------
 // REPORT-LEVEL INVARIANT: no reassuring verdict on an incomplete enumeration.
 //
-// This runs over EVERY report, not only the ones that got a page, because the
-// invariant is a property of the tool rather than of the published subset.
+// Runs over EVERY report, not only the ones that got a page, because the
+// invariant is a property of the tool rather than of the published subset. The
+// exit window is the MINIMUM notice across authority routes, so it is sound only
+// over a route set that was fully seen — an un-enumerated role holding a
+// zero-notice power makes it a minimum of the wrong set.
 //
-// It is the report analogue of the byte-identity determinism gate: instead of
-// pinning one instance of a bug, it makes the whole class impossible to
-// reintroduce. The exit window is the MINIMUM notice across authority routes,
-// so it is only sound over a route set that was fully seen — an un-enumerated
-// role holding a zero-notice power makes the minimum a minimum of the wrong
-// set. Two of the 26 calibration protocols were doing exactly that when this
-// check was written (Ethena Minting on its own scan, Ethena USDe on its
-// depth-1 timelock's), and both said `missing: []` while doing it.
-//
-// The check derives incompleteness INDEPENDENTLY of src/report/enumeration.ts —
-// straight from the reconstruction blocks in the report — so a bug in the
-// derivation cannot hide itself here.
+// Incompleteness is derived INDEPENDENTLY of src/report/enumeration.ts, straight
+// from the reconstruction blocks, so a bug in the derivation cannot hide itself.
 // ---------------------------------------------------------------------------
 
 // `no_direct_restriction_found` is a WEAK positive tier: it too is withheld on
@@ -215,14 +197,11 @@ const MUST_NOT_BE_REASSURING = new Set(["compound-comet-cusdcv3", "compound-cdai
 // ---------------------------------------------------------------------------
 // DAY-7 REGISTERED PREDICTIONS (the exit-restriction fork differential).
 // Committed BEFORE the engine was written and enforced here, so the outcome
-// could not be tuned toward afterwards. Two directions, asymmetric by risk:
-//   - The flagship confirmation (Comet) MUST resolve to a decided restriction.
-//   - The true negatives MUST survive; nothing may move toward reassurance.
+// could not be tuned toward afterwards. Asymmetric by risk: the flagship
+// confirmation (Comet) must resolve to a decided restriction carrying a
+// fork-confirmed restrictor, and the true negatives must survive with nothing
+// moving toward reassurance.
 // ---------------------------------------------------------------------------
-// Comet: the anchor. The fork confirms the pause guardian can shut withdrawals
-// with zero notice, so the verdict must be no_notice and the evaluation must
-// carry a fork-confirmed restrictor. If Comet ever comes out reassuring, the
-// evaluation is broken (task's own words).
 const DAY7_FLAGSHIP = "compound-comet-cusdcv3";
 // These were the only reassuring verdicts before day 7 and must be untouched by
 // it — the fork engine has no reason to run on a contract with no privileged

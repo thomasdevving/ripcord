@@ -2,23 +2,21 @@
  * Composes the Mobula endpoints into one LIVE exposure view for a target.
  *
  * The pinned dependency graph answers "does this contract hold any of six
- * curated majors at block N" (KNOWN EDGE #5: no indexer). This layer answers a
- * DIFFERENT question with different epistemics — "what does this address hold
- * right now, across every chain, according to a third party" — and is never an
- * input to the verdict. Lido's withdrawal queue is the clearest case: ~$63M of
- * NATIVE ETH that no MAJOR_TOKENS entry could ever match.
+ * curated majors at block N". This layer answers a DIFFERENT question with
+ * different epistemics — "what does this address hold right now, across every
+ * chain, according to a third party" — and is never an input to the verdict.
+ * Lido's withdrawal queue is the clearest case: ~$63M of NATIVE ETH that no
+ * MAJOR_TOKENS entry could ever match.
  *
  * Three problems with live wallet data, all found by looking at it:
  *  1. THE NAMES ARE ATTACKER-CONTROLLED. Real holdings carry airdropped
- *     phishing tokens whose symbol and name the minter chose. Escaping stops
- *     them being markup, not being believed — so identity is the (chainId,
- *     address) pair and the vendor's name/symbol are unverified display data.
+ *     phishing tokens whose symbol and name the minter chose, so identity is the
+ *     (chainId, address) pair and the vendor's name/symbol are display data.
  *  2. THE VALUES CAN BE FICTION. One wallet's vendor portfolio total read
- *     $11.8tn, from a token that passed the vendor's own spam filter. The
- *     headline is computed HERE, from holdings with a `valuation` basis.
- *  3. FILTERING MUST BE ITEMISED. Withholding silently is the same failure as
- *     an unlabelled partial scan, and one "N filtered" number would blur
- *     below-the-floor with UNPRICEABLE, so `withheld` has a bucket per reason.
+ *     $11.8tn, from a token that passed the vendor's own spam filter, so the
+ *     headline is computed HERE from holdings with a `valuation` basis.
+ *  3. FILTERING MUST BE ITEMISED. Withholding silently is the same failure as an
+ *     unlabelled partial scan, so `withheld` has a bucket per reason.
  */
 import { fetchHoldings, fetchPrices, fetchMetadata, chainName, isNativeAsset, tokenKey } from "./mobula.js";
 import type { MobulaHolding } from "./mobula.js";
@@ -38,25 +36,20 @@ export const CORROBORATION_TOLERANCE = 0.1;
  * A holding is treated as implausibly marked when its value exceeds the token's
  * own reported liquidity by MORE THAN THIS MULTIPLE.
  *
- * The multiple exists because the first version of this check had no multiple,
- * and was wrong in the expensive direction. "Value greater than pool liquidity"
- * sounds like a sound plausibility test and is not: a large protocol routinely
- * holds more of a token than any single venue's depth. Verified live on Curve
- * 3pool, where the rule discarded $93.2M of USDT (1.15x the reported figure) and
- * $35.7M of DAI (5.9x) — both entirely real — while FAILING to catch the largest
- * piece of fiction in the whole set, USDC's $101bn empty-symbol token, whose
- * vendor-reported liquidity is an equally fictitious $825bn.
+ * The multiple exists because the first version had none and was wrong in the
+ * expensive direction: "value greater than pool liquidity" sounds like a sound
+ * plausibility test and is not, since a large protocol routinely holds more of a
+ * token than any single venue's depth. Verified live on Curve 3pool, where the
+ * rule discarded $93.2M of entirely real USDT (1.15x) while FAILING to catch the
+ * largest fiction in the set, USDC's $101bn empty-symbol token, whose reported
+ * liquidity is an equally fictitious $825bn.
  *
- * So this is now a plausibility FLOOR, not a liquidity model. It is not trying to
- * decide whether a position could be exited — that needs pool discovery and depth
- * integration across venues, which Ripcord deliberately does not do (KNOWN EDGE
- * #20, where `liquidity.modelled` is a zod literal `false` precisely so a made-up
- * number cannot be expressed). It only rejects a marking that is off by an order
- * of magnitude, which is the shape of a bad price rather than a big position.
- *
- * The real defence against a plausible-looking fiction is not this check at all —
- * it is the concentration disclosure, which says out loud when a total rests on
- * one token.
+ * So this is a plausibility FLOOR, not a liquidity model. It does not try to
+ * decide whether a position could be exited — that needs pool discovery and
+ * depth integration, which Ripcord deliberately does not do. It only rejects a
+ * marking off by an order of magnitude, the shape of a bad price rather than a
+ * big position. The real defence against a plausible fiction is the
+ * concentration disclosure, which says out loud when a total rests on one token.
  */
 export const LIQUIDITY_IMPLAUSIBILITY_MULTIPLE = 10;
 
@@ -70,14 +63,13 @@ export type Valuation =
   /**
    * The wallet-holdings value and the batch-price quote agree.
    *
-   * NAMED CAREFULLY. Both figures come from the SAME vendor and probably from
-   * the same underlying pool data, so this is a CONSISTENCY check between two
-   * endpoints, not independent verification — calling it "corroborated" would
-   * claim more than the evidence supports. Verified live why this distinction
-   * matters: USDC's own contract holds an empty-symbol token at
-   * 0x6cada045… whose two quotes agree perfectly on $101bn and which also
-   * reports $825bn of liquidity, so it passes every check below. Agreement
-   * between two views of one vendor's bad data is still bad data.
+   * NAMED CAREFULLY. Both figures come from the SAME vendor and probably the
+   * same underlying pool data, so this is a CONSISTENCY check between two
+   * endpoints, not independent verification — "corroborated" would claim more
+   * than the evidence supports. USDC's own contract holds an empty-symbol token
+   * whose two quotes agree perfectly on $101bn and which reports $825bn of
+   * liquidity, passing every check below: agreement between two views of one
+   * vendor's bad data is still bad data.
    */
   | { basis: "endpoints_agree"; usd: number }
   /** Only one quote exists — natives (no ERC20 contract to price), or no batch entry. */
@@ -177,14 +169,12 @@ export interface LiveExposure {
   /** Which Mobula endpoints answered, so a partial panel is legible as partial. */
   endpoints: { holdings: boolean; price: boolean; metadata: boolean };
   /**
-   * How much of `exposureUsd` rests on its single largest holding.
-   *
-   * The check the valuation bases cannot make. A vendor's price and liquidity
-   * figures can BOTH be wrong together, and when they are, the result is one
-   * enormous holding that passes every test — USDC's contract reports $101bn
-   * dominated entirely by one unnamed token. Publishing that as a flat total
-   * would be technically sourced and practically misleading, so the panel
-   * discloses the concentration instead of burying it.
+   * How much of `exposureUsd` rests on its single largest holding — the check
+   * the valuation bases cannot make. A vendor's price and liquidity figures can
+   * BOTH be wrong together, and the result is one enormous holding that passes
+   * every test (USDC's contract reports $101bn dominated entirely by one unnamed
+   * token). Publishing that as a flat total would be technically sourced and
+   * practically misleading.
    */
   concentration: { topShare: number; topAddress: string | null; topIsUnnamed: boolean } | null;
   /** Non-fatal degradations (e.g. price enrichment failed but holdings arrived). */
@@ -468,15 +458,11 @@ export async function buildLiveExposure(
  * Recomputes every valuation, and the totals that depend on it, from quotes a
  * sidecar ALREADY holds — no network.
  *
- * This exists because the valuation rules are the part of this layer most likely
- * to need correcting (the liquidity multiple above was corrected once already,
- * from live evidence), and re-fetching 22 targets through a rate-limited public
- * tier to test a threshold change is both slow and a waste of someone's API
- * quota. Every input the rules use — both quotes and the liquidity figure — is
- * stored per holding, so this is a pure function of the sidecar.
- *
- * Deliberately does NOT touch `fetchedAt`: the market data is still from the
- * moment it was fetched, and re-stamping it would be a lie about its age.
+ * The valuation rules are the part of this layer most likely to need correcting
+ * (the liquidity multiple above was corrected once already, from live evidence),
+ * and every input those rules use is stored per holding, so this is a pure
+ * function of the sidecar. It deliberately does NOT touch `fetchedAt`:
+ * re-stamping it would be a lie about the market data's age.
  */
 export function revalueExposure<T extends LiveExposure>(sidecar: T): T {
   if (sidecar.status !== "ok") return sidecar;

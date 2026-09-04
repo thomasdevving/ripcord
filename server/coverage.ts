@@ -3,24 +3,18 @@
  *
  * A PURE function of artifacts that already exist: no chain read, no RPC, no
  * fork, no Mobula fetch. That is a scope decision — the panel exists to show
- * what the evidence does and does not cover, and a composer that could fetch
- * the missing piece would erase the gaps it exists to display. It lives outside
- * the pinned chain and never enters the deterministic report JSON.
+ * what the evidence does and does not cover, and a composer that could fetch the
+ * missing piece would erase the gaps it exists to display.
  *
- * The five judgements, all conservative:
- *  1. Identity is (chain, address), both normalised to `evm:<n>`. A null
- *     chainRef can never produce a positive match; it lands in `chain_unclear`.
- *  2. Native assets are keyed per chain. The 0xeeee… sentinel is the same
- *     string everywhere while meaning a different asset on each chain.
- *  3. A MISSING dependency entry is not a zero balance — detectDependencies
- *     records only NON-ZERO balances, so a real zero leaves no artifact. A
- *     FAILED read is recorded in unknowns[] and reported separately.
- *  4. Fork linkage must be earned: an asset attaches to the withdrawal
- *     experiment only via a `baseToken()` read whose params.address is the
- *     target. Older reports lack that field and report the link unestablished
- *     rather than inferring it from the protocol name.
- *  5. Account scope travels with the result. The baseline exercises a SANDBOX
- *     HOLDER, so a successful sandbox withdrawal is never the target's.
+ * The judgements, all conservative: identity is (chain, address) and a null
+ * chainRef can never produce a positive match; natives are keyed per chain (the
+ * 0xeeee… sentinel is the same string everywhere while meaning a different asset
+ * on each); a MISSING dependency entry is not a zero balance, since
+ * detectDependencies records only NON-ZERO balances and a failed read goes to
+ * unknowns[]; fork linkage must be earned through a `baseToken()` read whose
+ * params.address is the target, never inferred from a protocol name; and the
+ * baseline exercises a SANDBOX HOLDER, so a successful sandbox withdrawal is
+ * never the target's.
  */
 import type { Report } from "../src/report/schema.js";
 import type { LiveExposure, LiveHolding } from "../src/live/exposure.js";

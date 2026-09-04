@@ -2,21 +2,19 @@
  * ASSET COVERAGE — the composition rules, as tests.
  *
  * Every case here is a way the panel could quietly overclaim. The composer is a
- * presentation layer, which is exactly why it needs this: it is the one place
- * where a vendor snapshot, a pinned balance read and a fork experiment are put
- * side by side, and side-by-side placement is itself an invitation to read them
- * as one progressive status.
+ * presentation layer, which is exactly why it needs this: it is the one place a
+ * vendor snapshot, a pinned balance read and a fork experiment are put side by
+ * side, and side-by-side placement is itself an invitation to read them as one
+ * progressive status.
  *
- * The rules being pinned down:
- *   - identity is (chain, address); nothing merges across chains
- *   - a null/unusable chain never produces a positive match
- *   - a missing dependency entry is NOT a proven zero balance
- *   - curated-list membership is eligibility, never evidence
- *   - a sandbox holder's withdrawal is never shown as the target's
- *   - an unestablished baseline is never a successful test
- *   - a historical report never wears a current-ruleset label
- *   - a report-only asset survives Mobula's absence
- *   - a capped/floored snapshot is never presented as a full inventory
+ * The rules being pinned down: identity is (chain, address) and nothing merges
+ * across chains; a null/unusable chain never produces a positive match; a
+ * missing dependency entry is NOT a proven zero balance; curated-list membership
+ * is eligibility, never evidence; a sandbox holder's withdrawal is never shown
+ * as the target's; an unestablished baseline is never a successful test; a
+ * historical report never wears a current-ruleset label; a report-only asset
+ * survives Mobula's absence; and a capped snapshot is never presented as a full
+ * inventory.
  */
 import { describe, expect, it } from "vitest";
 import { readFileSync, existsSync } from "node:fs";

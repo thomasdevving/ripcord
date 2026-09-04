@@ -2,15 +2,14 @@
  * POST-ANALYSIS ASSET CONTEXT.
  *
  * Mobula proposes asset identities from its complete holdings response at the
- * wall-clock time of a run. Independently of the UI floor/cap, Ripcord selects
- * a bounded same-chain ERC20 set and asks a separate, pinned question for each
- * Ethereum ERC20 candidate: did this exact token contract report a balance for
- * the analysed target at the report's block?
+ * wall-clock time of a run. Independently of the UI floor/cap, Ripcord selects a
+ * bounded same-chain ERC20 set and asks a pinned question for each candidate:
+ * did this exact token contract report a balance for the analysed target at the
+ * report's block?
  *
  * The result is a sidecar keyed by report id. It never enters the deterministic
  * report, never changes the verdict, and never turns a missing candidate into a
- * claim of absence. The browser only sees it after the report has passed the
- * publication gate and through the coverage composer.
+ * claim of absence.
  */
 import { decodeFunctionResult, encodeFunctionData, getAddress, isAddress, keccak256, type Hex } from "viem";
 import { resolve } from "node:path";
@@ -159,29 +158,21 @@ function normaliseCandidateChain(value: string | number | null | undefined): str
 /**
  * WHAT SURVIVES WHEN THE CAP BITES, AND WHY IT IS NOT VENDOR ORDER.
  *
- * Discovery already consumes every proposed identity rather than the priced,
- * floored display subset — that is what stopped an unpriced new collateral from
- * being invisible. But a cap still has to drop something once there are more
- * eligible identities than slots, and taking them in the order the vendor
- * happened to return is not neutral: these lists are full of airdropped tokens
- * (verified live on Lido's withdrawal queue, whose entries include outright
- * phishing lures), and vendor position would let that spam displace a real
- * collateral asset for no reason anyone could state.
+ * Discovery consumes every proposed identity rather than the priced, floored
+ * display subset, but a cap still has to drop something. Vendor order is not
+ * neutral: these lists are full of airdropped tokens (verified live on Lido's
+ * withdrawal queue, whose entries include outright phishing lures), so vendor
+ * position would let spam displace a real collateral asset.
  *
- * Ordering is therefore explicit, and deliberately VALUE-BLIND — reintroducing
- * a value ranking here would rebuild the exclusion this whole layer exists to
- * remove, just one step further down:
+ * Ordering is therefore explicit and deliberately VALUE-BLIND — a value ranking
+ * would rebuild the exclusion this layer exists to remove, one step further
+ * down. Curated majors for the chain first (their identity is established by an
+ * independent committed list), then everything else by ADDRESS: arbitrary, but
+ * stable across two selections over the same identities, which vendor order does
+ * not guarantee even between two fetches a second apart.
  *
- *   1. Curated major tokens for this chain first. Their identity is already
- *      established by an independent, committed list, so including them costs
- *      nothing and excluding one would be indefensible.
- *   2. Everything else, ordered by ADDRESS. Arbitrary, but stable — two
- *      selections over the same identities pick the same set, which vendor
- *      order does not guarantee even between two fetches a second apart.
- *
- * Ordering only ever decides WHO IS DROPPED once the cap is exceeded; with room
- * to spare, every eligible identity is selected either way. Whatever is dropped
- * is counted in `beyond_cap` and rendered, never silently discarded.
+ * Ordering only ever decides who is dropped once the cap is exceeded, and
+ * whatever is dropped is counted in `beyond_cap` and rendered.
  */
 export function selectMobulaCandidates(exposure: LiveExposure, chainId: number): CandidateSelection {
   const wanted = `evm:${chainId}`;
@@ -326,32 +317,23 @@ export async function verifyDisplayedCandidates(
 /**
  * Owns the asynchronous refresh for a stored, publishable live report.
  *
- * BOUNDED ON PURPOSE, IN THREE DIMENSIONS. These refreshes start AFTER a job's
- * worker has exited, so they are invisible to `maxActiveJobs` — the limiter that
- * exists to stop N anvil forks running at once. Left unbounded, N jobs
- * completing together produced N vendor fetches and N forks with no ceiling, and
- * a hung fork left its sidecar `pending` forever with every tab polling it.
- *
- *   - CONCURRENCY: `maxActiveAssetContexts` run at a time.
- *   - QUEUE DEPTH: beyond `maxQueuedAssetContexts`, a refresh is refused
- *     immediately and says so, rather than queueing without bound.
- *   - TIME: `assetContextTimeoutMs` caps one refresh end to end, and the fork
- *     batch receives the remaining budget as its own deadline.
- *
- * Every limit produces an explicit `unavailable` sidecar with a stated reason.
- * None of them produces silence.
+ * BOUNDED IN THREE DIMENSIONS, because these refreshes start AFTER a job's
+ * worker has exited and are therefore invisible to `maxActiveJobs` — the limiter
+ * that exists to stop N anvil forks running at once. Concurrency
+ * (`maxActiveAssetContexts`), queue depth (`maxQueuedAssetContexts`, beyond
+ * which a refresh is refused immediately) and time (`assetContextTimeoutMs`,
+ * which also becomes the fork batch's deadline). Every limit produces an
+ * explicit `unavailable` sidecar with a stated reason; none produces silence.
  */
 /**
  * A counted semaphore with a bounded wait queue.
  *
- * Extracted because its one invariant — never more than `maxActive` holders —
- * is not observable through AssetContextService's public surface, and an
- * invariant that cannot be tested directly gets quietly broken. It was: the
- * first version decremented in `release()` and let the woken waiter increment
- * after its own microtask resumed, so an `acquire()` landing between those two
- * turns took the slot the waiter was about to take. THE SLOT IS NOW
- * TRANSFERRED, NEVER RE-TAKEN — the count never dips, so the window does not
- * exist rather than being unlikely.
+ * Extracted because its one invariant — never more than `maxActive` holders — is
+ * not observable through AssetContextService's public surface, and an invariant
+ * that cannot be tested directly gets quietly broken. It was: the first version
+ * decremented in `release()` and let the woken waiter increment after its own
+ * microtask resumed, so an `acquire()` landing in between took the waiter's
+ * slot. THE SLOT IS NOW TRANSFERRED, NEVER RE-TAKEN, so the count never dips.
  */
 export class BoundedSemaphore {
   private active = 0;
@@ -443,14 +425,11 @@ export class AssetContextService {
   }
 
   /**
-   * THE GENERATION GUARD.
-   *
-   * Every sidecar write from inside a run goes through here. A sealed run is
-   * refused, and so is a run that is no longer the one registered for this
-   * report id. Without it, `Promise.race` gives the illusion of a deadline:
-   * the race resolves, the supervisor writes `unavailable`, and the losing
-   * promise — which was never cancelled, because a race cannot cancel — comes
-   * back later and overwrites a terminal result with a stale one.
+   * THE GENERATION GUARD. Every sidecar write from inside a run goes through
+   * here: a sealed run is refused, and so is a run that is no longer the one
+   * registered for this report id. Without it a `Promise.race` only looks like a
+   * deadline — the loser is never cancelled, so it comes back later and
+   * overwrites a terminal result with a stale one.
    */
   private async saveFrom(run: AssetContextRun, artifact: AssetContextArtifact): Promise<boolean> {
     if (run.sealed || this.runs.get(run.reportId)?.runId !== run.runId) return false;

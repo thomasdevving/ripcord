@@ -8,11 +8,10 @@
  *  1. IT CANNOT CHANGE THE RESULT. Every hook is optional, returns void, and is
  *     invoked through `notify`, which holds the only justified catch here: a
  *     presentation callback that throws must not alter or abort a deterministic
- *     report. Not silent — it warns on stderr — but contained.
- *     test/observer.test.ts asserts byte-identity with and without an observer.
+ *     report. test/observer.test.ts asserts byte-identity with and without one.
  *  2. IT CARRIES NO TRANSPORT METADATA. No timestamps, sequence numbers or job
- *     ids; the server stamps those. A wall-clock minted here would be one
- *     refactor away from being recorded as evidence.
+ *     ids — a wall-clock minted here would be one refactor away from being
+ *     recorded as evidence.
  *  3. IT PASSES ALREADY-COMPUTED VALUES, never re-derived ones. An observer
  *     computing its own view of "who holds power" is a second implementation of
  *     the risk logic, and two implementations disagree eventually.
@@ -53,12 +52,10 @@ export type EngineStage =
  *
  * `completed` — it ran and answered. A zero-result answer ("no roles exist
  *   here") is a completion, not a failure.
- * `inconclusive` — it ran and could not answer. First-class in this project:
- *   an undetermined exit window is a finding about the search, not an error.
- * `degraded` — it threw and a fallback value was substituted (see runStage).
- *   Kept distinct from both of the above so a UI can never paint it the same
- *   green as a clean completion: a stage that actually failed, shown as done,
- *   is the false-clean this codebase exists to refuse.
+ * `inconclusive` — it ran and could not answer. First-class in this project: an
+ *   undetermined exit window is a finding about the search, not an error.
+ * `degraded` — it threw and a fallback value was substituted. Kept distinct so a
+ *   UI can never paint it the same green as a clean completion.
  */
 export type StageOutcome = "completed" | "inconclusive" | "degraded";
 
@@ -77,10 +74,8 @@ export interface StageEnd {
  * NOTE ON DISCLOSURE: `onCapabilities` fires with the full capability result,
  * INCLUDING entries the publication gate may later block. That is safe here
  * because an observer is an in-process callback, not a transport. The server's
- * observer implementation is what decides what may leave the process before the
- * gate has run, and it deliberately forwards no capability signatures, selectors
- * or probe payloads — only the fact that the stage completed and how many
- * selectors it recovered. See server/jobs/observer.ts.
+ * observer decides what may leave the process before the gate has run, and it
+ * forwards no capability signatures, selectors or probe payloads.
  */
 export interface RunObserver {
   onStageStart?(stage: EngineStage): void;
@@ -114,12 +109,12 @@ export type ForkPhase = "exit_action" | "baseline" | "mutation" | "reexit" | "ve
 /**
  * A party the differential impersonated, and what it was able to do.
  *
- * This is FOUND INFORMATION like any other — read from the contract (Comet's
- * `pauseGuardian()`), classified on the fork, and then demonstrated. It is
- * reported separately from the prose so the power map can show it as a node,
- * because otherwise the most consequential party in the whole analysis appears
- * only in the report text: the static detectors never see it, since it is
- * reached through neither owner(), a role, nor the proxy admin.
+ * FOUND INFORMATION like any other — read from the contract (Comet's
+ * `pauseGuardian()`), classified on the fork, then demonstrated. Reported
+ * separately from the prose so the power map can show it as a node: the static
+ * detectors never see it, since it is reached through neither owner(), a role,
+ * nor the proxy admin, so otherwise the most consequential party in the analysis
+ * would appear only in the report text.
  */
 export interface ForkParty {
   address: string;
@@ -177,13 +172,11 @@ export function notifyFork<K extends keyof ForkObserver>(
 /**
  * Invokes one observer hook.
  *
- * THE CATCH HERE IS DELIBERATE AND IS THE ONLY ONE. Rule 3 of this project
- * forbids silent catches; this one is neither silent (it warns on stderr) nor a
- * swallowed failure of a chain read. It contains a failure in PRESENTATION code
- * so that it cannot corrupt an ANALYSIS: a broken SSE consumer must not be able
- * to change what a report says about a contract, and a browser closing its tab
- * mid-scan must not alter the outcome. The failure direction is the safe one —
- * we lose a progress frame, never a fact.
+ * THE CATCH HERE IS DELIBERATE AND IS THE ONLY ONE. It is neither silent (it
+ * warns on stderr) nor a swallowed chain read: it contains a failure in
+ * PRESENTATION code so it cannot corrupt an ANALYSIS. A broken SSE consumer must
+ * not change what a report says about a contract, and a browser closing its tab
+ * mid-scan must not alter the outcome. We lose a progress frame, never a fact.
  */
 export function notify<K extends keyof RunObserver>(
   observer: RunObserver | undefined,

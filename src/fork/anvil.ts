@@ -1,14 +1,12 @@
 /**
- * Spins up an ephemeral anvil mainnet fork pinned to a block and drives it
- * from TypeScript via viem — no forge scripts, no Solidity, no Hardhat. This
- * is the sandbox the proof engine executes in: every simulated transaction
- * happens here and nowhere else. No mainnet transaction is ever sent, no key
- * is ever held.
+ * Spins up an ephemeral anvil mainnet fork pinned to a block and drives it from
+ * TypeScript via viem — no forge scripts, no Solidity, no Hardhat. This is the
+ * sandbox the proof engine executes in: every simulated transaction happens here
+ * and nowhere else. No mainnet transaction is ever sent, no key is ever held.
  *
  * The lifecycle is deliberately explicit (spawn → use → stop) with a hard
- * timeout on readiness and a guaranteed kill on stop, because we are about to
- * execute adversarial-shaped bytecode inside it and a leaked process or a
- * hung fork is exactly the kind of thing that makes a demo look unserious.
+ * readiness timeout and a guaranteed kill on stop, because we are about to
+ * execute adversarial-shaped bytecode inside it.
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { createTestClient, http, publicActions, walletActions, type Hex, type TestClient } from "viem";
@@ -55,25 +53,20 @@ function findRevertData(err: unknown, depth = 0): Hex | null {
 /**
  * PORT OWNERSHIP, AND WHY ANVIL CHOOSES THE PORT.
  *
- * This used to be `8600 + (blockNumber + pid) % 300` — deterministic, and so
- * COLLIDING for two forks started from one process at the same pinned block.
- * The asset-context layer starts forks outside the job limiter, so that was an
- * ordinary event, and it did not fail loud: the second anvil fails to BIND while
- * the readiness loop polls the port and gets a healthy answer from the FIRST
- * anvil, whose fork block and expected hash are identical. The second engine
- * then drives the first engine's fork, interleaving transactions into someone
- * else's differential.
+ * A deterministic port derived from the block number COLLIDES for two forks
+ * started at the same pinned block, and the asset-context layer starts forks
+ * outside the job limiter, so that was an ordinary event. It did not fail loud:
+ * the second anvil fails to BIND while the readiness loop gets a healthy answer
+ * from the FIRST, whose fork block and hash are identical — so the second engine
+ * drives the first's fork, interleaving transactions into someone else's
+ * differential.
  *
- * An in-memory reservation set fixes only the one-process case; at least two
- * processes here spawn forks, and there is an unavoidable gap between "this port
- * looks free" and a child owning it. Passing port 0 delegates allocation to the
- * OS inside Anvil's own bind call, and we learn the port only from THIS child's
- * `Listening on 127.0.0.1:<port>` line — no probe/bind window, no cross-process
- * lock. An explicitly requested port follows the same rule: a foreign node
- * answering there is ignored unless our child announced that exact bind.
- *
- * Exact-head and pinned-hash checks remain STATE-identity checks. They no longer
- * double as a fallible substitute for process ownership.
+ * An in-memory reservation set fixes only the one-process case, and there is an
+ * unavoidable gap between "this port looks free" and a child owning it. Port 0
+ * delegates allocation to the OS inside Anvil's own bind call, and we learn the
+ * port only from THIS child's `Listening on 127.0.0.1:<port>` line. An
+ * explicitly requested port follows the same rule: a foreign node answering
+ * there is ignored unless our child announced that exact bind.
  */
 const LISTENING_LINE = /Listening on 127\.0\.0\.1:(\d{1,5})/;
 

@@ -2,12 +2,12 @@
  * The enumeration witness is FAIL-CLOSED, and these tests are mostly about that
  * one property rather than about coverage.
  *
- * The witness exists to stop a reassuring verdict resting on an authority
- * picture that was never fully seen. If its own derivation read an absent or
- * malformed completeness flag as "complete", it would launder a failed read into
- * a fact — the exact bug class it closes, reintroduced inside the fix, in the
- * one place nobody would look for it again. So the cases below are deliberately
- * weighted toward the shapes that are NOT a clean `complete: true`.
+ * The witness exists to stop a reassuring verdict resting on an authority picture
+ * that was never fully seen. If its own derivation read an absent or malformed
+ * completeness flag as "complete", it would launder a failed read into a fact —
+ * the exact bug class it closes, reintroduced inside the fix. So the cases below
+ * are deliberately weighted toward the shapes that are NOT a clean
+ * `complete: true`.
  */
 import { describe, expect, it } from "vitest";
 import { deriveEnumerationCompleteness, witnessOf } from "../src/report/enumeration.js";
@@ -255,15 +255,13 @@ describe("enumeration witness — FAIL-CLOSED on every non-answer", () => {
  * check and was still wrong: fully-resolved implementation, decoded dispatcher,
  * clean reconstruction — and a guarded `pause(bool,bool,bool,bool,bool)` sitting
  * unevaluated among 67 unmatched selectors, callable by a guardian who can shut
- * withdrawals with no notice. The verdict read "You can exit before the rules
- * CAN change."
+ * withdrawals with no notice.
  *
  * These tests pin the DISCRIMINATOR, because the naive rule is wrong in a way
  * that is easy to ship: every one of the 26 calibration reports has unmatched
- * selectors, so "any unmatched selector withholds the witness" would delete
- * every reassuring verdict in the set — including WETH9's, which was earned by
- * deriving all 11 of its selectors and confirming none is privileged. What makes
- * an unevaluated selector dangerous is that somebody holds privilege here.
+ * selectors, so "any unmatched selector withholds the witness" would delete every
+ * reassuring verdict in the set — including WETH9's. What makes an unevaluated
+ * selector dangerous is that somebody holds privilege here.
  */
 describe("enumeration witness — the capability SURFACE, not just the role set", () => {
   const unevaluated = () => evaluatedSurface({ selectorsExtracted: 67, unmatchedSelectors: ["0x44c35d07", "0xdeadbeef"] });

@@ -17,14 +17,14 @@ export function slotToAddress(slot: Hex): Hex {
 }
 
 /**
- * Matches runtime bytecode against the EIP-1167 minimal proxy pattern and
- * its common single-immediate variant, extracting the embedded target
- * address. Returns null if the code does not match either shape.
+ * Matches runtime bytecode against the EIP-1167 minimal proxy pattern and its
+ * common single-immediate variant, extracting the embedded target address.
+ * Returns null if the code matches neither shape.
  *
  *   Standard: 363d3d373d3d3d363d73<20-byte addr>5af43d82803e903d91602b57fd5bf3
- *   Vanity/CWIA variants sometimes pad differently after the suffix; we only
- *   assert the fixed prefix+suffix around the address, ignoring trailing
- *   bytes, since some clone factories append extra calldata-forwarding logic.
+ *
+ * Only the fixed prefix+suffix around the address is asserted; trailing bytes
+ * are ignored, since some clone factories append calldata-forwarding logic.
  */
 export function matchEip1167Clone(code: Hex): Hex | null {
   const body = code.slice(2).toLowerCase();
@@ -40,14 +40,12 @@ export function matchEip1167Clone(code: Hex): Hex | null {
 }
 
 /**
- * Solidity (by default) appends a CBOR-encoded metadata blob after the real
- * runtime code, terminated by a 2-byte big-endian length prefix for that
- * blob. Those trailing bytes are not executable — they are data — but a
- * naive linear opcode scan doesn't know that and can walk into them,
- * mistaking an arbitrary metadata byte for a real opcode. This strips that
- * trailer so containsOpcode only walks actual code. Bytecode without a
- * plausible metadata trailer (Vyper, metadata disabled, non-Solidity) is
- * returned unchanged — this is a best-effort trim, not a proof.
+ * Solidity appends a CBOR-encoded metadata blob after the real runtime code,
+ * terminated by a 2-byte big-endian length prefix. Those trailing bytes are data,
+ * not code, but a naive linear opcode scan can walk into them and mistake an
+ * arbitrary metadata byte for an opcode. Bytecode without a plausible trailer
+ * (Vyper, metadata disabled) is returned unchanged — a best-effort trim, not a
+ * proof.
  */
 export function stripSolidityMetadata(code: Hex): Hex {
   const bytes = hexToBytes(code);

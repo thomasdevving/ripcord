@@ -1,16 +1,13 @@
 /**
- * Tests for the Mobula live layer.
+ * Tests for the Mobula live layer — pure-logic, with the network stubbed. What
+ * they pin is not "Mobula works", which is not ours to guarantee, but the three
+ * properties that make it safe to put third-party data on a Ripcord page:
  *
- * These are pure-logic tests with the network stubbed — the same rule as the
- * rest of the suite (CI runs no network). What they pin is not "Mobula works",
- * which is not ours to guarantee, but the three properties that make it safe to
- * put third-party data on a Ripcord page:
- *
- *   1. A Mobula failure degrades the panel and NOTHING else. It is never an
- *      exception, never an empty result that could read as "holds nothing".
+ *   1. A Mobula failure degrades the panel and NOTHING else. Never an exception,
+ *      never an empty result that could read as "holds nothing".
  *   2. Value is only claimed when it is defensible, and the reason is recorded.
- *      The cases below are drawn from real responses: the sentinel-address
- *      collision that quoted ETH at BNB's price, and cbETH's $11.8tn total.
+ *      The cases are drawn from real responses: the sentinel-address collision
+ *      that quoted ETH at BNB's price, and cbETH's $11.8tn total.
  *   3. Withholding is itemised by reason, never merged into one vague number.
  */
 import { describe, expect, it, vi, afterEach, beforeAll } from "vitest";

@@ -1,16 +1,12 @@
 /**
- * Preflight check for the day-3 Proof Engine's only external dependency:
- * the `anvil` binary from Foundry.
+ * Preflight check for the proof engine's only external dependency: the `anvil`
+ * binary from Foundry.
  *
  * Ripcord drives anvil from TypeScript via viem's test client — no forge, no
- * Solidity test contracts, no Hardhat. That keeps the whole codebase in one
- * language and one toolchain, and it means the only thing that has to exist
- * on the machine is a single binary.
- *
- * This fails LOUD and early with install instructions rather than letting a
- * fork simulation die halfway through with an opaque connection error. Same
- * "fail loud" rule the chain layer follows: a missing dependency is not an
- * empty result.
+ * Solidity test contracts, no Hardhat — so the only thing that has to exist on
+ * the machine is a single binary. This fails LOUD and early with install
+ * instructions rather than letting a fork simulation die halfway through with an
+ * opaque connection error: a missing dependency is not an empty result.
  */
 import { execFile } from "node:child_process";
 import { homedir } from "node:os";

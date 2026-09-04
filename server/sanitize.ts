@@ -1,28 +1,22 @@
 /**
  * ERROR SANITISATION, and why it is a module rather than a habit.
  *
- * viem embeds the request URL in its error text. anvil prints its `--fork-url`
- * in startup failures. Both of those are the RPC endpoint, and on every
- * mainstream provider the endpoint IS the API key:
+ * viem embeds the request URL in its error text and anvil prints its
+ * `--fork-url` in startup failures; on every mainstream provider that endpoint
+ * IS the API key. So the ordinary fail-loud behaviour of the layers below —
+ * attach the cause, keep the provider's own words — becomes a credential
+ * disclosure the moment that text reaches an HTTP response, an SSE frame, or a
+ * log line on a screen-shared terminal. This is the only place it crosses
+ * outward, and it always goes through `sanitize`.
  *
- *     https://eth-mainnet.g.alchemy.com/v2/<key>
- *
- * So the ordinary, correct, fail-loud behaviour of the layers below — attach the
- * cause, keep the provider's own words — becomes a credential disclosure the
- * moment that text reaches an HTTP response, an SSE frame, or a log line a
- * screen-shared terminal is showing during a demo. This is the only place that
- * text is allowed to cross outward, and it always goes through `sanitize`.
- *
- * The redaction is deliberately BROAD (any http(s) URL, any long opaque path
- * segment, anything shaped like a key) rather than a list of known provider
- * hostnames. A hostname allowlist fails open on the next provider; a shape
- * denylist fails closed, and the cost of over-redacting an error message is a
- * slightly less specific hint, which is a price worth paying every time.
+ * Redaction is by SHAPE (any http(s) URL, any long opaque segment, anything
+ * key-shaped) rather than by provider hostname: an allowlist fails open on the
+ * next provider, and over-redacting costs a slightly less specific hint.
  *
  * `classify` then maps the sanitised text onto a machine-readable ApiErrorCode,
- * so the UI renders its own product sentence and a concrete next step instead of
- * echoing provider prose. That indirection is what stops "the contract could not
- * be read" from ever being presented as a fact about the contract.
+ * so the UI renders its own sentence and a next step instead of echoing provider
+ * prose — which is what stops "the contract could not be read" from ever being
+ * presented as a fact about the contract.
  */
 import type { ApiError, ApiErrorCode } from "./shared/dto.js";
 

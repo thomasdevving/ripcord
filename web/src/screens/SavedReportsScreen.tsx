@@ -1,20 +1,15 @@
 /**
- * Saved reports.
+ * Saved reports. Two origins, labelled as such and never blended: `live`,
+ * produced by this deployment under the ruleset it is running now, and
+ * `calibration`, committed historical evidence preserved AT THE VERSION THAT
+ * PRODUCED IT. Several of those predate checks the current engine performs, and
+ * presenting an older fork evaluation as though it had passed today's economic
+ * and causal verification would be a claim about work that was never done — so
+ * the ruleset column is shown for every row.
  *
- * Two origins, labelled as such and never blended:
- *
- *  - `live` — produced by this deployment, under the ruleset it is running now.
- *  - `calibration` — committed historical evidence, preserved AT THE VERSION
- *    THAT PRODUCED IT. Those reports were generated under earlier rulesets, and
- *    several predate checks the current engine performs. Presenting an older
- *    fork evaluation as though it had passed today's economic and causal
- *    verification would be a claim about work that was never done, so the
- *    ruleset column is shown for every row and older ones say so plainly.
- *
- * Blocked reports do not appear. A row reading "withheld: <protocol>" is itself
- * a signal about that protocol, and this listing is public. The count of
- * withheld entries is in the server's startup log, where it informs the operator
- * without publishing anything.
+ * Blocked reports do not appear. A row reading "withheld: <protocol>" is itself a
+ * signal about that protocol, and this listing is public; the count of withheld
+ * entries is in the server's startup log.
  */
 import { useEffect, useState } from "react";
 import type { SavedReportListItem } from "@shared/dto";

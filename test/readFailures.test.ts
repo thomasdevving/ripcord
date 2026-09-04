@@ -1,22 +1,17 @@
 /**
- * The day-6 SEMANTIC cache audit, as tests.
+ * The SEMANTIC cache audit, as tests.
  *
  * The determinism gate (cold report == warm report) catches the STRUCTURAL
  * failure mode: a cache miss and a hit differing in type or shape. It cannot
  * catch the semantic one. A read that FAILED, recorded consistently as an
  * "absent fact", is byte-identical cold and warm and still completely wrong —
  * and it is the more dangerous of the two, because roughly twenty detectors
- * downstream read a revert as a fact about the CONTRACT: owner() reverted
- * therefore no owner, DEFAULT_ADMIN_ROLE() reverted therefore not
- * AccessControl, balanceOf() reverted therefore nothing held.
+ * downstream read a revert as a fact about the CONTRACT.
  *
  * So these tests assert one property, at every layer that can express it:
  *
  *   a read that could not be performed must reach the report as UNKNOWN or as
  *   an ERROR, and must never reach it as an ABSENCE.
- *
- * This is Ripcord's own thesis — the absence of a found thing is not evidence
- * the thing is absent — applied to Ripcord's own reads.
  */
 import { describe, expect, it } from "vitest";
 import { createServer, type Server } from "node:http";

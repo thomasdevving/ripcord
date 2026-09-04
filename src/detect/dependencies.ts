@@ -1,16 +1,13 @@
 /**
- * One-level-deep dependency graph: for a target contract, checks whether it
- * holds a meaningful balance of any token on the curated MAJOR_TOKENS list
- * and, for each one it does, re-runs day-1 proxy/authority detection plus
- * day-2 capability detection against the TOKEN itself — a protocol can be
- * impeccably governed and still not be sovereign if what it holds can be
- * frozen by someone else. Separately probes for oracle/price-feed
- * references and runs authority detection (not full capability detection —
- * deliberately shallower, since an oracle is a dependency-of-a-dependency,
- * one hop further than this file's own "one level deep" mandate) on any
- * that resolve.
+ * One-level-deep dependency graph: checks whether the target holds a meaningful
+ * balance of any token on the curated MAJOR_TOKENS list and, for each one it
+ * does, re-runs proxy/authority and capability detection against the TOKEN — a
+ * protocol can be impeccably governed and still not be sovereign if what it
+ * holds can be frozen by someone else. Separately probes for oracle/price-feed
+ * references and runs authority detection (deliberately shallower, since an
+ * oracle is a dependency-of-a-dependency) on any that resolve.
  *
- * Depth is exactly one level, on purpose — see day-2 brief and CLAUDE.md.
+ * Depth is exactly one level, on purpose.
  */
 import { decodeFunctionResult, encodeFunctionData, zeroAddress, type Hex } from "viem";
 import type { ChainReader } from "../chain/client.js";

@@ -1,14 +1,14 @@
 /**
- * Proxy pattern detection. Reads the EIP-1967 implementation/admin/beacon
- * slots, the EIP-1822 PROXIABLE slot, the legacy zos slots, and matches
- * runtime bytecode against the EIP-1167 minimal-proxy shape. For a beacon
- * proxy, resolves one hop through the beacon's `implementation()`.
+ * Proxy pattern detection. Reads the EIP-1967 implementation/admin/beacon slots,
+ * the EIP-1822 PROXIABLE slot and the legacy zos slots, and matches runtime
+ * bytecode against the EIP-1167 minimal-proxy shape. For a beacon proxy,
+ * resolves one hop through the beacon's `implementation()`.
  *
  * Classification order matters and is deliberate:
  *   1. No code at all           -> not_a_proxy (nothing to be a proxy of)
- *   2. EIP-1167 clone match     -> eip1167_minimal_proxy (bytecode itself IS the proof)
+ *   2. EIP-1167 clone match     -> eip1167_minimal_proxy (the bytecode IS the proof)
  *   3. EIP-1967 beacon slot set -> eip1967_beacon
- *   4. EIP-1967 admin slot set  -> eip1967_transparent (implies impl slot is meaningful)
+ *   4. EIP-1967 admin slot set  -> eip1967_transparent
  *   5. EIP-1967 impl slot set   -> eip1967_uups
  *   6. legacy zos slots set     -> legacy_zos_unstructured
  *   7. DELEGATECALL present but nothing above matched -> unknown

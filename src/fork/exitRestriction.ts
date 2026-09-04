@@ -1,31 +1,27 @@
 /**
- * The Exit-Restriction Engine (day 7, THE FORK DIFFERENTIAL).
+ * The Exit-Restriction Engine — THE FORK DIFFERENTIAL.
  *
  * Every layer before this REASONS about whether a privileged party can close a
- * holder's exit. This one TESTS it. On a sandbox anvil fork pinned to the report
- * block it:
- *   1. identifies the exit action (Part 1 — how a holder actually leaves),
- *   2. establishes a BASELINE: a real holder position for whom that exit
- *      succeeds before any mutation (Part 2 — the control),
- *   3. for each restriction candidate registered by the matched archetype, snapshots the fork,
- *      impersonates the party that guards it, calls it with the exit-restricting
- *      argument, and re-runs the exit at the same block/time (Part 3). A pause
- *      transition plus the expected Paused() revert establishes the restriction.
+ * holder's exit. This one TESTS it, on a sandbox anvil fork pinned to the report
+ * block: identify the exit action, establish a BASELINE position for whom that
+ * exit succeeds before any mutation, then for each restriction candidate
+ * registered by the matched archetype snapshot the fork, impersonate the
+ * guarding party, call it with the exit-restricting argument, and re-run the exit
+ * at the same block/time. A pause transition plus the expected Paused() revert
+ * establishes the restriction.
  *
  * THE EPISTEMIC CEILING is honoured, not hidden. A clean run is NEVER a safety
  * guarantee and never reuses `can_exit_in_time`; its outcome is the deliberately
- * weaker `no_direct_restriction_found`, scoped to the N registered candidates evaluated. A
+ * weaker `no_direct_restriction_found`, scoped to the N candidates evaluated. A
  * found restrictor is decisive and, if its party imposes no delay, a zero-notice
  * route that caps the verdict.
  *
- * Honesty rails, load-bearing:
- *   - Everything runs on the ephemeral fork. No mainnet tx, no key, no approval.
- *   - Capability, not intent, in every string: a party CAN close the exit.
- *   - A Safe-guarded restrictor is impersonated AT THE SAFE ADDRESS, so it
- *     assumes the Safe can authorize the call. Signatures, guards and modules
- *     are not executed; that condition is stated on the finding.
- *   - FAIL LOUD: an unestablished baseline or an unidentifiable exit action is
- *     an explicit `undetermined`-producing outcome, never a fabricated clean run.
+ * Honesty rails, load-bearing: everything runs on the ephemeral fork (no mainnet
+ * tx, no key, no approval); every string is capability, not intent; a
+ * Safe-guarded restrictor is impersonated AT THE SAFE ADDRESS, so it assumes the
+ * Safe can authorize the call and says so on the finding; and an unestablished
+ * baseline or unidentifiable exit action produces an explicit `undetermined`,
+ * never a fabricated clean run.
  */
 import { encodeFunctionData, getAddress, maxUint256, type Hex } from "viem";
 import { startAnvilFork, type ForkHandle, type ForkTransactionResult } from "./anvil.js";

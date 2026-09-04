@@ -1,27 +1,23 @@
 /**
- * Exit-action identification (day 7, Part 1 — the riskiest new false-clean).
+ * Exit-action identification — the riskiest new false-clean.
  *
- * The exit-restriction engine can only ever be as trustworthy as its answer to
- * one question: how does a holder actually LEAVE this protocol? Test against the
- * wrong exit function and a `no_direct_restriction_found` verdict is a
- * false-clean — you would have proven that closing a door nobody uses does not
- * trap anyone. So identification is deliberately conservative and versioned: a
- * protocol is matched to a known interface only when a FINGERPRINT of
- * characteristic selectors is present, and the positive verdict inherits the
- * confidence of that match (weakest-link). Anything unmatched stays
- * `unconfident`, which keeps the verdict `undetermined` — never the new tier.
+ * The exit-restriction engine is only as trustworthy as its answer to one
+ * question: how does a holder actually LEAVE this protocol? Test against the
+ * wrong exit function and a `no_direct_restriction_found` verdict proves only
+ * that closing a door nobody uses traps nobody. So identification is
+ * conservative and versioned: a protocol matches a known interface only when a
+ * FINGERPRINT of characteristic selectors is present, and the positive verdict
+ * inherits the confidence of that match. Anything unmatched stays `unconfident`,
+ * which keeps the verdict `undetermined`.
  *
- * An interface descriptor is a small, auditable plugin. It names:
- *   - the fingerprint that identifies the interface from the decoded selectors,
- *   - the exit action (the function a holder calls to leave),
- *   - how to BUILD a baseline position on the fork and exercise that exit,
- *   - the restriction candidates to put through the differential, each with the
- *     party that guards it and the single exit-restricting argument to try.
+ * An interface descriptor is a small, auditable plugin naming the fingerprint,
+ * the exit action, how to BUILD a baseline position on the fork and exercise
+ * that exit, and the restriction candidates to put through the differential —
+ * each with the party that guards it and the exit-restricting argument to try.
  *
- * This mirrors the proof engine's discipline: ONE archetype done properly
- * (Compound III / Comet-style base withdrawal), with the structure built so
- * adding an interface is data, not a rewrite. Every interface added here must be
- * validated live before it is trusted — see docs/CALIBRATION.md.
+ * ONE archetype done properly (Compound III / Comet-style base withdrawal), with
+ * the structure built so adding an interface is data rather than a rewrite.
+ * Every interface added here must be validated live before it is trusted.
  */
 import { encodeFunctionData, toFunctionSelector, type Hex } from "viem";
 

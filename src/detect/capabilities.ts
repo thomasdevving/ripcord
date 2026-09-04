@@ -31,23 +31,18 @@ export interface CapabilityDetection {
  * correctness bug, so they are named and recorded separately:
  *
  *   scannedAddress — where the BYTECODE comes from. For a proxy this is the
- *     implementation, because that's where the selectors actually live (the
- *     proxy's own bytecode is just a delegatecall stub).
+ *     implementation, since the proxy's own bytecode is a delegatecall stub.
  *   probedAddress — where the guard-probe eth_call is SENT. Always the
- *     target/proxy itself, never the implementation. A delegatecall through
- *     the proxy executes the implementation's code against the PROXY's
- *     storage, which is where owner/role state lives; calling the
- *     implementation directly executes the same code against the
- *     implementation's own, usually uninitialized, storage. Verified live on
- *     PAID Network: the proxy's owner() is 0x53bc21D3…, the implementation's
- *     own owner() is address(0), yet both revert "Ownable: caller is not the
- *     owner" for an unrelated caller. Probing the implementation and then
- *     attributing that revert to the proxy's owner would be an attribution
- *     the evidence doesn't support — exactly what weakest-link provenance
- *     forbids — and would silently break wherever the two storages differ.
+ *     target/proxy, never the implementation: a delegatecall through the proxy
+ *     runs the implementation's code against the PROXY's storage, where
+ *     owner/role state lives, while calling the implementation directly runs it
+ *     against the implementation's usually uninitialized storage. Verified live
+ *     on PAID Network, where the proxy's owner() is 0x53bc21D3… and the
+ *     implementation's is address(0), yet both revert "Ownable: caller is not
+ *     the owner" — so probing the implementation and attributing that revert to
+ *     the proxy's owner is an attribution the evidence does not support.
  *
- * This mirrors the day-1 invariant that authority state (owner, roles) is
- * always read from the proxy, never the implementation.
+ * This mirrors the invariant that authority state is always read from the proxy.
  */
 export async function detectCapabilities(
   chain: ChainReader,
@@ -71,18 +66,15 @@ export async function detectCapabilities(
     evidence,
   });
 
-  // `pattern: "unknown"` is NOT the same situation as a confirmed proxy
-  // (beacon, transparent, UUPS, ...) whose implementation just failed to
-  // resolve. It means day 1's DELEGATECALL scan found the opcode somewhere
-  // in the bytecode but no recognized storage-slot pattern backs it up —
-  // per the day-1 known edge, the single most common real cause is a
-  // factory embedding a CHILD contract's creation bytecode (e.g. Aave's
-  // PoolAddressesProvider deploying a proxy via `new`), not the target
-  // itself being an unresolved proxy. Treating "unknown" the same as a
-  // confirmed-but-unresolved proxy would silently skip capability detection
-  // on the target's OWN real, scannable bytecode — verified against exactly
-  // that fixture. So "unknown" falls back to scanning the target directly,
-  // with the ambiguity recorded rather than hidden.
+  // `pattern: "unknown"` is NOT a confirmed proxy whose implementation merely
+  // failed to resolve. It means the DELEGATECALL scan found the opcode somewhere
+  // in the bytecode with no recognized storage-slot pattern behind it, and the
+  // most common real cause is a factory embedding a CHILD contract's creation
+  // bytecode (Aave's PoolAddressesProvider deploying a proxy via `new`), not the
+  // target being an unresolved proxy. Treating it like a confirmed-but-unresolved
+  // proxy would silently skip capability detection on the target's OWN scannable
+  // bytecode, so "unknown" falls back to scanning the target directly with the
+  // ambiguity recorded rather than hidden.
   let scannedAddress: Hex = target;
   if (proxy.isProxy && proxy.pattern !== "unknown") {
     if (!proxy.implementation) {
@@ -144,17 +136,14 @@ export async function detectCapabilities(
     // Probe the TARGET, not scannedAddress — see the header comment.
     const probe = await probeGuard(chain, target, entry.signature, guardContext);
 
-    // Two probe outcomes are not capability FINDINGS, for opposite reasons, and
-    // day 5 separated them because conflating them made the disclosure gate fire
-    // on the wrong thing (see guardDialects.ts):
+    // Two probe outcomes are not capability FINDINGS, for opposite reasons:
     //   no_auth_revert_observed    — nothing recognisable came back. Could be a
     //                                custom guard, could be no guard. Blocks
     //                                publication, because the second reading is
     //                                a vulnerability claim we cannot rule out.
     //   reverted_before_auth_check — the contract demonstrably rejected the probe
     //                                on a state/argument precondition, so no auth
-    //                                check ran. That is a fact about OUR probe,
-    //                                not about the contract's guards, and it
+    //                                check ran. A fact about OUR probe, which
     //                                supports no vulnerability reading at all.
     if (probe.status === "no_auth_revert_observed" || probe.status === "reverted_before_auth_check") {
       needsManualVerification.push({

@@ -1,24 +1,19 @@
 /**
- * The scan form, on its own page.
- *
- * The home screen states the thesis and offers one button; everything that
- * configures a run lives here. Splitting them keeps a promise the old single
- * screen could not: the landing page no longer has to be both an argument and a
- * control panel, and the control panel no longer has to fit under a headline.
+ * The scan form, on its own page. The home screen states the thesis and offers
+ * one button; everything that configures a run lives here.
  *
  * Two details that look cosmetic and are not:
- *  - THE BLOCK IS ALWAYS VISIBLE, including when a preset filled it in. The
- *    Comet preset pins a historical block, and an experiment run there is not a
+ *  - THE BLOCK IS ALWAYS VISIBLE, including when a preset filled it in. The Comet
+ *    preset pins a historical block, and an experiment run there is not a
  *    measurement of mainnet today.
- *  - PRESETS CARRY NO EXPECTED RESULT — an address, a block, a suggested mode
- *    and a reason to look. Anything else shown before the run would be a claim
- *    the run has not yet supported.
+ *  - PRESETS CARRY NO EXPECTED RESULT — an address, a block, a suggested mode and
+ *    a reason to look. Anything else shown before the run would be a claim the
+ *    run has not yet supported.
  *
  * WHAT TO RUN IS A LIST, NOT A DROPDOWN. The three modes differ in what they
  * actually DO — one reads, one forks, one forks twice — and each carries a
  * sentence saying so. A <select> hides two of three behind a click and gives
- * those sentences nowhere to live, so the reader picks by title alone on the
- * most consequential control on the page.
+ * those sentences nowhere to live.
  */
 import { useEffect, useRef, useState } from "react";
 import { MOBULA_SECOND_LAYER_TARGET, type ConfigResponse, type RunMode } from "@shared/dto";

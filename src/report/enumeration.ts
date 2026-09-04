@@ -9,20 +9,17 @@
  * this module existed that partiality was recorded per scan and read by nothing.
  *
  * Two live instances out of 26 protocols, and the pair is why this AGGREGATES
- * rather than sitting on the target:
- *   Ethena Minting — its own scan covered 6,750 of 5.66M blocks and recovered
- *     only DEFAULT_ADMIN_ROLE, yet reported `can_exit_in_time`, `missing: []`.
- *   Ethena USDe — not an AccessControl contract, so a target-only check calls it
- *     complete; but its single route terminates at a TimelockController whose
- *     OWN roles were partially enumerated, and a timelock's PROPOSER/EXECUTOR
- *     holders are precisely what "this delay is binding" rests on.
+ * rather than sitting on the target: Ethena Minting's own scan covered 6,750 of
+ * 5.66M blocks yet reported `can_exit_in_time` with `missing: []`; Ethena USDe is
+ * not an AccessControl contract at all, but its single route terminates at a
+ * TimelockController whose OWN roles were partially enumerated, and a timelock's
+ * PROPOSER/EXECUTOR holders are precisely what "this delay is binding" rests on.
  *
- * THE DERIVATION RULE: completeness is a POSITIVE claim. `complete` is true only
- * where every site positively reported it; a missing reconstruction, an
- * `undefined` flag, a stage that threw, a deployment block that could not be
- * found are all INCOMPLETE. Reading an absent flag as complete would launder a
- * failed read into a fact — the exact bug this witness closes — so `=== true`
- * throughout, never `!== false`.
+ * THE DERIVATION RULE: completeness is a POSITIVE claim, true only where every
+ * site positively reported it. A missing reconstruction, an `undefined` flag, a
+ * stage that threw, a deployment block that could not be found are all
+ * INCOMPLETE — so `=== true` throughout, never `!== false`, because reading an
+ * absent flag as complete would launder a failed read into a fact.
  */
 import {
   enumerationSiteKey,
@@ -99,23 +96,22 @@ function walkNodes(node: AuthorityNode, gaps: EnumerationGap[]): void {
  * `unmatchedSelectors`, guarded, callable by a Safe that can shut withdrawals
  * with no notice. The report said "You can exit before the rules CAN change."
  *
- * No detector was at fault. `capabilities` recorded the selector, and
- * `timeToExit.blockable` noted that unmatched selectors were not evaluated —
- * but `blockable` is computed from TAXONOMY-MATCHED findings, so an unmatched
+ * No detector was at fault: `capabilities` recorded the selector, and
+ * `timeToExit.blockable` noted that unmatched selectors were not evaluated — but
+ * `blockable` is computed from TAXONOMY-MATCHED findings, so an unmatched
  * selector is invisible to it by construction, and the composition layer turned
  * that silence into reassurance.
  *
- * The rule is not "any unmatched selector": all 26 calibration reports have
- * some, so that would delete every reassuring verdict including WETH9's, earned
- * by deriving all 11 of its selectors. THE DISCRIMINATOR IS WHO COULD CALL ONE.
- * WETH9 and wstETH have no owner, no proxy admin, no role members and no
- * indirection marker — nobody for an unevaluated selector to be privileged FOR.
+ * The rule is not "any unmatched selector": all 26 calibration reports have some,
+ * so that would delete every reassuring verdict including WETH9's. THE
+ * DISCRIMINATOR IS WHO COULD CALL ONE — WETH9 and wstETH have no owner, proxy
+ * admin, role members or indirection marker, so there is nobody for an
+ * unevaluated selector to be privileged FOR.
  *
  * So: a reassuring assessment may not stand while a privileged party exists AND
- * the privileged surface was not fully evaluated. Subtractive and caution-only.
- * "Fully evaluated" is a POSITIVE claim: the dispatcher decoded AND every
- * recovered selector classified. A dispatcher that failed to parse is not "no
- * selectors", it is "no answer".
+ * the privileged surface was not fully evaluated. "Fully evaluated" is a POSITIVE
+ * claim — dispatcher decoded AND every recovered selector classified. A
+ * dispatcher that failed to parse is not "no selectors", it is "no answer".
  */
 function judgeCapabilitySurface(args: {
   capabilities: CapabilitiesResult | null;
@@ -175,11 +171,10 @@ export function deriveEnumerationCompleteness(args: {
    * The target's own privileged surface, and who exists to hold it.
    *
    * REQUIRED, not optional, and deliberately so. An absent capability result
-   * fail-closes to "incomplete" — which is the right default but a silent one,
-   * and a caller who simply forgets the field would get a permanently
-   * unreachable reassuring verdict with no compile error to explain it. Making
-   * it required turns "you must think about this" into something tsc enforces,
-   * the same technique the z.literal(true) witnesses use downstream.
+   * fail-closes to "incomplete" — the right default, but a silent one, and a
+   * caller who simply forgot the field would get a permanently unreachable
+   * reassuring verdict with no compile error to explain it. Making it required
+   * turns "you must think about this" into something tsc enforces.
    */
   capabilities: CapabilitiesResult | null;
   owner: OwnerField | null;

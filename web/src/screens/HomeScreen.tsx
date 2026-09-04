@@ -3,17 +3,13 @@
  * finished example.
  *
  * This screen used to be the form as well, under a rule that there must be no
- * marketing page in front of the tool. Splitting them keeps that rule rather
- * than abandoning it, because what was actually being protected was the
- * DISTANCE to a running analysis, not the presence of a form on the first
- * screen. That distance is now one click on the page's only primary control,
- * and in exchange the form is no longer squeezed to stay under a headline and
- * the headline is no longer squeezed to stay above a form.
+ * marketing page in front of the tool. Splitting them keeps that rule rather than
+ * abandoning it, because what was being protected was the DISTANCE to a running
+ * analysis, not the presence of a form on the first screen — that distance is now
+ * one click on the page's only primary control.
  *
  * Below the hero, three editorial sections answer the obvious trust questions:
- * what the analysis asks, how it reaches an answer, and what it refuses to
- * claim. They share rules rather than separate dashboard cards so this reads as
- * one explanation, not as three unrelated product panels.
+ * what the analysis asks, how it reaches an answer, and what it refuses to claim.
  */
 import { useEffect, useState } from "react";
 import type { ConfigResponse } from "@shared/dto";
@@ -68,15 +64,12 @@ export function HomeScreen({ config }: { config: ConfigResponse | null }): React
 
   /**
    * Resolve the hero's "See a Sample Report" target from the LISTING, never from
-   * a hardcoded id.
-   *
-   * The listing contains only publishable reports, so a target found here is by
-   * construction one the disclosure gate permits — a hardcoded id could point at
-   * a report the gate blocks, and the link would hand out a 451 while looking
-   * like an invitation. Preference goes to the report the example card quotes,
-   * matched BY ADDRESS so a change to the id scheme cannot silently repoint the
-   * link at a different protocol; any other calibration report is an acceptable
-   * fallback. Nothing found means no link is rendered at all.
+   * a hardcoded id. The listing contains only publishable reports, so a target
+   * found here is by construction one the disclosure gate permits — a hardcoded
+   * id could point at a blocked report and hand out a 451 while looking like an
+   * invitation. Preference goes to the report the example card quotes, matched BY
+   * ADDRESS so a change to the id scheme cannot silently repoint the link.
+   * Nothing found means no link is rendered at all.
    */
   useEffect(() => {
     let cancelled = false;

@@ -4,13 +4,11 @@
  * The ordering is deliberate — identity, then the observed relation, then
  * confidence, then the evidence. Confidence sits ABOVE the evidence rather than
  * as a footnote because a depth-3 attribution and a direct owner read look
- * equally definite once they are rendered as an address, and the difference
- * between them is the whole point of the recursion.
+ * equally definite once rendered as an address.
  *
- * Fields that were not established are shown as "not established", never
- * omitted and never zero. An absent Safe threshold means we did not read one;
- * rendering it as "—" without saying so invites the reader to supply their own
- * assumption.
+ * Fields that were not established are shown as "not established", never omitted
+ * and never zero: an absent Safe threshold means we did not read one, and
+ * rendering it as "—" invites the reader to supply their own assumption.
  */
 import type { StructuralNode, StructuralSnapshot } from "@shared/dto";
 import { CopyButton } from "./CopyButton.js";

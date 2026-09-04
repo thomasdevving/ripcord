@@ -63,15 +63,13 @@ function keyToPath(cacheDir: string, key: CacheKey): string {
 }
 
 /**
- * Round-trips a freshly-fetched value through the same serialization `set`
- * uses, so a cache miss and a cache hit are indistinguishable to every caller.
- * Bigints become strings and `undefined` object properties are dropped —
- * exactly what reading the entry back off disk would produce.
+ * Round-trips a freshly-fetched value through the same serialization `set` uses,
+ * so a cache miss and a cache hit are indistinguishable to every caller: bigints
+ * become strings and `undefined` object properties are dropped, exactly as
+ * reading the entry back off disk would produce.
  *
- * A top-level `undefined` is passed through untouched: `JSON.stringify`
- * returns `undefined` for it (not the string "undefined"), which `JSON.parse`
- * cannot consume. No current fetch function returns one, but crashing here
- * over it would be a poor trade for a normalization step.
+ * A top-level `undefined` passes through untouched — `JSON.stringify` returns
+ * `undefined` for it, which `JSON.parse` cannot consume.
  */
 export function normalizeToCachedShape<T>(value: T): T {
   if (value === undefined) return value;
@@ -129,20 +127,15 @@ export class DiskCache {
    *
    * THE INVARIANT: a cache MISS must return exactly what a later cache HIT
    * would. Without normalization it did not, and the difference was a TYPE
-   * change: `set` serializes bigints to strings (JSON cannot represent one), so
-   * a HIT yielded `blockNumber: "12345"` while a MISS yielded viem's raw
-   * `12345n` — same code, same block, different types, decided purely by whether
-   * someone had run the scan before.
+   * change: `set` serializes bigints to strings, so a HIT yielded
+   * `blockNumber: "12345"` while a MISS yielded viem's raw `12345n` — decided
+   * purely by whether someone had run the scan before. It surfaced as a cold
+   * scan dying on "Do not know how to serialize a BigInt", but the same defect
+   * silently made a COLD report differ from a WARM one in those fields.
    *
-   * It surfaced as a cold-cache scan dying on "Do not know how to serialize a
-   * BigInt", because `getLogs` evidence embeds viem log objects. It reproduced
-   * only cold, and only when a log scan actually returned a log. The crash was
-   * the lucky part: the same defect silently made a COLD report differ from a
-   * WARM one in those fields, weakening the determinism guarantee the cache
-   * exists to provide. Round-tripping a freshly-fetched value through the
-   * identical serialization `set` uses makes cold and warm byte-identical by
-   * construction, and it applies even when caching is DISABLED so `--no-cache`
-   * cannot take a different code path either.
+   * Round-tripping a freshly-fetched value through the identical serialization
+   * makes cold and warm byte-identical by construction, and it applies even when
+   * caching is DISABLED so `--no-cache` cannot take a different code path.
    */
   async wrap<T>(key: CacheKey, fetchFn: () => Promise<T>): Promise<{ value: T; fromCache: boolean }> {
     const cached = await this.get<T>(key);

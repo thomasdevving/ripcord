@@ -1,26 +1,19 @@
 /**
- * Recursive authority resolution + timelock detection (day 3).
+ * Recursive authority resolution + timelock detection.
  *
- * Day 1/2 stop at the immediate power holder: they will tell you a proxy's
- * admin is `type: "contract"` and go no further. That blinds the tool to the
- * exact structure the project exists to expose — a ProxyAdmin owned by a
- * single EOA one hop past where day 1 looks, or a 3-of-11 Safe that fronts
- * for one key behind it. This module follows the chain of authority until it
- * terminates, and produces a PATH per root — "upgrade → ProxyAdmin → EOA
- * 0x…" — not just a terminal address. That path is the day-5 demo's backbone
- * and the exact input the proof engine impersonates from.
+ * Stopping at the immediate power holder — "the proxy's admin is a contract",
+ * and no further — blinds the tool to the exact structure the project exists to
+ * expose: a ProxyAdmin owned by a single EOA one hop further on, or a 3-of-11
+ * Safe that fronts for one key behind it. This module follows the chain until it
+ * terminates and produces a PATH per root ("upgrade → ProxyAdmin → EOA 0x…"),
+ * which is also the exact input the proof engine impersonates from.
  *
- * The rules are the design philosophy applied to depth:
- *   - Termination is explicit. Every leaf says WHY it stopped
- *     (eoa/safe/timelock/max_depth/cycle/no_authority_found) — an empty
- *     `children` is never left to be read as "nothing further exists."
- *   - Weakest-link provenance applies to depth. Confidence degrades high →
- *     medium → low as depth grows; a controller reached through three hops is
- *     not asserted with a direct owner's certainty.
- *   - Cycles are real in the wild (A owns B owns A). We track the visited
- *     path and record a cycle as a finding rather than looping forever.
- *   - Max depth 3. Beyond it we record "not resolved: max depth," never a
- *     silent truncation that would read as a clean terminal.
+ * The rules are the design philosophy applied to depth. Termination is explicit
+ * — every leaf says WHY it stopped, so an empty `children` is never read as
+ * "nothing further exists". Confidence degrades high → medium → low as depth
+ * grows. Cycles are real in the wild (A owns B owns A), so the visited path is
+ * tracked and a cycle recorded as a finding rather than looped on. Max depth 3,
+ * recorded as "not resolved: max depth" rather than silently truncated.
  */
 import { decodeFunctionResult, encodeFunctionData, type Hex } from "viem";
 import type { ChainReader, Evidence } from "../chain/client.js";
@@ -96,22 +89,17 @@ async function respondsToAdmin(chain: ChainReader, address: Hex): Promise<{ ok: 
 }
 
 /**
- * Detects whether an address is a timelock and extracts its delay. Classifies
- * by the delay accessor (never by name-guessing):
- *   - `getMinDelay()` resolving  → OpenZeppelin TimelockController.
- *   - `delay()` + `admin()` both resolving → Compound / Governor-Bravo Timelock
- *     (the extra `admin()` check disambiguates from an unrelated `delay()`
- *     getter on a non-timelock).
- *   - Neither, but the contract carries timelock roles (PROPOSER/EXECUTOR/
- *     CANCELLER/TIMELOCK_ADMIN in its reconstructed set) → "unknown" kind with
- *     `delaySeconds: null` — reported as "timelock: delay undetermined,"
- *     never ignored.
+ * Detects whether an address is a timelock and extracts its delay. Classifies by
+ * the delay accessor, never by name-guessing: `getMinDelay()` → OpenZeppelin
+ * TimelockController; `delay()` + `admin()` together → Compound / Governor-Bravo
+ * (the extra check disambiguates from an unrelated `delay()` getter); neither,
+ * but the contract carries timelock roles → "unknown" kind with
+ * `delaySeconds: null`, reported as "delay undetermined" rather than ignored.
  * Returns null when nothing timelock-shaped is found.
  *
- * `adminCanShortenDelay` is a day-3 flag only: it reports whether the
- * delay-mutation selector (updateDelay/setDelay) exists in the timelock's own
- * bytecode — i.e. the delay is not immutable. WHO can reach it and under what
- * constraint (normally the current delay itself) is day-4 Exit Window work.
+ * `adminCanShortenDelay` is a presence flag only: whether the delay-mutation
+ * selector exists in the timelock's own bytecode, i.e. the delay is not
+ * immutable. WHO can reach it and under what constraint is exit-window work.
  */
 export async function detectTimelock(
   chain: ChainReader,
@@ -258,21 +246,13 @@ async function resolveNode(
   // A contract. Resolve its AccessControl ONCE, up front — its roles feed both
   // the timelock check and the authority seeds below.
   //
-  // Critically, this is NOT wrapped in `.catch(() => null)`. The earlier code
-  // was, and that conflated two facts that must never be indistinguishable:
-  //   - a contract that simply ISN'T AccessControl (DEFAULT_ADMIN_ROLE()
-  //     reverts) — a normal, expected outcome that detectAccessControl already
-  //     returns as `detected: false` WITHOUT throwing; and
-  //   - a real RPC/provider failure (a getLogs/getCode call that actually
-  //     failed at the node) — a ChainReadError, which is infrastructure, not
-  //     a fact about the contract.
-  // Swallowing both into `null` turned a network outage into a silent "no
-  // roles / no authority found," exactly the false-clean result the whole
-  // project forbids. Now the ChainReadError propagates to build.ts's
-  // runStage("authorityResolution"), landing in errors[] where an infra
-  // failure belongs, while detectAccessControl's own unknowns[] (e.g. a
-  // partial role reconstruction on a capped provider — see accessControl.ts)
-  // are threaded UP namespaced by address instead of being discarded here.
+  // Critically NOT wrapped in `.catch(() => null)`. The earlier code was, and
+  // that conflated a contract which simply ISN'T AccessControl (DEFAULT_ADMIN_
+  // ROLE() reverts — already returned as `detected: false` without throwing)
+  // with a real RPC failure, turning a network outage into a silent "no roles /
+  // no authority found". The ChainReadError now propagates to build.ts's
+  // runStage("authorityResolution") and lands in errors[], while
+  // detectAccessControl's own unknowns[] are threaded UP namespaced by address.
   const accessControl = await detectAccessControl(chain, address);
   for (const u of accessControl.unknowns) {
     unknownsOut.push({ field: `authorityResolution[${address}].${u.field}`, reason: u.reason });

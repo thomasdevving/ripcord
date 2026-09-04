@@ -5,22 +5,21 @@
  * calibration set that produced 27 "no auth-shaped revert observed" results of
  * which ZERO were genuinely unguarded; most were contracts stating plainly, in
  * their own revert string, that a guard had fired — Circle FiatToken "caller is
- * not the blacklister", Maker "Dai/not-authorized", OZ v3, Morpho "not owner",
- * Rocket Pool "Invalid or outdated contract", Ethena OnlyMinter(). The contract
- * itself is the witness, the same evidence class as the day-2 four.
+ * not the blacklister", Maker "Dai/not-authorized", Morpho "not owner", Rocket
+ * Pool "Invalid or outdated contract", Ethena OnlyMinter(). The contract itself
+ * is the witness, the same evidence class as the original four.
  *
  * THE HARD BOUNDARY: this dictionary may only ever move a RECOGNISED revert
  * toward "guarded". There is deliberately no rule reading "we did not recognise
  * it, so assume guarded" — that inference is how false-clean gets built.
- * Unrecognised stays unrecognised and keeps blocking publication.
  *
- * It also classifies a second, different thing: a revert proving the probe
- * never REACHED an auth check (a zero-argument or state precondition firing
- * first). That is inconclusive, not suspicious, and does not block.
+ * It also classifies a second, different thing: a revert proving the probe never
+ * REACHED an auth check. That is inconclusive, not suspicious, and does not
+ * block.
  *
  * IN-SAMPLE, and said out loud: these dialects were found by reading the
- * calibration set's own reverts, so the claim is "this dictionary knows these
- * N dialects", never "Ripcord recognises guards in general".
+ * calibration set's own reverts, so the claim is "this dictionary knows these N
+ * dialects", never "Ripcord recognises guards in general".
  */
 import { toFunctionSelector, type Hex } from "viem";
 

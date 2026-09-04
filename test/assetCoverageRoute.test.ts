@@ -5,12 +5,10 @@
  * had none. `/api/reports/:id/coverage` is where the sidecar, the committed
  * snapshot and the publication gate meet, and it makes a real decision: WHICH
  * snapshot the reader is shown. Getting that wrong shows a stale vendor
- * observation under a fresh run's heading, which is the one thing the two-clock
- * rule exists to prevent — and nothing was checking it.
+ * observation under a fresh run's heading.
  *
  * Network-free: the route composes artifacts that already exist and performs no
- * fetch, no chain read and no fork, which is exactly why it can be tested like
- * this at all.
+ * fetch, chain read or fork.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import Fastify from "fastify";

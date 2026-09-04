@@ -1,29 +1,25 @@
 /**
- * The Proof Engine (day 3, the pillar).
+ * The Proof Engine.
  *
  * A static capability claim — "an address can upgrade this proxy" — is a fact
  * about power. This turns exactly one such claim into an EXECUTED, reproducible
- * demonstration: on a sandbox fork pinned to the report's block, impersonate
- * the RESOLVED controller (the terminal EOA/Safe at the end of the day-3
- * authority path, not the proxy's nominal owner), walk the admin's own
- * legitimate upgrade path to a minimal drainer implementation, trigger it, and
- * measure the target's token holdings leaving. The headline is a dollar figure
- * priced from an on-chain oracle.
+ * demonstration: on a sandbox fork pinned to the report's block, impersonate the
+ * RESOLVED controller (the terminal EOA/Safe at the end of the authority path,
+ * not the proxy's nominal owner), walk the admin's own legitimate upgrade path to
+ * a minimal drainer implementation, trigger it, and measure the target's token
+ * holdings leaving, priced from an on-chain oracle.
  *
  * ONE archetype, done properly: CODE_CHANGE → drain on an EIP-1967 TRANSPARENT
- * proxy, whose upgrade authority is an OpenZeppelin ProxyAdmin
- * (`upgrade(address,address)`). This is the path validated live end-to-end
- * before a line of it was written. Any other shape (UUPS, beacon, an
- * unresolved authority, no holdings) FAILS LOUD: `produced: false` with a
- * stated reason. A missing proof is honest; a fabricated or hand-waved one is
- * disqualifying — so every exit here is either a real executed delta or an
- * explicit reason it couldn't be produced.
+ * proxy whose upgrade authority is an OpenZeppelin ProxyAdmin
+ * (`upgrade(address,address)`) — the path validated live end-to-end before a
+ * line of it was written. Any other shape (UUPS, beacon, an unresolved
+ * authority, no holdings) FAILS LOUD with `produced: false` and a stated reason:
+ * a missing proof is honest, a fabricated one is disqualifying.
  *
- * Honesty rails, because auditors will probe them:
- *   - Everything runs on the ephemeral fork. No mainnet tx, no key, no approval.
- *   - Every user-facing string is CAPABILITY, not intent: "this authority CAN
- *     move $X," never "will," never "malicious"/"rug".
- *   - Gas is capped; the fork is always torn down.
+ * Honesty rails, because auditors will probe them: everything runs on the
+ * ephemeral fork (no mainnet tx, no key, no approval); every user-facing string
+ * is CAPABILITY, not intent — "this authority CAN move $X", never "will"; gas is
+ * capped and the fork is always torn down.
  */
 import { execFile } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -98,20 +94,16 @@ export interface ProofRequest {
 }
 
 /**
- * The notice period a given authority path imposes, looked up from the day-4
- * exit-window routes rather than recomputed — one source of truth for the
- * number, so the proof and the verdict can never quote different delays for
- * the same authority.
+ * The notice period a given authority path imposes, looked up from the
+ * exit-window routes rather than recomputed — one source of truth, so the proof
+ * and the verdict can never quote different delays for the same authority.
  *
- * This exists because of a real gap day 4 exposed in the day-3 engine: anvil
- * impersonation executes AS the resolved controller, which for a timelocked
- * authority silently skips the queue that makes the timelock a timelock. The
- * simulation is still correct about the CAPABILITY — the funds really do move,
- * and that authority really can move them — but presenting it without the
- * notice period would let a two-day public queue read as an instant drain.
- * Rather than refuse such proofs (which would hide a real capability), the
- * notice is stated in the headline, so the proof and the exit window agree by
- * construction instead of by luck.
+ * It exists because anvil impersonation executes AS the resolved controller,
+ * which for a timelocked authority silently skips the queue that makes the
+ * timelock a timelock. The simulation is still correct about the CAPABILITY, but
+ * presenting it without the notice period would let a two-day public queue read
+ * as an instant drain. Rather than refuse such proofs — which would hide a real
+ * capability — the notice is stated in the headline.
  */
 function noticeForPath(exitWindow: ExitWindow | null, path: AuthorityPath): { seconds: string | null; note: string } {
   if (!exitWindow) {

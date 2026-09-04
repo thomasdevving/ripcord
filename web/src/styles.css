@@ -42,7 +42,15 @@
 
   --text-primary: #e7ede4;
   --text-secondary: #9aa396;
-  --muted: #6b7568;
+  /* THE LABEL GREY, AND IT IS A CONTRAST FLOOR, NOT A TASTE.
+     Every uppercase mono label in this interface is set in it — table headers
+     at 10px, h3 section labels, the runbar keys, the hex under a hash. At its
+     old value (#6b7568) it measured 3.2-3.9:1 on every ground in the palette,
+     under the 4.5:1 floor, on the smallest type on the page. It is now >=4.5:1
+     against plane, both surfaces and all three status washes, and carries more
+     green than --text-secondary so the two greys separate by hue as well as by
+     value rather than converging into one flat step. */
+  --muted: #7f8f80;
 
   --grid: #293027;
   --baseline: #3a4237;
@@ -99,7 +107,26 @@ body {
 
 code, pre, .mono { font-family: var(--mono); }
 
-a { color: var(--accent); }
+a {
+  color: var(--accent);
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+
+/* THE SURFACES WE DID NOT DRAW STILL BELONG TO THE PAGE. A selection highlight,
+   a caret and a scrollbar all ship with a default that belongs to no design
+   system, and on a projector the stock light scrollbar beside a dark report is
+   the first thing an audience sees. Figures are tabular everywhere a reader
+   compares them down a column. */
+::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); color: var(--text-primary); }
+input, textarea { caret-color: var(--accent); }
+
+* { scrollbar-width: thin; scrollbar-color: var(--baseline) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--baseline); border: 2px solid transparent; background-clip: padding-box; border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); background-clip: padding-box; }
+::-webkit-scrollbar-corner { background: transparent; }
 
 /* Keyboard focus must be visible everywhere. A demo driven from the keyboard
    with an invisible focus ring is a demo nobody can follow. */
@@ -195,8 +222,10 @@ a { color: var(--accent); }
 .topbar-link.active { color: var(--accent); background: var(--good-bg); border-color: var(--border); }
 
 .container { width: 100%; max-width: 1200px; margin: 0 auto; padding: 20px; }
-/* Belt to the braces above: nothing inside the page shell may exceed it. */
-.container > *, section.card { max-width: 100%; }
+/* Belt to the braces above: nothing inside the page shell may exceed it, and a
+   grid or flex child defaults to `min-width: auto`, which refuses to shrink
+   below its intrinsic content — a 31,000px evidence dump included. */
+.container > *, section.card, .split > * { max-width: 100%; min-width: 0; }
 .container.wide { max-width: 1440px; }
 
 /* --- generic blocks ------------------------------------------------------- */
@@ -237,13 +266,13 @@ h3:first-child { margin-top: 0; }
 
 .muted { color: var(--muted); }
 .secondary { color: var(--text-secondary); }
-.note { color: var(--text-secondary); font-size: 13px; }
+.note { color: var(--text-secondary); font-size: 13px; overflow-wrap: anywhere; }
 .small { font-size: 12px; }
 
 .addr {
   font-family: var(--mono);
   font-size: 12px;
-  word-break: break-all;
+  overflow-wrap: anywhere;
   color: var(--text-secondary);
 }
 
@@ -316,6 +345,7 @@ label {
 .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
 .row > * { flex: 1; min-width: 180px; }
 .row > .shrink { flex: 0 0 auto; min-width: 0; }
+.row > span.shrink { display: inline-flex; }
 
 /* --- option list ----------------------------------------------------------
  *
@@ -583,10 +613,10 @@ label {
    sideways. On a projector a horizontally-scrolling page is unusable. */
 .scroll-x { overflow-x: auto; }
 
-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
 th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
 th { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); font-weight: 600; }
-td.mono { font-family: var(--mono); font-size: 11.5px; }
+td.mono { font-family: var(--mono); font-size: 11.5px; overflow-wrap: anywhere; }
 
 details {
   border: 1px solid var(--border);
@@ -598,12 +628,15 @@ details {
 details > summary { cursor: pointer; font-size: 12.5px; color: var(--text-secondary); }
 details[open] > summary { margin-bottom: 10px; }
 
-pre.raw {
+pre {
   background: var(--plane);
   border: 1px solid var(--border);
   border-radius: 3px;
   padding: 11px;
-  overflow-x: auto;
+  /* A raw evidence dump is 31,835px wide on a real report. Every pre scrolls
+     inside its own box; the page body never scrolls sideways. */
+  overflow: auto;
+  overscroll-behavior-x: contain;
   font-size: 11.5px;
   margin: 0;
   max-height: 340px;
@@ -611,71 +644,231 @@ pre.raw {
 
 /* --- fork evidence blocks ------------------------------------------------- */
 
-.evidence-block {
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  padding: 16px;
-  background: var(--plane);
-  margin-bottom: 12px;
-}
-.evidence-block > header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
-.evidence-block .step {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--muted);
-  border: 1px solid var(--border);
-  border-radius: 2px;
-  padding: 1px 6px;
-}
-.evidence-block h4 { margin: 0; font-size: 14px; }
+/* A, B and C are three steps of ONE experiment, so they are separated by a rule
+   rather than boxed. Three bordered panels inside an already-bordered section
+   made one differential look like three findings. */
+.evidence-block { padding: 4px 0 18px; }
+.evidence-block + .evidence-block { padding-top: 18px; border-top: 1px solid var(--border); }
+.evidence-block > header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
 
-.tx-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
-.tx-row:last-child { border-bottom: none; }
-.tx-row .tx-action { font-weight: 500; }
-.tx-row .tx-meta { font-family: var(--mono); font-size: 11px; color: var(--muted); }
-
-/* --- verdict hero --------------------------------------------------------- */
-
-.hero { border-left: 4px solid var(--baseline); }
-.hero.critical { border-left-color: var(--critical); }
-.hero.unknown { border-left-color: var(--warning); }
-.hero.good { border-left-color: var(--good); }
-
-.verdict-badge {
-  display: inline-block;
+/* Renamed from `.step`, which collided with the home page's numbered-step grid:
+   the badge inherited `display:grid`, a 2.4rem first column and a stray bottom
+   hairline from a rule written for a completely different component. */
+.evidence-step {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
   font-family: var(--mono);
   font-size: 11px;
   font-weight: 600;
+  color: var(--text-secondary);
+  border: 1px solid var(--baseline);
+  border-radius: 2px;
+}
+.evidence-block h4 { margin: 0; font-size: 14px; }
+
+.tx-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.tx-row:last-child { border-bottom: none; }
+.tx-row > * { min-width: 0; }
+.tx-row .tx-action { font-weight: 500; }
+/* Calldata and 66-character hashes. Without a break opportunity a single row
+   was 2282px wide inside a 248px scroller. */
+.tx-row .tx-meta { font-family: var(--mono); font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+
+/* --- report head ----------------------------------------------------------
+ *
+ * THE SUBJECT OF THE REPORT IS AN ADDRESS, and it is the page's h1. There is no
+ * protocol name here on purpose: nothing on chain verified one, and this project
+ * does not print a label it cannot evidence. The address is therefore set in the
+ * mono voice at heading scale rather than in the display face — it is a value to
+ * be read character by character and compared, not a title to be admired.
+ */
+.report-head {
+  padding: 14px 0 24px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.rh-line {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-bottom: 10px;
+}
+
+.rh-target {
+  margin: 0;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: clamp(15px, 1.9vw, 22px);
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.005em;
+  /* 42 unbroken characters. Without this the subject of the report is what
+     makes a phone scroll sideways. */
+  overflow-wrap: anywhere;
+}
+
+/* No interpuncts between the items. Each label names itself, and a separator
+   drawn as a pseudo-element dangles at the head of a wrapped line on a phone —
+   which is where this row wraps. Gap does the same work and cannot orphan. */
+.rh-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 22px;
+  margin: 0 0 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.rh-meta span { white-space: nowrap; }
+
+.rh-note { margin: 0; max-width: 82ch; font-size: 12.5px; line-height: 1.6; color: var(--text-secondary); }
+
+/* --- verdict card ---------------------------------------------------------
+ *
+ * The answer, and it must not look like the eleven evidence panels below it.
+ * It earns its weight from a raised ground and a tone rule ACROSS THE TOP — a
+ * document rule, not the coloured left stripe every alert component in the
+ * world wears. (The stripe was also, for some time, a silent defect: `.hero`
+ * asked for 4px and `section.card` outranked it on specificity, so the one
+ * element meant to carry the verdict's tone rendered a 1px hairline.)
+ */
+section.card.verdict-card {
+  position: relative;
+  background: var(--surface-2);
+  padding: 22px;
+  border-top: 2px solid var(--baseline);
+}
+section.card.verdict-card.critical { border-top-color: var(--critical); }
+section.card.verdict-card.unknown { border-top-color: var(--warning); }
+section.card.verdict-card.good { border-top-color: var(--good); }
+
+.verdict-body { display: grid; gap: 22px clamp(28px, 3.4vw, 52px); align-items: start; }
+.verdict-figures, .verdict-prose { min-width: 0; }
+.verdict-prose > p { max-width: 74ch; }
+.verdict-prose > :first-child { margin-top: 0; }
+.verdict-prose > :last-child { margin-bottom: 0; }
+
+@media (min-width: 1180px) {
+  .verdict-body { grid-template-columns: minmax(300px, 0.78fr) minmax(0, 1fr); }
+  .clocks { max-width: none; }
+}
+
+.verdict-line { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
+
+.verdict-badge {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.16em;
-  padding: 5px 12px;
+  line-height: 1.2;
+  padding: 6px 13px;
   border-radius: 3px;
   background: var(--plane);
   color: var(--text-secondary);
-  margin-bottom: 10px;
 }
-.hero.critical .verdict-badge { background: var(--crit-bg); color: var(--crit-ink); }
-.hero.unknown .verdict-badge { background: var(--warn-bg); color: var(--warn-ink); }
-.hero.good .verdict-badge { background: var(--good-bg); color: var(--good-ink); }
+.verdict-card.critical .verdict-badge { background: var(--crit-bg); color: var(--crit-ink); }
+.verdict-card.unknown .verdict-badge { background: var(--warn-bg); color: var(--warn-ink); }
+.verdict-card.good .verdict-badge { background: var(--good-bg); color: var(--good-ink); }
 
-.statement { max-width: 76ch; font-size: 16px; line-height: 1.58; }
+/* --- the two clocks -------------------------------------------------------
+ *
+ * THE ESTABLISHED AND THE UNESTABLISHED ARE SET IN DIFFERENT VOICES, and that is
+ * the whole point of the block. A figure the report established is a display
+ * numeral; a figure it could not establish drops to the mono label voice and
+ * says so in words. A reader can therefore never take a length off something
+ * that has none — the typographic equivalent of the hatched bar on the rendered
+ * calibration pages, chosen for the same reason.
+ */
+.clocks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  max-width: 620px;
+  margin: 0;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.clock { min-width: 0; padding: 14px 16px 15px; background: var(--plane); }
+
+.clock dt {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.clock-v {
+  margin: 7px 0 0;
+  font-family: var(--display);
+  font-size: clamp(28px, 3.4vw, 40px);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+/* "at least 1d" — the qualifier is prose, the figure is the numeral. */
+.clock-v span { font-family: inherit; }
+.clock:not(.unestablished) .clock-v { text-wrap: nowrap; }
+
+.clock.unestablished .clock-v {
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
+
+.clock-q { margin: 9px 0 0; font-size: 12px; line-height: 1.5; color: var(--text-secondary); }
+
+@media (max-width: 620px) {
+  .clocks { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Prose measure. The card is wider than a readable line, so anything set as a
+   paragraph in it is bounded; the statement carries raw addresses, which is why
+   it also needs an explicit break opportunity. */
+.statement {
+  max-width: 72ch;
+  font-size: 16px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
 
 /* --- route list ----------------------------------------------------------- */
 
 .route {
   border: 1px solid var(--border);
-  border-left: 3px solid var(--baseline);
+  border-left: 1px solid var(--baseline);
   border-radius: 3px;
-  padding: 11px 13px;
+  padding: 12px 14px;
   margin-bottom: 9px;
   background: var(--plane);
 }
 .route.immediate { border-left-color: var(--critical); }
 .route.delayed { border-left-color: var(--good); }
 .route.unknown { border-left-color: var(--warning); }
+/* The route's own status chip names the tone in words, so the rule beside it
+   is a hairline and not a slab. */
 .route header { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; margin-bottom: 4px; }
 .route .r-label { font-weight: 600; font-size: 13px; }
-.route .r-notice { font-family: var(--mono); font-size: 12px; }
+.route .r-notice { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--text-primary); font-variant-numeric: tabular-nums; }
 
 /* --- numbered steps -------------------------------------------------------
  *
@@ -895,7 +1088,7 @@ pre.raw {
 .empty { padding: 26px; text-align: center; color: var(--muted); font-size: 13px; }
 
 ul.plain { margin: 6px 0; padding-left: 18px; }
-ul.plain li { margin-bottom: 5px; font-size: 13px; color: var(--text-secondary); }
+ul.plain li { margin-bottom: 5px; font-size: 13px; line-height: 1.6; color: var(--text-secondary); overflow-wrap: anywhere; }
 
 .ceiling { background: var(--warn-bg); border-radius: 3px; padding: 12px 14px; font-size: 12.5px; color: var(--warn-ink); }
 .ceiling ul { margin: 6px 0 0; padding-left: 18px; }
@@ -924,7 +1117,7 @@ ul.plain li { margin-bottom: 5px; font-size: 13px; color: var(--text-secondary);
   --hb-surface-2: #1f241e;
   --hb-ink: #e7ede4;
   --hb-ink-muted: #9aa396;
-  --hb-ink-faint: #6b7568;
+  --hb-ink-faint: #7f8f80;
   --hb-rule: #293027;
   --hb-rule-strong: #3a4237;
   --hb-green: #4cc384;
@@ -968,7 +1161,7 @@ ul.plain li { margin-bottom: 5px; font-size: 13px; color: var(--text-secondary);
   min-width: 0;
   max-width: 1240px;
   margin: 0 auto;
-  padding: clamp(18px, 2.6vw, 28px) clamp(20px, 4vw, 44px) clamp(20px, 2.6vw, 30px);
+  padding: clamp(18px, 2.6vw, 28px) clamp(20px, 4vw, 44px) clamp(34px, 4.2vw, 54px);
   display: grid;
   gap: clamp(26px, 3.6vw, 46px);
 }
@@ -1108,10 +1301,35 @@ ul.plain li { margin-bottom: 5px; font-size: 13px; color: var(--text-secondary);
 
 .hb-stats { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--hb-green-rule); margin: 0 -16px; }
 
-.hb-stat { padding: 11px 12px; border-left: 1px solid var(--hb-green-rule); }
+/* The keys sit on a shared baseline. One of the three ("moved on a fork") wraps
+   to two lines while its neighbours do not, and a ragged row of three facts
+   reads as a layout accident rather than as a set. */
+.hb-stat {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 12px;
+  border-left: 1px solid var(--hb-green-rule);
+}
 .hb-stat:first-child { border-left: 0; padding-left: 16px; }
-.hb-stat-v { font-family: var(--mono); font-size: 12.5px; color: var(--hb-ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.hb-stat-k { margin-top: 3px; font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--hb-ink-faint); }
+.hb-stat-v {
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--hb-ink);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+}
+.hb-stat-k {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  line-height: 1.35;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--hb-ink-faint);
+}
 
 .hb-card-bottom {
   background: var(--hb-amber-wash);
@@ -1142,30 +1360,18 @@ ul.plain li { margin-bottom: 5px; font-size: 13px; color: var(--text-secondary);
 /* The provenance line is part of the card, not a footnote to it: a quoted
    figure with no source is the thing this project refuses to render. */
 .hb-card-source {
-  margin: 0;
   padding: 11px 16px 13px;
   border-top: 1px solid var(--hb-rule);
   font-size: 11px;
   line-height: 1.5;
   color: var(--hb-ink-faint);
 }
-.hb-card-source .mono { word-break: break-all; }
+.hb-card-source p { margin: 0; }
 
-.hb-footline {
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding-top: clamp(12px, 1.5vw, 16px);
-  border-top: 1px solid var(--hb-rule);
-  font-family: var(--mono);
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--hb-ink-faint);
-}
-.hb-tick { width: 26px; height: 1px; background: var(--hb-rule-strong); flex: none; }
+/* The address is the thing a sceptic checks, so it gets its own line and breaks
+   at the end of one rather than in the middle of a running sentence. */
+.hb-source-addr { margin-top: 7px !important; display: flex; flex-direction: column; gap: 2px; }
+.hb-source-addr .mono { overflow-wrap: anywhere; color: var(--hb-ink-muted); }
 
 @media (max-width: 1020px) {
   .hb-stage { grid-template-columns: minmax(0, 1fr); align-items: start; gap: clamp(26px, 4vw, 36px); }
@@ -1234,12 +1440,20 @@ ul.plain li { margin-bottom: 5px; font-size: 13px; color: var(--text-secondary);
   /* The hero band is navigation and a quoted example, not evidence. Its graph,
      its controls and its form carry nothing a printed report needs. */
   .hb { background: #ffffff; color: #0b0b0b; border-bottom: 1px solid #cfcfc7; }
-  .hb-net, .hb-veil, .hb-segmented, .hb-actions, .hb-card, .hb-footline { display: none !important; }
+  .hb-net, .hb-veil, .hb-segmented, .hb-actions, .hb-card { display: none !important; }
   .hb-headline { color: #0b0b0b; font-size: 20px; }
   .hb-setup, .hb-sub, .hb-eyebrow { color: #3a3a38; }
 
   .topbar, .runbar, button, .graph-wrap { display: none !important; }
   section.card { break-inside: avoid; border: 1px solid #cfcfc7; }
+
+  /* The report head and the verdict are the two things a printed page is FOR,
+     so they keep their weight and their tone rule; the semantic hues survive
+     the flip exactly as the status colours above do. */
+  .report-head { break-after: avoid; border-bottom-color: #9a9a92; }
+  section.card.verdict-card { background: #ffffff; border-top-width: 3px; break-inside: avoid; }
+  .clocks { background: #cfcfc7; }
+  .clock { background: #ffffff; }
   details { break-inside: avoid; }
   details:not([open]) > summary::after { content: " (collapsed in print)"; color: #66665f; }
 }

@@ -2,24 +2,21 @@
  * Mobula REST client for Ripcord's LIVE layer.
  *
  * THE BOUNDARY THIS FILE SITS ON. Everything else in `src/` produces a report
- * pinned to a block and byte-identical on a cold re-run. This file is the
- * opposite by construction: it reads the present, over the network, from a third
- * party. Nothing in the pinned path imports it, and scripts/verify-boundary.mjs
- * fails the build if that stops being true.
+ * pinned to a block and byte-identical on a cold re-run; this file is the
+ * opposite by construction. Nothing in the pinned path imports it, and
+ * scripts/verify-boundary.mjs fails the build if that stops being true.
  *
- * WHY NOT PinnedChain. DiskCache is keyed by (chainId, blockNumber, method,
- * params) and justified by "a historical block never changes, so a hit is
- * permanently valid". A live price has no block and is stale the moment it
- * lands; caching it under that key would make a warm run serve yesterday's
- * market as today's — the cache boundary laundering a failure into a fact. So
- * no cache, no pinning, and a `fetchedAt` timestamp on every result.
+ * WHY NOT PinnedChain: DiskCache is keyed by (chainId, blockNumber, method,
+ * params) and justified by "a historical block never changes". A live price has
+ * no block and is stale the moment it lands, so caching it under that key would
+ * make a warm run serve yesterday's market as today's. No cache, no pinning, and
+ * a `fetchedAt` timestamp on every result.
  *
- * FAILURE DISCIPLINE. In the pinned path "fail loud" means throwing. Here it
- * means something different, because a vendor outage is not a fact about the
- * contract and must never take down a page whose verdict does not depend on it.
- * Every call returns a discriminated `MobulaResult` carrying its reason, and the
- * loudness moves to the page: "live data unavailable — <reason>". What is
- * forbidden is the third option, a silent empty result that looks like "this
+ * FAILURE DISCIPLINE. In the pinned path "fail loud" means throwing; here a
+ * vendor outage is not a fact about the contract and must never take down a page
+ * whose verdict does not depend on it. Every call returns a discriminated
+ * `MobulaResult` carrying its reason, and the loudness moves to the page. What
+ * is forbidden is the third option: a silent empty result that looks like "this
  * contract holds nothing".
  */
 
@@ -46,12 +43,11 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 /**
  * Holdings gets its own, much longer budget. A multi-chain sweep over a large
  * wallet is genuinely slow — WETH9's holdings (5,341 entries across 21 chains)
- * take just over 50 SECONDS to come back. The 30s default was silently turning
- * that into "live data unavailable" on exactly the biggest, most interesting
- * targets, and it looked like rate limiting because it arrived alongside real
- * 503s. Measured, not guessed: the same request completes at 50.7s and the
- * mainnet-only variant is slower still, so this is server-side work, not a
- * transport problem that a smaller query would avoid.
+ * take just over 50 SECONDS. The 30s default silently turned that into "live
+ * data unavailable" on exactly the biggest targets, and it looked like rate
+ * limiting because it arrived alongside real 503s. Measured, not guessed: the
+ * mainnet-only variant is slower still, so this is server-side work rather than
+ * a transport problem a smaller query would avoid.
  */
 const HOLDINGS_TIMEOUT_MS = 120_000;
 const MAX_ATTEMPTS = 4;
@@ -63,18 +59,15 @@ const MAX_ATTEMPTS = 4;
 const retryBaseMs = () => Number(process.env.MOBULA_RETRY_BASE_MS ?? 2000);
 
 /**
- * The pseudo-address every major indexer uses to mean "the chain's NATIVE
- * asset" (ETH on mainnet, BNB on BSC, and so on). It is not a contract.
+ * The pseudo-address every major indexer uses to mean "the chain's NATIVE asset"
+ * (ETH on mainnet, BNB on BSC, and so on). It is not a contract.
  *
- * This constant is load-bearing for two reasons, both found live rather than
- * reasoned about. First, native balances are the single largest thing Ripcord's
- * curated ERC20 list structurally cannot see — Lido's withdrawal queue holds
- * ~$63M of native ETH, and no entry in MAJOR_TOKENS could ever match it.
- * Second, the sentinel is THE SAME on every chain, so anything keyed on address
- * alone silently merges ETH with BNB: verified on cbETH, where both came back
- * under this address and a price map keyed by address quoted ETH at BNB's price.
- * Native assets therefore get their own path, and every lookup in this layer is
- * keyed by (chainId, address) rather than by address.
+ * Load-bearing for two reasons, both found live. Native balances are the single
+ * largest thing Ripcord's curated ERC20 list structurally cannot see — Lido's
+ * withdrawal queue holds ~$63M of native ETH. And the sentinel is THE SAME on
+ * every chain, so anything keyed on address alone silently merges ETH with BNB:
+ * verified on cbETH, where a price map keyed by address quoted ETH at BNB's
+ * price. Every lookup in this layer is therefore keyed by (chainId, address).
  */
 export const NATIVE_ASSET_SENTINEL = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
@@ -105,11 +98,9 @@ const sleep = (ms: number, signal?: AbortSignal) =>
  * Retry policy is asymmetric on purpose, the same shape as `withTransientRetry`
  * in the pinned path but with far less at stake: a 429/5xx or a network error is
  * retried with backoff, a 4xx is returned immediately because retrying a bad
- * request just wastes the rate limit. Measured need — the keyless tier returns
- * HTTP 503 under a burst, which is what a full 22-target run is.
- *
- * The worst case of a wrong call here is a slower "live data unavailable", never
- * a wrong fact, which is why this stays simple rather than clever.
+ * request just wastes the rate limit. The keyless tier returns HTTP 503 under a
+ * burst, which is what a full 22-target run is. The worst case of a wrong call
+ * here is a slower "live data unavailable", never a wrong fact.
  */
 async function request<T>(
   url: string,
@@ -204,14 +195,14 @@ export interface MobulaHoldingsResponse {
 /**
  * GET /api/2/wallet/holdings — what this address holds RIGHT NOW, across chains.
  *
- * `fetchAllChains` is what makes this multi-chain rather than a second opinion
- * on mainnet: without it Mobula answers over a premium subset. Verified live on
- * Lido's withdrawal queue, which comes back spanning 8 distinct `evm:*` chains.
+ * `fetchAllChains` is what makes this multi-chain rather than a second opinion on
+ * mainnet: without it Mobula answers over a premium subset. Verified live on
+ * Lido's withdrawal queue, which spans 8 distinct `evm:*` chains.
  *
- * `filterSpam`/`minLiquidity` are passed because they help, but they are NOT
- * relied on — verified live that airdropped phishing tokens survive both. The
- * real filtering is a value floor applied in exposure.ts, where it can be
- * disclosed on the page instead of happening invisibly here.
+ * `filterSpam`/`minLiquidity` are passed because they help, but are NOT relied
+ * on — airdropped phishing tokens survive both. The real filtering is a value
+ * floor applied in exposure.ts, where it can be disclosed on the page instead of
+ * happening invisibly here.
  */
 export async function fetchHoldings(
   wallet: string,
@@ -254,12 +245,11 @@ export interface MobulaPriceResponse {
 /**
  * POST /api/2/token/price — live USD price for up to 500 (address, chain) pairs.
  *
- * A second, independent read of value rather than a decorative extra call. The
+ * A second, independent read of value rather than a decorative extra call: the
  * holdings endpoint already returns `amountUSD`, and this lets the panel show a
- * per-token price that was quoted separately, plus `liquidityUSD` — which is the
- * one number that speaks to KNOWN EDGE #20 (liquidity depth is deliberately not
- * modelled in the pinned verdict, and this is live context beside it, never a
- * substitute for the modelling that is not there).
+ * separately quoted per-token price plus `liquidityUSD` — live context beside
+ * the pinned verdict, never a substitute for the liquidity modelling that is
+ * deliberately not there.
  */
 export async function fetchPrices(
   items: { address: string; blockchain: string }[],

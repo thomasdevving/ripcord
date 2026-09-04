@@ -2,24 +2,16 @@
  * THE ENRICHED-ASSESSMENT COMPOSER.
  *
  * `buildEnrichedAssessment(report, assetContext)` is a PURE function of two
- * artifacts that already exist. No chain read, no RPC, no fork, no vendor
- * fetch — the same scope decision `buildAssetCoverage` makes, and for the same
- * reason: a composer that could go and fetch the missing piece would be able to
- * manufacture the evidence its conclusion rests on.
+ * artifacts that already exist — no chain read, no fork, no vendor fetch — for
+ * the same reason `buildAssetCoverage` is: a composer that could fetch the
+ * missing piece could manufacture the evidence its conclusion rests on.
  *
- * See `shared/enriched.ts` for the four rules this file implements. The two
- * that do the most work here:
- *
- *   THE LINK MUST BE EARNED. `linkMismatches` compares target, chain, block
- *   number, block hash and the batch's own fork block. Any disagreement makes
- *   the whole assessment `unusable` and names what differed. This is the only
- *   place a fork result becomes a statement about a specific report, so an
- *   optimistic join here would produce a finding about a block nobody measured.
- *
- *   THE DIRECTION IS CAUTION-ONLY. `confirmed.length === 0` returns `no_change`
- *   before anything else is considered, so no path exists from a clean sidecar
- *   to a softer conclusion. Only a confirmed restrictor can change the outcome,
- *   and only ever toward a stricter one.
+ * See `shared/enriched.ts` for the four rules. The two that do the most work
+ * here: `linkMismatches` compares target, chain, block number, block hash and
+ * the batch's fork block, and any disagreement makes the assessment `unusable`
+ * with the difference named; and `confirmed.length === 0` returns `no_change`
+ * before anything else is considered, so no path exists from a clean sidecar to
+ * a softer conclusion.
  */
 import type { Report } from "../src/report/schema.js";
 import type { AssetContextArtifact } from "./asset-context.js";

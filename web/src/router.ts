@@ -1,15 +1,12 @@
 /**
- * A ~40-line router.
+ * A ~40-line router. There are five routes, and pulling in a routing library for
+ * five would add more bundle and API surface than it removes.
  *
- * There are five routes. Pulling in a routing library for five routes would add
- * more bundle and more API surface than it removes, and the History API does
- * exactly what is needed here.
- *
- * The reason routes exist at all rather than one stateful page: A REPORT URL
- * MUST SURVIVE A REFRESH. `/report/:id` re-fetches the stored report and shows
- * the same thing, and `/analysis/:jobId` reconnects to a run already in flight
- * rather than starting a new one. A single-page app with no URLs would make
- * "share this result" impossible and would restart the analysis on every reload.
+ * The reason routes exist at all rather than one stateful page: A REPORT URL MUST
+ * SURVIVE A REFRESH. `/report/:id` re-fetches the stored report, and
+ * `/analysis/:jobId` reconnects to a run already in flight rather than starting a
+ * new one. A single-page app with no URLs would make "share this result"
+ * impossible and would restart the analysis on every reload.
  */
 import { useEffect, useState } from "react";
 

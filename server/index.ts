@@ -1,24 +1,17 @@
 /**
- * THE PRODUCTION ENTRYPOINT.
+ * THE PRODUCTION ENTRYPOINT. One process serves the built frontend, the API, the
+ * SSE stream and the job runner; anvil is spawned transiently by a job worker,
+ * binds loopback only, and is never exposed.
  *
- * One process serves the built frontend, the API, the SSE stream and the job
- * runner. One Railway service, one replica, one public port. anvil is spawned
- * transiently by a job worker, binds loopback only, and is never exposed.
+ * Startup order is chosen so a misconfiguration is visible BEFORE the port opens
+ * rather than on the first request: config (throws with the variable name), data
+ * dir + write probe (a volume mounted for the wrong user is otherwise a very
+ * confusing runtime error), interrupted-job recovery, anvil probe (its ABSENCE
+ * is a supported state — fork modes are simply not offered), then listen.
  *
- * Startup order is chosen so that a misconfiguration is visible BEFORE the port
- * opens rather than on the first request:
- *   1. config (throws with the variable name on anything invalid)
- *   2. data dir + write probe (a volume mounted for the wrong user fails here,
- *      which is otherwise a very confusing runtime error)
- *   3. interrupted-job recovery (a job that was running at the last shutdown
- *      becomes `interrupted`, never `completed`)
- *   4. anvil probe (its ABSENCE is a supported state: fork modes are simply not
- *      offered, and the scan flow is unaffected)
- *   5. listen
- *
- * A missing RPC is likewise a supported state. The service boots, saved reports
- * stay readable, and /api/config says plainly why Analyze is unavailable — an
- * infrastructure gap must never be presented as a property of a contract.
+ * A missing RPC is likewise supported: saved reports stay readable and
+ * /api/config says why Analyze is unavailable, because an infrastructure gap
+ * must never be presented as a property of a contract.
  */
 import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";

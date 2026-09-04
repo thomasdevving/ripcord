@@ -1,23 +1,18 @@
 /**
- * Server-side request validation.
- *
- * The browser validates too, for immediate feedback. That is a convenience and
- * nothing more: this module is the authority, because a client check is absent
- * the moment somebody uses curl. Everything the API accepts is validated here.
+ * Server-side request validation. The browser validates too, for immediate
+ * feedback; this module is the authority, because a client check is absent the
+ * moment somebody uses curl.
  *
  * THE PART THAT IS NOT MERELY HYGIENE: `block: "latest"` is resolved ONCE, here,
- * and the resulting number is pinned for the entire job. Every later phase — the
- * static scan, the fork, the differential — uses that same number. If each phase
- * resolved "latest" independently they would drift apart during a multi-minute
- * run, and the report would silently describe a state that never existed at any
- * single block. An RPC failure during resolution is a hard error for exactly the
- * same reason: falling back to some other block would be a quiet switch to a
- * different measurement.
+ * and pinned for the entire job. If each phase resolved it independently they
+ * would drift during a multi-minute run and the report would describe a state
+ * that never existed at any single block. An RPC failure during resolution is a
+ * hard error for the same reason.
  *
- * WHAT IS DELIBERATELY NOT ACCEPTED from a request, at any endpoint: an RPC URL,
- * a cache or data path, an anvil flag, a fork port. Those are server
- * configuration. A form that could point our fork at an arbitrary endpoint would
- * make this service a proxy for someone else's traffic.
+ * DELIBERATELY NOT ACCEPTED from a request, at any endpoint: an RPC URL, a cache
+ * or data path, an anvil flag, a fork port. A form that could point our fork at
+ * an arbitrary endpoint would make this service a proxy for someone else's
+ * traffic.
  */
 import { isAddress, getAddress } from "viem";
 import type { ApiError, CreateJobRequest, RunMode } from "./shared/dto.js";

@@ -1,25 +1,19 @@
 /**
- * THE JOB MANAGER — queue, worker lifecycle, event stream, cancellation.
- *
- * One object owns everything that can outlive an HTTP request, because the
+ * THE JOB MANAGER — queue, worker lifecycle, event stream, cancellation. One
+ * object owns everything that can outlive an HTTP request, because the
  * alternative is an orphaned anvil process and a queue that never drains.
  *
- *  - A JOB OUTLIVES ITS REQUEST. Closing the tab does not cancel it, and a
- *    disconnected SSE consumer cannot change the outcome: events accumulate in
- *    a bounded history a reconnecting client resumes from.
- *  - EVERY EVENT HAS A MONOTONIC PER-JOB SEQUENCE, which is what makes reconnect
- *    correct rather than best-effort. A cursor that has fallen off the back of
- *    the history gets a fresh snapshot, not a silent gap — a gap renders as
- *    "nothing happened", precisely the wrong thing to show.
+ *  - A JOB OUTLIVES ITS REQUEST, and a disconnected SSE consumer cannot change
+ *    the outcome: events accumulate in a bounded history a client resumes from.
+ *  - EVERY EVENT HAS A MONOTONIC PER-JOB SEQUENCE, so reconnect is correct
+ *    rather than best-effort. A cursor that has fallen off the back gets a fresh
+ *    snapshot, not a silent gap — a gap renders as "nothing happened".
  *  - CANCELLATION IS AUTHORISED BY A SECRET, NOT BY THE JOB ID, because ids
- *    travel in shareable URLs. The control token is returned once, to the
- *    submitter, and only its hash is stored.
- *  - EVERY EXIT PATH KILLS THE WORKER. Success, failure, timeout, cancellation
- *    and SIGTERM all route through `finish`. The worker owns a process group;
- *    termination signals the group and checks exit before releasing the slot.
+ *    travel in shareable URLs. Only the token's hash is stored.
+ *  - EVERY EXIT PATH KILLS THE WORKER: success, failure, timeout, cancellation
+ *    and SIGTERM all route through `finish`.
  *  - REPEATED SUBMITS DO NOT STACK. Same idempotency key and parameters returns
- *    the existing job; a deliberate re-run omits the key — the distinction is
- *    the user's to make, not something inferred from timing.
+ *    the existing job; a deliberate re-run omits the key.
  */
 import { fork, type ChildProcess } from "node:child_process";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
@@ -68,13 +62,12 @@ interface LiveJob {
   /**
    * Set SYNCHRONOUSLY the moment a `done` or `failed` message arrives.
    *
-   * Node does not order the `message` and `exit` events of a child relative to
-   * each other: a worker that sends its result and then exits can have `exit`
-   * dispatched to us FIRST. Without this flag the exit handler then reports
-   * "stopped unexpectedly" about an analysis that had in fact just succeeded —
-   * observed live on a real Comet run, and reproduced intermittently by the job
-   * tests. `onWorkerMessage` is async (it persists the report), so the record's
-   * own state is not a usable signal here; this flag is.
+   * Node does not order a child's `message` and `exit` events relative to each
+   * other, so a worker that sends its result and then exits can have `exit`
+   * dispatched first — and the exit handler then reports "stopped unexpectedly"
+   * about an analysis that had just succeeded (observed live on a real Comet
+   * run). `onWorkerMessage` is async, so the record's own state is not a usable
+   * signal here; this flag is.
    */
   terminalMessageSeen: boolean;
   writes: Promise<void>;

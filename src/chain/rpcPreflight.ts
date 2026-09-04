@@ -1,21 +1,15 @@
 /**
- * RPC provider preflight (consolidation pass).
- *
- * Two jobs, both about making the provider a first-class, honest input rather
- * than an invisible assumption:
+ * RPC provider preflight — making the provider a first-class, honest input
+ * rather than an invisible assumption. Two jobs:
  *
  *  1. `describeProvider` names the active provider from its URL *host only* —
- *     NEVER the full URL, which carries the API key. This is what the CLI
- *     prints so a human (and the manual-verification log) can see which
- *     provider produced a run, without ever surfacing a secret.
- *
+ *     NEVER the full URL, which carries the API key. The CLI prints it so a
+ *     human can see which provider produced a run without surfacing a secret.
  *  2. `probeMaxLogRange` discovers the provider's real `eth_getLogs` block-range
- *     limit by binary search, once per provider, so the AccessControl event
- *     scan can chunk to the actual limit instead of a guessed constant. This is
- *     the fix for KNOWN EDGE #7: the old fixed 10k-block chunk silently failed
- *     on any provider with a smaller cap. The probe result affects only HOW
- *     logs are fetched (chunk size), never WHAT is reconstructed, so it does
- *     not compromise provider-independence of the reconstructed output.
+ *     limit by binary search, once per provider, so the AccessControl event scan
+ *     chunks to the actual limit instead of a guessed constant (the old fixed
+ *     10k chunk silently failed on any smaller cap). The probe affects only HOW
+ *     logs are fetched, never WHAT is reconstructed.
  */
 import { getAddress, keccak256, toBytes, type Hex } from "viem";
 import { ChainReadError, type ChainReader } from "./client.js";
@@ -63,14 +57,13 @@ const MAX_PROBE_RANGE = 2_000_000n;
 const rangeCache = new WeakMap<ChainReader, bigint>();
 
 /**
- * Binary-searches the largest `toBlock - fromBlock` span the provider accepts
- * for an `eth_getLogs` request, memoized per ChainReader. Uses a log-free probe
+ * Binary-searches the largest `toBlock - fromBlock` span the provider accepts for
+ * an `eth_getLogs` request, memoized per ChainReader. Uses a log-free probe
  * address so only the range rule can trip, never a result-count rule.
  *
- * Fails LOUD if even a single-block range fails: that is not a range limit, it
- * is a broken provider, and pretending the limit is "1" would silently cripple
- * every downstream scan. The ChainReadError is rethrown so the caller surfaces
- * it in `errors[]` rather than guessing.
+ * Fails LOUD if even a single-block range fails: that is a broken provider, not a
+ * range limit, and pretending the limit is "1" would silently cripple every
+ * downstream scan.
  */
 export async function probeMaxLogRange(chain: ChainReader): Promise<bigint> {
   const memo = rangeCache.get(chain);

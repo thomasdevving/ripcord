@@ -1,30 +1,16 @@
 /**
  * The Ripcord report renderer: one pinned JSON report in, one static HTML page
- * out. No backend, no live scanning, no network at render time and none at view
- * time — every page is a pure function of a report that was already generated
- * against a pinned block.
+ * out. No backend, no live scanning, no network at render or view time, and no
+ * JavaScript on the page beyond native <details>.
  *
- * THE RULE THIS FILE EXISTS TO OBEY. Every discipline the schema enforces has to
- * survive into the design, because a renderer that paints uncertainty green
- * undoes the entire project in one stylesheet. Concretely:
- *
- *   - `undetermined` is never a reassuring colour and never a blank. It gets
- *     amber, an explicit wordmark, and a HATCHED bar — because the honest visual
- *     for "this length is not known" is a bar you cannot read a length off.
- *   - A delay that exists but was not proven binding renders hatched at its
- *     NOMINAL length with "not proven binding" attached — never as a confident
- *     window. The reader sees the claimed size and the fact that it is unproven
- *     in the same glance.
- *   - A partial role reconstruction renders with its label and its exact covered
- *     block window, not silently as a complete one.
- *   - Every headline figure goes through FigureLog (scripts/figures.ts), which
- *     records the JSON path it came from. scripts/verify-pages.mjs re-checks
- *     each one against the source report, so "the page matches the JSON" is a
- *     test rather than a promise.
- *
- * Deliberately NOT an app. No routing, no framework, no client state beyond
- * native <details> for the collapsible evidence sections — there is no
- * JavaScript on the page at all.
+ * The schema's discipline has to survive into the design, because a renderer
+ * that paints uncertainty green undoes the project in one stylesheet:
+ * `undetermined` gets amber and a hatched bar (the honest visual for a length
+ * nobody knows), a delay that was not proven binding renders hatched at its
+ * NOMINAL length with the label attached, and a partial role reconstruction
+ * shows its label and covered block window. Every headline figure goes through
+ * FigureLog (scripts/figures.ts) so verify-pages.mjs can re-check it against the
+ * source report.
  */
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync } from "node:fs";
 import { join, basename } from "node:path";
@@ -69,21 +55,15 @@ const TONE_MARK: Record<Tone, string> = { good: "✓", critical: "✕", unknown:
 // --- the hero chart ---------------------------------------------------------
 
 /**
- * One bar of the two-bar comparison, in the four states it can honestly be in.
+ * One bar of the two-bar comparison, in the four states it can honestly be in:
+ * `known` (a number the report asserts, solid), `unproven` (a number it carries
+ * but did not establish — hatched at its nominal length), `unknown` (nothing
+ * established — full hatch, deliberately no length to read off) and `none`
+ * (nothing to measure — a flat tint).
  *
- *   `known`    — a number the report asserts. Solid fill.
- *   `unproven` — a number the report carries but did NOT establish (a nominal
- *                delay; a non-tight lower bound). Hatched, dashed outline.
- *   `unknown`  — no number, because nothing could be established. Full-width
- *                hatch: there is deliberately no length to read off it.
- *   `none`     — no number, because there is nothing to measure (no route to
- *                change the rules was found to exist). A flat tint, NOT the
- *                hatch.
- *
- * `unknown` and `none` must not look the same. Rendering them identically would
- * put back, in the stylesheet, precisely the conflation between "we found
- * nothing" and "there is nothing" that the day-5 assessment split took out of
- * the data — and a reader would have no way to tell the two apart.
+ * `unknown` and `none` must not look the same: rendering them identically would
+ * put the "we found nothing" / "there is nothing" conflation back in the
+ * stylesheet, where a reader has no way to tell the two apart.
  */
 interface BarSpec {
   label: string;

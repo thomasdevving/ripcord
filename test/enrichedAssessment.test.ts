@@ -1,14 +1,10 @@
 /**
  * THE ENRICHED ASSESSMENT — the one place sidecar evidence may reach a
- * conclusion, and therefore the one place worth attacking hardest.
- *
- * Three properties carry the whole design, and each is tested from the
- * direction that would break it rather than the direction that confirms it:
- *
- *   1. It can only ever push toward caution. No input — however clean — may
- *      produce an outcome that softens, clears or reassures.
- *   2. It refuses to join a sidecar to a report it does not belong to.
- *   3. It never modifies the report.
+ * conclusion, and therefore the one place worth attacking hardest. Three
+ * properties carry the design, each tested from the direction that would break
+ * it rather than the one that confirms it: it can only ever push toward caution;
+ * it refuses to join a sidecar to a report it does not belong to; and it never
+ * modifies the report.
  */
 import { describe, expect, it } from "vitest";
 import { buildEnrichedAssessment, linkMismatches } from "../server/enriched.js";

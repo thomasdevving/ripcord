@@ -1,13 +1,11 @@
 /**
  * Recomputes the valuation of every live sidecar from the quotes it already
- * holds. No network, no API quota, no re-stamping of `fetchedAt`.
+ * holds — no network, no API quota, no re-stamping of `fetchedAt`.
  *
  * The valuation rules are the part of the live layer most likely to need
- * correcting — the liquidity threshold was corrected once already, after the
- * first version discarded $93M of entirely real USDT on Curve 3pool. Re-fetching
- * every target through a rate-limited public tier to test a threshold change
- * would be slow and would burn someone's quota for no new information, since
- * both quotes and the liquidity figure are stored per holding.
+ * correcting, and both quotes and the liquidity figure are stored per holding,
+ * so re-fetching through a rate-limited tier to test a threshold change would
+ * burn someone's quota for no new information.
  *
  * Run: pnpm live:revalue
  */

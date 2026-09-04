@@ -1,25 +1,18 @@
 /**
  * ASSET COVERAGE — the shape of "what do we actually know about each asset".
  *
- * Makes the SCOPE OF THE EVIDENCE legible. Explicitly not a risk score, safety
- * rating or coverage percentage: a reader points at one asset and sees where the
- * inventory came from, what was established at the analysis block, which
- * experiment ran, and what nobody has looked at.
- *
- * Four rules shape every type below:
+ * Makes the SCOPE OF THE EVIDENCE legible; explicitly not a risk score, safety
+ * rating or coverage percentage. Four rules shape every type below:
  *  1. THE CHARACTERISTICS ARE INDEPENDENT, NEVER A LADDER from "found" to
  *     "safe". An asset can be vendor-observed with no on-chain evidence, or
  *     appear only in an experiment and never as a holding.
  *  2. ABSENCE IS NEVER PROOF. The inventory is capped, floored and
- *     vendor-filtered, and the dependency scan records an entry only for a
- *     NON-ZERO balance — so a zero leaves no artifact and cannot be reported as
- *     a proven zero.
- *  3. IDENTITY IS (CHAIN, ADDRESS). Never a symbol, name or logo. Native assets
- *     are keyed per chain: the same 0xeeee… sentinel means a different asset on
- *     each one.
+ *     vendor-filtered, and the dependency scan records only NON-ZERO balances,
+ *     so a zero leaves no artifact and cannot be reported as a proven zero.
+ *  3. IDENTITY IS (CHAIN, ADDRESS), never a symbol, name or logo. Natives are
+ *     keyed per chain: the same 0xeeee… sentinel means a different asset on each.
  *  4. ACCOUNT SCOPE IS PART OF THE OBSERVATION. Mobula describes the TARGET's
- *     holdings; the withdrawal baseline uses a SANDBOX HOLDER funded on a fork,
- *     so every experiment record carries the account it exercised.
+ *     holdings; the withdrawal baseline uses a SANDBOX HOLDER funded on a fork.
  *
  * Browser-safe: types and pure constants only, no Node imports.
  */
@@ -109,12 +102,12 @@ export type BalanceEvidence =
   /**
    * The READ did not complete — infrastructure, not the contract.
    *
-   * Kept strictly separate from the two states below. A candidate whose
-   * `balanceOf` reverted, returned nothing, or returned something undecodable
-   * told us something about ITSELF; a candidate whose read timed out told us
-   * only about our own connection. Filing the first group here would repeat, in
-   * the presentation layer, the absence-from-failure defect KNOWN EDGE #31
-   * closed in the read layer.
+   * Kept strictly separate from the two states below: a candidate whose
+   * `balanceOf` reverted or returned something undecodable told us something
+   * about ITSELF, while one whose read timed out told us only about our own
+   * connection. Filing the first group here would repeat, in the presentation
+   * layer, the absence-from-failure defect KNOWN EDGE #31 closed in the read
+   * layer.
    */
   | { state: "read_failed"; account: string; reason: string }
   /** Positively established: there was no contract code at that address at the analysis block. */

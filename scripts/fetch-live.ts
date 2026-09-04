@@ -1,17 +1,9 @@
 /**
- * Pulls the Mobula LIVE layer for every pinned report and writes it to a
- * SIDECAR file — one per report, in a separate directory.
+ * Pulls the Mobula live layer for every pinned report into a SIDECAR file, one
+ * per report, in a separate directory. It never opens a report for writing:
+ * delete calibration/live/ and every verdict and figure is unchanged.
  *
- * The sidecar is the boundary made physical. `calibration/reports/*.json` are
- * the pinned, block-anchored, byte-identical-on-cold-rerun artifacts the whole
- * project rests on; this script never opens them for writing and never adds a
- * field to them. It reads a target address out of each and writes
- * `calibration/live/<label>.json` beside it. Delete that directory and every
- * report, every verdict and every figure is unchanged — which is the property
- * `pnpm determinism` and scripts/verify-boundary.mjs both check.
- *
- * Run:  pnpm live:fetch            (all publishable reports)
- *       pnpm live:fetch --all      (including disclosure-blocked ones)
+ * Run:  pnpm live:fetch [--all]   (--all includes disclosure-blocked reports)
  */
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync } from "node:fs";
 import { join, basename } from "node:path";

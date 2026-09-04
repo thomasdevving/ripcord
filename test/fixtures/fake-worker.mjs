@@ -3,13 +3,10 @@
  *
  * The manager's contract with its worker is: fork it, send one `start`, receive
  * `event`/`done`/`failed` over IPC, and be able to kill it at any moment. That
- * contract is what the tests need to exercise — queueing, sequencing, reconnect
- * cursors, cancellation, timeouts and process cleanup — and none of it needs a
- * real analysis. Driving the actual engine here would make the tests need an
- * RPC endpoint and minutes per case, which is how a suite stops being run.
+ * is what the tests exercise, and none of it needs a real analysis — driving the
+ * engine here would make the tests need an RPC endpoint and minutes per case.
  *
- * Behaviour is selected by the address in the start message, so a test picks a
- * scenario by asking for it:
+ * Behaviour is selected by the address in the start message:
  *
  *   0x…01  emit two events, then succeed with a small report
  *   0x…02  fail with a classified error

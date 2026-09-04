@@ -1,19 +1,16 @@
 /**
  * Chainlink price feeds for the curated MAJOR_TOKENS, used ONLY by the proof
  * engine to convert a drained-balance delta into a dollar headline. Each feed
- * address was verified live against the mainnet fork at block 25800000
- * (latestRoundData() answered, decimals() == 8) before being committed — same
- * discipline as majorTokens.ts and the fixtures.
+ * was verified live at block 25800000 (latestRoundData() answered,
+ * decimals() == 8) before being committed.
  *
- * Pricing is a READ, and like every other read it can fail. When a feed can't
- * be read the proof reports that delta's `usd` as null with the price source
- * recorded — a loud "price unavailable," never a silent $0 that would make a
- * real drain look harmless. Feeds are keyed by the token they price; a token
- * held but absent from this map simply has no USD figure (its delta is still
- * reported in native units).
+ * Pricing is a READ, and can fail: an unreadable feed reports that delta's `usd`
+ * as null with the price source recorded — a loud "price unavailable", never a
+ * silent $0 that would make a real drain look harmless. A held token absent from
+ * this map simply has no USD figure; its delta is still reported in native units.
  *
- * WETH is priced by ETH/USD and WBTC by BTC/USD — the peg is 1:1 by
- * construction (wrapping), noted in `note` so the approximation is explicit.
+ * WETH is priced by ETH/USD and WBTC by BTC/USD — 1:1 by construction (wrapping),
+ * noted in `note` so the approximation is explicit.
  */
 import type { Hex } from "viem";
 

@@ -1,16 +1,12 @@
 /**
  * A curated, non-exhaustive list of major ERC20 tokens checked for target
- * holdings by the dependency graph. This is a deliberate limitation, not an
- * oversight: Ripcord does not run an indexer or a balance-discovery service
- * (explicitly out of scope, see the day-2 brief), so it can only tell you
- * about balances in tokens it already knows to look for. A target holding a
- * large position in a token NOT on this list produces no dependency
- * finding for that token — see KNOWN EDGES in CLAUDE.md.
+ * holdings by the dependency graph. A deliberate limitation, not an oversight:
+ * Ripcord runs no indexer or balance-discovery service, so it can only report
+ * balances in tokens it already knows to look for, and a large position in a
+ * token NOT on this list produces no dependency finding.
  *
- * Every address here was independently verified live against mainnet
- * (chain 1) at block 25800000 — symbol()/decimals() both read and checked
- * against the expected value — before being committed, same discipline as
- * test/fixtures/targets.json.
+ * Every address was independently verified live against mainnet at block
+ * 25800000 — symbol()/decimals() both read and checked — before being committed.
  */
 import type { Hex } from "viem";
 

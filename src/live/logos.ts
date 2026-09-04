@@ -1,17 +1,15 @@
 /**
  * Turns Mobula's remote logo URLs into inline `data:` URIs at FETCH time.
  *
- * This exists because of a rule the site already enforces and should keep:
- * scripts/verify-pages.mjs rejects any page containing a `src="https://…"`, a
- * remote stylesheet, a `<script src>` or a `fetch(`. A rendered Ripcord page is
- * a pure function of data that was already gathered, and it must not reach the
- * network when someone opens it. Hotlinking a third-party CDN would break that
- * for decoration, and would also leak every page view to that CDN.
+ * A rendered Ripcord page is a pure function of data already gathered and must
+ * not reach the network when someone opens it — verify-pages.mjs rejects any
+ * remote `src`, stylesheet, script or `fetch(`. Hotlinking a third-party CDN
+ * would break that for decoration and leak every page view to that CDN.
  *
- * So the image is fetched once, here, and embedded. If anything goes wrong —
- * timeout, 404, a file larger than the cap, a content type that is not an image —
- * the result is `null` and the renderer falls back to a text monogram. A missing
- * logo is cosmetic; a page that phones home is not.
+ * So the image is fetched once, here, and embedded. Anything going wrong —
+ * timeout, 404, oversized file, a non-image content type — yields `null` and the
+ * renderer falls back to a text monogram: a missing logo is cosmetic, a page
+ * that phones home is not.
  */
 
 /** Above this, the logo is dropped rather than inlined — pages stay small and diffable. */

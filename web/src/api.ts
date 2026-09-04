@@ -5,16 +5,14 @@
  * base URL and no `VITE_` variable: the app is served by the process that owns
  * the API, so a second host would only be a second thing to secure.
  *
- * THE PROGRESS CHANNEL is SSE with polling as a genuine fallback, not a
- * degraded mode. Both read the same event log through the same `seq` cursor, so
- * they cannot tell different stories — and conference wifi behind a buffering
- * proxy is exactly the environment this has to work in.
+ * THE PROGRESS CHANNEL is SSE with polling as a genuine fallback, not a degraded
+ * mode. Both read the same event log through the same `seq` cursor, so they
+ * cannot tell different stories.
  *
  * THE ONE INVARIANT WORTH STATING: this file computes NO risk conclusion. It
  * moves bytes. Verdicts, notices, route minima and uncertainty all arrive
  * already decided by the server, because a second implementation of that logic
- * in the browser would eventually disagree with the first, and the one on screen
- * is the one people would believe.
+ * in the browser would eventually disagree with the first.
  */
 import type {
   ApiError,
@@ -108,13 +106,11 @@ export interface StreamHandlers {
 /**
  * Subscribes to a job's events, preferring SSE and falling back to polling.
  *
- * `getCursor` is a callback rather than a value so a reconnect resumes from
- * what the caller has ACTUALLY APPLIED, not from where this function last was.
- * Those differ after a re-snapshot, and resuming from the wrong one silently
- * replays or skips events.
- *
- * Returns an unsubscribe function. Unsubscribing detaches this listener only —
- * the server-side job keeps running, by design.
+ * `getCursor` is a callback rather than a value so a reconnect resumes from what
+ * the caller has ACTUALLY APPLIED, not from where this function last was — those
+ * differ after a re-snapshot, and resuming from the wrong one silently replays or
+ * skips events. Unsubscribing detaches this listener only; the server-side job
+ * keeps running, by design.
  */
 export function streamJobEvents(jobId: string, getCursor: () => number, handlers: StreamHandlers): () => void {
   let closed = false;
