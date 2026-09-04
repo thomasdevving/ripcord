@@ -44,6 +44,7 @@ const ALREADY_SEVERE = new Set(["no_notice", "trapped"]);
 
 const SCOPE_NOTES = [
   "This statement is composed from the pinned report and a separate, experimental per-asset fork pass. It does not modify the report, its verdict, or any figure in it.",
+  "A base asset marked as covered by the primary report is linked for provenance only and is not counted as an additional per-asset experiment.",
   "Only a demonstrated restriction can appear here. A candidate that produced no restriction contributes nothing to the conclusion and is listed separately.",
   "The assets named are the assets tested. Nothing is claimed about assets, exit routes, privileged functions, argument values, call sequences or economic conditions that were not.",
   "Every position was created on a fork. No mainnet transaction, private key or approval was used, and the guarding party was impersonated rather than authorised.",
@@ -201,6 +202,10 @@ export function buildEnrichedAssessment(
   let noEffect = 0;
 
   for (const scenario of batch.scenarios) {
+    // The base asset can be carried into the batch as a provenance link to the
+    // primary experiment. It is not new evidence from the per-asset pass and
+    // must not inflate either the considered or unresolved totals.
+    if (scenario.state === "covered_by_primary_report") continue;
     const asset = assetFor(scenario, chainRef, symbolOf);
     if (scenario.state === "restrictor_confirmed") {
       confirmed.push({
@@ -220,13 +225,14 @@ export function buildEnrichedAssessment(
   }
 
   const counts = {
-    considered: batch.scenarios.length,
+    considered: confirmed.length + unconfirmed.length,
     confirmed: confirmed.length,
     noEffect,
     unresolved: unconfirmed.length - noEffect,
   };
-  // Every candidate is either confirmed or listed, so a reader can always
-  // reconcile the total against the batch it came from.
+  // Every additional candidate is either confirmed or listed. The linked base
+  // row is deliberately outside these counts because the primary report owns
+  // that experiment.
   const scopeNotes = noEffect > 0 ? [...SCOPE_NOTES, NO_EFFECT_NOTE] : SCOPE_NOTES;
 
   // THE CAUTION-ONLY GATE. Reached before any outcome that says something, so

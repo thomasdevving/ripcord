@@ -101,7 +101,6 @@ describe("the enriched assessment never softens a conclusion", () => {
     "role_unresolved",
     "token_interface_rejected",
     "read_failed",
-    "covered_by_primary_report",
   ];
 
   for (const state of cleanStates) {
@@ -114,6 +113,19 @@ describe("the enriched assessment never softens a conclusion", () => {
       expect(result.counts.considered).toBe(2);
     });
   }
+
+  it("does not count the primary-report base asset as an additional Mobula experiment", () => {
+    const result = buildEnrichedAssessment(
+      report(),
+      withScenarios([
+        scenario(WETH, "covered_by_primary_report"),
+        scenario(WBTC, "no_effect"),
+      ]),
+    );
+    expect(result.outcome.status).toBe("no_change");
+    expect(result.counts).toEqual({ considered: 1, confirmed: 0, noEffect: 1, unresolved: 0 });
+    expect(result.unconfirmed.map((item) => item.address)).toEqual([WBTC]);
+  });
 
   it("makes no reassuring claim in the text that carries the conclusion", () => {
     const result = buildEnrichedAssessment(report(), withScenarios([scenario(WETH, "no_effect")]));
