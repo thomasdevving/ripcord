@@ -835,7 +835,7 @@
                 <div class="layer-item"><span class="layer-num">01</span><div><strong>Discover</strong><p>Use every returned identity—not only the visible or priced top 12.</p></div></div>
                 <div class="layer-item"><span class="layer-num">02</span><div><strong>Verify</strong><p>Check up to 64 same-chain ERC20s at the pinned block, including explicit zero balances.</p></div></div>
                 <div class="layer-item"><span class="layer-num">03</span><div><strong>Test</strong><p>Ask Compound for the asset role; run real approve, supply and withdraw paths from an isolated snapshot.</p></div></div>
-                <div class="layer-item"><span class="layer-num">04</span><div><strong>Disclose</strong><p>Show every exclusion and unresolved state. Never convert missing evidence into safety.</p></div></div>
+                <div class="layer-item"><span class="layer-num">04</span><div><strong>Compose</strong><p>Attach only after target, chain, block and hash match; broaden evidence, never soften the verdict.</p></div></div>
               </div>
               <div class="boundary-strip">Timestamped vendor input → separate sidecar → core verdict unchanged</div>
             </article>
@@ -844,7 +844,7 @@
       </div>
       <aside class="speaker-notes">
         <strong>4:25–5:10 · Mobula implementation</strong><br />
-        “The core report finishes first. Mobula then adds a separate, opt-in second layer. It proposes every asset identity from the fresh holdings response—not only the priced top twelve. Ripcord selects up to sixty-four same-chain ERC20s, verifies their code and target balance at the pinned block, and itemises anything it excludes. For Compound, even a verified zero-balance candidate can continue: Ripcord asks Compound whether it is registered collateral, seeds an isolated holder only inside Anvil, executes the real approve, supply and withdraw paths, then repeats the exit after the guardian pause. Every asset gets its own snapshot. This expands evidence coverage, but the live vendor data never changes the deterministic verdict.”
+        “The core report finishes first. Mobula then adds a separate, opt-in second layer. It proposes every asset identity from the fresh holdings response—not only the priced top twelve. Ripcord selects up to sixty-four same-chain ERC20s, verifies their code and target balance at the pinned block, and itemises anything it excludes. For Compound, even a verified zero-balance candidate can continue: Ripcord asks Compound whether it is registered collateral, seeds an isolated holder only inside Anvil, executes the real approve, supply and withdraw paths, then repeats the exit after the guardian pause. Every asset gets its own snapshot. The final composer accepts the sidecar only when target, chain, block number and block hash match. Confirmed evidence can broaden the finding, but Mobula never rewrites or softens the deterministic verdict.”
       </aside>
     </section>
 

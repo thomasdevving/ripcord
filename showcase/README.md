@@ -26,6 +26,9 @@ Ripcord site, select the opt-in Mobula second layer for Compound III, start the
 analysis and then use the completed Compound report for the explanation. Spend
 roughly 2:50 on the product. Return to slide 4 for the technical process.
 
+The exact read-aloud scripts and failure fallbacks for the recorded backup and
+the live product demo are in [`DEMO_SCRIPTS.md`](DEMO_SCRIPTS.md).
+
 If the live product fails, return to slide 3 and press `B`. The backup sequence
 shows the authority map, fork differential and zero-second verdict at projector
 scale. Press `B` after the third backup slide to resume at the process slide.
