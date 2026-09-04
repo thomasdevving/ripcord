@@ -1,36 +1,28 @@
 /**
  * Deriving the aggregate enumeration witness — FAIL-CLOSED.
  *
- * The exit window is the minimum notice across every authority route. That
- * arithmetic is only sound over a route set that was fully seen: an
- * un-enumerated role holding a zero-notice power makes the minimum a minimum of
- * the wrong set, and the verdict comes out reassuring about a protocol nobody
- * can leave in time. Role enumeration goes partial routinely — a provider that
- * caps `eth_getLogs` turns the event replay into a bounded recent window — and
- * until this module existed that partiality was recorded per scan and read by
- * nothing downstream.
+ * The exit window is the minimum notice across every authority route, and that
+ * arithmetic is sound only over a route set that was fully seen: an
+ * un-enumerated role holding a zero-notice power makes it a minimum of the WRONG
+ * SET. Role enumeration goes partial routinely — a provider that caps
+ * `eth_getLogs` turns the event replay into a bounded recent window — and until
+ * this module existed that partiality was recorded per scan and read by nothing.
  *
- * Two live instances out of 26 calibration protocols, and the pair is the reason
- * this is an AGGREGATE and not a flag on the target:
- *
+ * Two live instances out of 26 protocols, and the pair is why this AGGREGATES
+ * rather than sitting on the target:
  *   Ethena Minting — its own scan covered 6,750 of 5.66M blocks and recovered
- *     only DEFAULT_ADMIN_ROLE (0 members). Verdict: `can_exit_in_time`,
- *     `missing: []`, window `binding` at `confidence: high`.
- *   Ethena USDe   — NOT an AccessControl contract, so a target-only check calls
- *     it complete. Its single authority route terminates at a
- *     TimelockController whose OWN roles were partially enumerated — and a
- *     timelock's PROPOSER/EXECUTOR/TIMELOCK_ADMIN holders are precisely what
- *     "this delay is binding" rests on. Same verdict, one hop deeper.
+ *     only DEFAULT_ADMIN_ROLE, yet reported `can_exit_in_time`, `missing: []`.
+ *   Ethena USDe — not an AccessControl contract, so a target-only check calls it
+ *     complete; but its single route terminates at a TimelockController whose
+ *     OWN roles were partially enumerated, and a timelock's PROPOSER/EXECUTOR
+ *     holders are precisely what "this delay is binding" rests on.
  *
- * THE DERIVATION RULE, and the reason this file is separate and small enough to
- * read in one sitting: **completeness is a positive claim.** `complete` is true
- * only where every enumeration site positively reported completeness. Every
- * other shape — a missing reconstruction, an `undefined` flag, a stage that
- * threw and was replaced by a fallback, a contract whose deployment block could
- * not be found so the scan never ran — is INCOMPLETE. Reading an absent flag as
- * "complete" would launder a failed read into a fact, which is the exact bug
- * class this witness closes; introducing it here, inside the fix, would be the
- * worst possible place for it. Hence `=== true` throughout, never `!== false`.
+ * THE DERIVATION RULE: completeness is a POSITIVE claim. `complete` is true only
+ * where every site positively reported it; a missing reconstruction, an
+ * `undefined` flag, a stage that threw, a deployment block that could not be
+ * found are all INCOMPLETE. Reading an absent flag as complete would launder a
+ * failed read into a fact — the exact bug this witness closes — so `=== true`
+ * throughout, never `!== false`.
  */
 import {
   enumerationSiteKey,
@@ -99,47 +91,31 @@ function walkNodes(node: AuthorityNode, gaps: EnumerationGap[]): void {
 
 
 /**
- * THE CAPABILITY-SURFACE JUDGEMENT (added after Compound III proved role
- * enumeration is not the only way the picture can be incomplete).
+ * THE CAPABILITY-SURFACE JUDGEMENT.
  *
- * The original witness asked whether ROLE enumeration was complete. Comet passed
- * that test and was still wrong: a fully-resolved implementation, a decoded
- * dispatcher, `reconstruction` clean — and a `pause(bool,bool,bool,bool,bool)`
- * sitting in its 67 `unmatchedSelectors`, guarded, callable by a 5-of-N Safe
- * that can shut withdrawals with no notice at all. The report said "You can exit
- * before the rules CAN change." A holder reading that would believe the door
- * stays open.
+ * The original witness asked whether ROLE enumeration was complete. Compound III
+ * passed that test and was still wrong: a decoded dispatcher, a clean
+ * `reconstruction`, and a `pause(bool,bool,bool,bool,bool)` sitting in its 67
+ * `unmatchedSelectors`, guarded, callable by a Safe that can shut withdrawals
+ * with no notice. The report said "You can exit before the rules CAN change."
  *
- * The failure was not in any detector. `capabilities` recorded the selector
- * honestly, and `timeToExit.blockable` said in its own note that "unmatched
- * selectors were not evaluated for privilege". But `blockable` is computed from
- * TAXONOMY-MATCHED findings, so an unmatched selector is invisible to it BY
- * CONSTRUCTION, however privileged it is — and the composition layer turned that
- * silence into reassurance. Same shape as KNOWN EDGE #24, one layer down.
+ * No detector was at fault. `capabilities` recorded the selector, and
+ * `timeToExit.blockable` noted that unmatched selectors were not evaluated —
+ * but `blockable` is computed from TAXONOMY-MATCHED findings, so an unmatched
+ * selector is invisible to it by construction, and the composition layer turned
+ * that silence into reassurance.
  *
- * WHY THE RULE IS NOT "ANY UNMATCHED SELECTOR". Measured before it was written:
- * all 26 calibration reports have unmatched selectors, so that rule would delete
- * every reassuring verdict in the set — including WETH9's, which was earned by
- * deriving all 11 of its selectors and confirming none is privileged. A rule
- * that fires everywhere discriminates nowhere.
- *
- * THE DISCRIMINATOR IS WHO COULD CALL ONE. An unevaluated selector is only a
- * risk if some party holds privilege over this contract. WETH9 and wstETH have
- * no owner, no pendingOwner, no proxy admin, no role members and no authority
- * indirection — there is nobody for an unevaluated selector to be privileged
- * FOR, so theirs are harmless and their true negative survives. Comet has a
- * timelock governor, a proxy admin and a guardian pointer, any of which might
- * hold one of 67 unevaluated selectors.
+ * The rule is not "any unmatched selector": all 26 calibration reports have
+ * some, so that would delete every reassuring verdict including WETH9's, earned
+ * by deriving all 11 of its selectors. THE DISCRIMINATOR IS WHO COULD CALL ONE.
+ * WETH9 and wstETH have no owner, no proxy admin, no role members and no
+ * indirection marker — nobody for an unevaluated selector to be privileged FOR.
  *
  * So: a reassuring assessment may not stand while a privileged party exists AND
- * the privileged surface was not fully evaluated. Subtractive only — it can
- * withhold the witness, never fabricate a route — and caution-only in direction,
- * exactly like every other gap here.
- *
- * "Fully evaluated" is a POSITIVE claim, in keeping with the rest of this file:
- * the dispatcher must have been decoded AND every selector it recovered must
- * have been classified. One implementation address resolved is not enough; a
- * dispatcher that failed to parse is not "no selectors", it is "no answer".
+ * the privileged surface was not fully evaluated. Subtractive and caution-only.
+ * "Fully evaluated" is a POSITIVE claim: the dispatcher decoded AND every
+ * recovered selector classified. A dispatcher that failed to parse is not "no
+ * selectors", it is "no answer".
  */
 function judgeCapabilitySurface(args: {
   capabilities: CapabilitiesResult | null;

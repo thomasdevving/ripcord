@@ -1,41 +1,27 @@
 /**
  * ASSET COVERAGE — the shape of "what do we actually know about each asset".
  *
- * This model exists to make the SCOPE OF THE EVIDENCE legible. It is explicitly
- * not a risk score, not a safety rating and not a coverage percentage. Its job
- * is to let a reader point at one asset and say: here is where the inventory
- * came from, here is what was established at the analysis block, here is the
- * experiment that was run, and here is what nobody has looked at.
+ * Makes the SCOPE OF THE EVIDENCE legible. Explicitly not a risk score, safety
+ * rating or coverage percentage: a reader points at one asset and sees where the
+ * inventory came from, what was established at the analysis block, which
+ * experiment ran, and what nobody has looked at.
  *
- * FOUR RULES SHAPE EVERY TYPE BELOW.
- *
- *  1. THE CHARACTERISTICS ARE INDEPENDENT, NEVER A LADDER. There is no single
- *     field running from "found" to "safe". An asset can be observed by the
- *     vendor and have no on-chain evidence; it can have a verified balance and
- *     never have been in an experiment; it can appear only in an experiment and
- *     never have been a holding. Collapsing those into one status would invent a
- *     progression the evidence does not have.
- *
- *  2. ABSENCE IS NEVER PROOF. "Not listed in this snapshot" does not mean the
- *     asset is absent — the inventory is capped, floored and vendor-filtered.
- *     "No recorded balance evidence" does not mean the balance is zero — the
- *     dependency scan records an entry only for a NON-ZERO balance, so a zero
- *     leaves no artifact at all and cannot be reported as a proven zero.
- *
- *  3. IDENTITY IS (CHAIN, ADDRESS). Never a symbol, never a name, never a logo,
- *     never an address without a chain. Native assets are their own kind: the
- *     same 0xeeee… sentinel means a different asset on every chain, so it is
- *     keyed by chain and never merged.
- *
+ * Four rules shape every type below:
+ *  1. THE CHARACTERISTICS ARE INDEPENDENT, NEVER A LADDER from "found" to
+ *     "safe". An asset can be vendor-observed with no on-chain evidence, or
+ *     appear only in an experiment and never as a holding.
+ *  2. ABSENCE IS NEVER PROOF. The inventory is capped, floored and
+ *     vendor-filtered, and the dependency scan records an entry only for a
+ *     NON-ZERO balance — so a zero leaves no artifact and cannot be reported as
+ *     a proven zero.
+ *  3. IDENTITY IS (CHAIN, ADDRESS). Never a symbol, name or logo. Native assets
+ *     are keyed per chain: the same 0xeeee… sentinel means a different asset on
+ *     each one.
  *  4. ACCOUNT SCOPE IS PART OF THE OBSERVATION. Mobula describes the TARGET's
- *     holdings. The withdrawal baseline uses a SANDBOX HOLDER that Ripcord
- *     funded on a fork. A successful sandbox withdrawal of USDC says nothing
- *     about the target's own USDC, and every experiment record therefore carries
- *     the account it actually exercised.
+ *     holdings; the withdrawal baseline uses a SANDBOX HOLDER funded on a fork,
+ *     so every experiment record carries the account it exercised.
  *
- * Browser-safe: types and pure constants only, no Node imports. The composer
- * that produces it lives outside the pinned analysis chain and its output never
- * enters the deterministic report JSON.
+ * Browser-safe: types and pure constants only, no Node imports.
  */
 
 /** Bump when the composition rules or this shape change. */

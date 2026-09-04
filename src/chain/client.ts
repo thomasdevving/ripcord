@@ -148,66 +148,26 @@ async function withTransientRetry<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 /**
- * Positively identifies a CONTRACT REVERT — the day-6 semantic-audit fix, and
- * the most load-bearing few lines in this file.
+ * Positively identifies a CONTRACT REVERT.
  *
- * THE BUG THIS CLOSES. Until now `call`/`probeCall` asked the opposite
- * question: "does this failure look TRANSIENT?" If not, the failure was
- * recorded — and permanently CACHED — as `reverted: true`. That is fail-OPEN,
- * and it matters because roughly twenty call sites downstream read a revert as
- * a fact about the CONTRACT: `owner()` reverted therefore no owner,
- * `DEFAULT_ADMIN_ROLE()` reverted therefore not AccessControl, `balanceOf()`
- * reverted therefore nothing held. An infrastructure failure that slipped
- * through the transient patterns became, silently and permanently, an absence.
+ * The inverted question is the point. Asking "does this failure look
+ * transient?" and treating everything else as a revert is fail-OPEN: ~20 call
+ * sites read a revert as a fact about the CONTRACT (`owner()` reverted therefore
+ * no owner), so an infrastructure failure became a permanently cached absence.
+ * A non-archive endpoint fails exactly that way on every pinned read, and the
+ * resulting clean report is byte-identical cold and warm, so the determinism
+ * gate cannot catch it.
  *
- * This is not hypothetical. Three realistic failures were reproduced live
- * against a real provider during the day-6 audit, and NONE of them matched a
- * single transient pattern:
+ * So a result is a revert only when something positively says so — all four
+ * signals derived from live observation (scripts/audit-error-shapes.ts): raw
+ * revert bytes in the cause chain, viem's ExecutionRevertedError, RPC code 3,
+ * or the node's own "execution reverted". Genuine reverts carry the last three
+ * together, including no-data and custom-error reverts.
  *
- *   bad/expired API key   -32600  "Must be authenticated!"
- *   unreachable endpoint  (none)  "fetch failed" / "bad port"
- *   block not available   -32001  "block not found: 0x…"
- *
- * The third is the one to dwell on: every Ripcord read is pinned to a
- * HISTORICAL block, so a non-archive endpoint fails exactly this way — and
- * would have produced a complete, schema-valid, confidently clean report in
- * which every contract has no owner, no roles, and no capabilities. The
- * determinism gate cannot catch it either: such a report is byte-identical
- * cold and warm, because the failure is consistent. It is precisely the
- * false-clean result this project exists to make impossible, reached through
- * the cache rather than through a detector, and it is the FIFTH defect to
- * enter through this boundary.
- *
- * THE FIX IS THE INVERSION, not a longer pattern list. Adding "Must be
- * authenticated" and friends to TRANSIENT_PATTERNS would fix these three and
- * leave the class wide open, because the residual is unbounded: it is every
- * failure mode of every provider nobody has met yet. So the question is
- * inverted to the fail-CLOSED direction — a result is a revert only when
- * something positively says so; everything else is infrastructure and throws.
- * Same discipline as `report/enumeration.ts`'s `=== true`: completeness, and
- * now revert-ness, is a positive claim.
- *
- * WHAT COUNTS AS POSITIVE, all four derived from live observation rather than
- * memory (`scripts/audit-error-shapes.ts` reproduces the table):
- *   1. raw revert bytes anywhere in the cause chain — only the EVM makes those;
- *   2. viem's own `ExecutionRevertedError` in the chain;
- *   3. an RPC error carrying EIP-1474 code 3 ("execution error");
- *   4. the node's own message saying `execution reverted`.
- * Every genuine revert observed carries 2, 3 and 4 together — including the
- * ones with NO revert data at all (KNOWN EDGE #4's USDT case) and custom-error
- * reverts (sUSDe's `OperationNotAllowed()`), which is what makes the tight
- * classifier safe for the existing calibration set rather than merely
- * theoretically better.
- *
- * DELIBERATELY EXCLUDED: viem's `nodeMessage` regex also matches "gas required
- * exceeds allowance", which is a gas-configuration failure, not a contract
- * decision. Reading it as a revert would reintroduce the bug in miniature.
- *
- * THE COST IS THE RIGHT WAY ROUND. A genuine revert phrased in some way all
- * four tests miss now becomes a loud `errors[]` entry instead of a silent
- * absence: visible, arguable, and blocking a reassuring verdict through the
- * enumeration witness. Wrong in the safe direction, which is the whole trade
- * this project makes everywhere else.
+ * Deliberately excluded: viem's regex also matches "gas required exceeds
+ * allowance", a gas-configuration failure rather than a contract decision. The
+ * cost is the right way round — a revert all four tests miss becomes a loud
+ * errors[] entry instead of a silent absence.
  */
 const REVERT_MESSAGE = /execution reverted/i;
 

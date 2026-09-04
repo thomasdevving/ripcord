@@ -1,29 +1,21 @@
 /**
  * OPTIONAL, TYPED OBSERVATION of an in-flight analysis.
  *
- * The web layer needs to show a scan happening rather than a spinner that ends
- * in a wall of JSON. That requirement must not be allowed to reach into the
- * engine, so this module is shaped by three constraints:
+ * The web layer needs to show a scan happening rather than a spinner ending in a
+ * wall of JSON, and that requirement must not reach into the engine. Three
+ * constraints shape the module:
  *
  *  1. IT CANNOT CHANGE THE RESULT. Every hook is optional, returns void, and is
- *     invoked through `notify` below, which contains the only justified catch in
- *     this file: a presentation callback that throws must not alter, abort or
- *     degrade a deterministic report. It is not silent — it writes a warning to
- *     stderr — but it is contained. A report produced with an observer attached
- *     is byte-identical to one produced without, and `test/observer.test.ts`
- *     asserts exactly that.
- *
- *  2. IT CARRIES NO TRANSPORT METADATA. No timestamps, no sequence numbers, no
- *     job ids. Those are stamped on by the server (server/shared/dto.ts). If a
- *     wall-clock time were minted here it would be one refactor away from being
- *     recorded as evidence, and evidence with a wall-clock in it is no longer
- *     reproducible.
- *
- *  3. IT PASSES ALREADY-COMPUTED VALUES, never re-derived ones. Each hook hands
- *     over the very object the stage produced. The alternative — the observer
- *     computing its own view of "who holds power" — is a second implementation
- *     of the risk logic, and two implementations disagree eventually. The web
- *     layer renders these; it never recomputes them.
+ *     invoked through `notify`, which holds the only justified catch here: a
+ *     presentation callback that throws must not alter or abort a deterministic
+ *     report. Not silent — it warns on stderr — but contained.
+ *     test/observer.test.ts asserts byte-identity with and without an observer.
+ *  2. IT CARRIES NO TRANSPORT METADATA. No timestamps, sequence numbers or job
+ *     ids; the server stamps those. A wall-clock minted here would be one
+ *     refactor away from being recorded as evidence.
+ *  3. IT PASSES ALREADY-COMPUTED VALUES, never re-derived ones. An observer
+ *     computing its own view of "who holds power" is a second implementation of
+ *     the risk logic, and two implementations disagree eventually.
  *
  * Stage names and their ORDER mirror `buildReport`'s real `runStage` calls. They
  * are not a storyboard and must not be reordered to suit an animation.

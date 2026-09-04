@@ -1,51 +1,26 @@
 /**
  * THE ASSET-COVERAGE COMPOSER.
  *
- * `buildAssetCoverage(report, liveExposure, assetContext)` is a PURE function of artifacts
- * that already exist. It performs no chain read, no RPC call, no fork and no
- * Mobula fetch. That is a scope decision, not a convenience: the point of this
- * panel is to show what the existing evidence does and does not cover, and a
- * composer that could go and fetch the missing piece would quietly erase the
- * very gaps it exists to display.
+ * A PURE function of artifacts that already exist: no chain read, no RPC, no
+ * fork, no Mobula fetch. That is a scope decision — the panel exists to show
+ * what the evidence does and does not cover, and a composer that could fetch
+ * the missing piece would erase the gaps it exists to display. It lives outside
+ * the pinned chain and never enters the deterministic report JSON.
  *
- * IT LIVES OUTSIDE THE PINNED CHAIN. Nothing in src/report, src/detect,
- * src/chain or src/fork imports it, and its output never enters the
- * deterministic report JSON — it is served as a separate envelope. That keeps
- * `verify:boundary` true and the verdict free of market data.
- *
- * ---------------------------------------------------------------------------
- * THE FIVE JUDGEMENTS THIS FILE MAKES, AND WHY EACH IS CONSERVATIVE
- * ---------------------------------------------------------------------------
- *
- * 1. IDENTITY IS (CHAIN, ADDRESS). Mobula says `evm:1`; the report says `1`.
- *    Both normalise to `evm:<n>`. A source that gives no usable chain yields a
- *    null chainRef, and a null chainRef can never produce a positive match —
- *    it lands in `chain_unclear` and stays there.
- *
- * 2. NATIVE ASSETS ARE PER-CHAIN AND NEVER MERGED. The 0xeeee… sentinel is the
- *    same string on every chain while meaning a different asset on each, so it
- *    is keyed `evm:N|native`. The live layer already learned this the expensive
- *    way — an address-keyed map once quoted ETH at BNB's price.
- *
- * 3. A MISSING DEPENDENCY ENTRY IS NOT A ZERO BALANCE. `detectDependencies`
- *    writes an entry only when the balance is NON-ZERO (`isMeaningfulBalance`),
- *    and `continue`s silently otherwise. So a real zero leaves no artifact
- *    whatsoever, and absence from `dependencies.tokens[]` is unusable as
- *    evidence of anything. A failed read is different — that one IS recorded,
- *    as an `unknowns[]` entry — so the two are told apart and reported
- *    differently.
- *
- * 4. FORK LINKAGE MUST BE EARNED FROM EVIDENCE. An asset is attached to the
- *    withdrawal experiment only when the report carries a `baseToken()` read
- *    whose recorded `params.address` is the target and whose `rawValue` is that
- *    asset's address. Older reports do not record `params.address` at all; for
- *    those the link is reported as unestablished rather than inferred from the
- *    protocol name or the fact that the archetype happens to be Comet.
- *
- * 5. ACCOUNT SCOPE TRAVELS WITH THE RESULT. The withdrawal baseline exercises a
- *    SANDBOX HOLDER, not the target. Every experiment record says whose account
- *    it was, so a successful sandbox withdrawal of USDC can never be read as
- *    "the target's USDC was withdrawn".
+ * The five judgements, all conservative:
+ *  1. Identity is (chain, address), both normalised to `evm:<n>`. A null
+ *     chainRef can never produce a positive match; it lands in `chain_unclear`.
+ *  2. Native assets are keyed per chain. The 0xeeee… sentinel is the same
+ *     string everywhere while meaning a different asset on each chain.
+ *  3. A MISSING dependency entry is not a zero balance — detectDependencies
+ *     records only NON-ZERO balances, so a real zero leaves no artifact. A
+ *     FAILED read is recorded in unknowns[] and reported separately.
+ *  4. Fork linkage must be earned: an asset attaches to the withdrawal
+ *     experiment only via a `baseToken()` read whose params.address is the
+ *     target. Older reports lack that field and report the link unestablished
+ *     rather than inferring it from the protocol name.
+ *  5. Account scope travels with the result. The baseline exercises a SANDBOX
+ *     HOLDER, so a successful sandbox withdrawal is never the target's.
  */
 import type { Report } from "../src/report/schema.js";
 import type { LiveExposure, LiveHolding } from "../src/live/exposure.js";

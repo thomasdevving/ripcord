@@ -1,48 +1,28 @@
 /**
- * The verdict (day 4, part 3): the two sides composed into one judgement.
+ * The verdict: the two sides composed into one judgement.
  *
- * This is a PURE function of the two assessments — no chain access, no I/O —
- * because the composition rules are the part an auditor will argue with, and
- * rules you can argue with should be rules you can test exhaustively without a
- * network. Everything it needs is already evidence-backed upstream; its job is
- * to combine, not to discover.
+ * A PURE function of the two assessments — no chain access — because the
+ * composition rules are the part an auditor will argue with, and those should
+ * be exhaustively testable without a network.
  *
- * THE COMPARISON:
- *   time-to-exit >= exit-window  →  you cannot finish leaving before the rules
- *                                   CAN change.
+ * The comparison is `timeToExit >= exitWindow` → trapped. `>=`, not `>`:
+ * sUSDe reads an 86400s cooldown against an 86400s owner-timelock, so you
+ * become free to move at precisely the moment the change becomes executable.
+ * That is a dead heat, not an escape, and `marginSeconds` is published so it
+ * reads as one.
  *
- * `>=`, not `>`, and the difference is not pedantry. sUSDe at the pinned block
- * is the live case that forces it: `cooldownDuration()` reads 86400 and its
- * owner is a TimelockController whose `getMinDelay()` also reads 86400. If you
- * start leaving the instant a change is queued, you become free to move at
- * precisely the moment the change becomes executable. That is a dead heat, not
- * an escape. `marginSeconds` is published alongside so a dead heat reads as
- * one rather than vanishing into a category.
+ * `no_notice` is its own status because with a zero-notice route the
+ * comparison COLLAPSES rather than coming out badly — there is nothing to be
+ * faster than. Same conclusion, different reason, and the reason is what an
+ * auditor checks.
  *
- * WHY `no_notice` IS ITS OWN STATUS, not just `trapped`:
- *   When some route imposes zero notice, the comparison does not merely come
- *   out badly — it stops being a comparison. A change that requires no waiting
- *   and your exit are not orderable events: there is nothing to be faster
- *   than. Reporting that as `trapped` alongside a computed margin would imply
- *   an arithmetic that was never performed. The conclusion is the same; the
- *   REASON is different, and the reason is what an auditor checks.
+ * A crisp verdict needs both sides determined and the time-to-exit side
+ * `tight`; anything less is `undetermined` with `missing[]` naming what is
+ * absent. One asymmetry is deliberate: a non-tight bound can still yield
+ * `trapped` (a floor above the window can only grow) but never
+ * `can_exit_in_time`. Uncertainty pushes toward caution, never away.
  *
- * HOW IT DEGRADES:
- *   A crisp verdict requires BOTH sides to be determined, and the time-to-exit
- *   side to be `tight` (see timeToExit.ts — a lower bound with a named gap
- *   cannot support "you can exit in time," though it can still support
- *   "you cannot"). Anything less returns `undetermined` with `missing[]`
- *   naming exactly what is absent. A well-chosen "cannot determine — here is
- *   what is missing" is a correct answer; a crisp wrong one is not.
- *
- *   One asymmetry is deliberate and worth stating: a NON-tight time-to-exit
- *   can still yield `trapped`, because a lower bound that already exceeds the
- *   window can only grow. It can never yield `can_exit_in_time`, because the
- *   unmeasured legs could be arbitrarily long. The uncertainty is allowed to
- *   push the verdict toward caution and never away from it.
- *
- * CAPABILITY, NOT INTENT, in every string: "before the rules CAN change,"
- * never "will."
+ * Capability, not intent, in every string: "before the rules CAN change".
  */
 import { enumerationSiteKey, gapSubject } from "./enumeration.js";
 import type {

@@ -1,32 +1,23 @@
 /**
  * Renders the LIVE (Mobula) panel that sits BESIDE a pinned report.
  *
- * Kept in its own file, and taking an exposure rather than a Report, so the
- * separation is visible in the module graph and not merely asserted in prose:
- * this function cannot read a verdict, cannot touch the FigureLog, and cannot
- * contribute a figure that verify-pages would check against the report. It
- * renders third-party data that the report does not contain and never will.
+ * In its own file, and taking an exposure rather than a Report, so the
+ * separation is visible in the module graph rather than asserted in prose: it
+ * cannot read a verdict, touch the FigureLog, or contribute a figure
+ * verify-pages would check against the report.
  *
- * THREE RENDERING RULES, each answering a specific way this panel could mislead:
- *
- * 1. IDENTITY IS THE ADDRESS, NEVER THE NAME. Token names in wallet data are
- *    chosen by whoever minted the token, and airdropped phishing tokens use that
- *    to impersonate real assets. Escaping stops them being markup; it does not
- *    stop them being believed. So every row leads with (chain, contract address)
- *    and carries the vendor's name and symbol underneath, explicitly badged
- *    "unverified". A lure that clears the value floor still cannot dress itself
- *    up as an asset, because the name is never what identifies it here.
- *
- * 2. THE TOTAL IS OURS AND SAYS SO. The vendor's own portfolio total is fiction
- *    on at least one calibration target ($11.8tn for cbETH, from a single
- *    empty-symbol token at $237bn a unit). The headline is the sum of holdings
- *    with a defensible valuation basis, the vendor's figure is shown beside it
- *    when it differs, and both are labelled with whose number they are.
- *
- * 3. LIVE IS TIMESTAMPED AND VISUALLY SEPARATE. The panel carries the fetch
- *    instant and a plain statement that it is not part of the verdict. It never
- *    borrows the verdict's tones: this data cannot make a contract safe or
- *    unsafe, so painting it green or red would be a category error.
+ * Three rendering rules, each answering a way this panel could mislead:
+ *  1. IDENTITY IS THE ADDRESS, NEVER THE NAME. Token names are chosen by
+ *     whoever minted them, and escaping stops a phishing lure being markup, not
+ *     being believed. Every row leads with (chain, address); the vendor's name
+ *     and symbol sit underneath, badged "unverified".
+ *  2. THE TOTAL IS OURS AND SAYS SO. The vendor's portfolio total is fiction on
+ *     at least one calibration target ($11.8tn). The headline sums holdings with
+ *     a defensible valuation basis; the vendor's figure is shown beside it when
+ *     it differs, both labelled with whose number they are.
+ *  3. LIVE IS TIMESTAMPED AND VISUALLY SEPARATE, and never borrows the verdict's
+ *     tones — this data cannot make a contract safe or unsafe, so painting it
+ *     green or red would be a category error.
  */
 import { escapeHtml, shortAddress } from "./figures.js";
 import type { LiveExposure, LiveHolding, Valuation } from "../src/live/exposure.js";

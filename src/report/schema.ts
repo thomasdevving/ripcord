@@ -121,51 +121,37 @@ export const roleReconstructionSchema = z.object({
 export type RoleReconstruction = z.infer<typeof roleReconstructionSchema>;
 
 /**
- * ENUMERATION COMPLETENESS — the aggregate witness (day 5.5).
+ * ENUMERATION COMPLETENESS — the aggregate witness.
  *
- * `roleReconstructionSchema` above says whether ONE scan saw everything. This
- * says whether EVERY enumeration the verdict rests on did, across the target,
- * every contract the authority recursion walked at any depth, and every
- * dependency token. It exists because the per-scan flag was recorded and then
- * read by nothing: the exit window computes the minimum notice across the routes
- * it FOUND, so an un-enumerated role holding a zero-notice power produces a
- * reassuring verdict about a protocol nobody can actually leave.
+ * `roleReconstructionSchema` says whether ONE scan saw everything. This says
+ * whether EVERY enumeration the verdict rests on did: the target, every
+ * contract the authority recursion walked at any depth, and every dependency
+ * token. The per-scan flag was recorded and read by nothing, so the exit
+ * window's minimum-across-routes ran over a route set that could be missing
+ * entries — a reassuring verdict about a protocol nobody can leave.
  *
- * Found live on two of the 26 calibration protocols, and the second one is why
- * this is an aggregate rather than a flag on the target:
- *   - Ethena Minting: its own role scan covered 6,750 of 5.66M blocks and
- *     recovered only DEFAULT_ADMIN_ROLE, yet the report said
- *     `can_exit_in_time` with `missing: []`.
- *   - Ethena USDe: not an AccessControl contract at all, so a target-only check
- *     would have called it complete — but its single authority route terminates
- *     at a TimelockController whose OWN roles were partially enumerated, and
- *     those roles are exactly what "the delay is binding" rests on.
+ * Two live instances, and the second is why this aggregates rather than sitting
+ * on the target: Ethena Minting's own scan covered 6,750 of 5.66M blocks yet
+ * reported `can_exit_in_time` with `missing: []`; Ethena USDe is not an
+ * AccessControl contract at all, but its single route terminates at a
+ * TimelockController whose OWN roles were partially enumerated.
  *
- * FAIL-CLOSED BY CONSTRUCTION. `complete` is a POSITIVE claim: it is true only
- * where completeness was positively established at every site. A missing
- * reconstruction, an `undefined` flag, a stage that threw, a contract whose
- * deployment block could not be found — all are incomplete. Reading an absent
- * flag as "complete" would launder a failed read into a fact, which is the exact
- * bug class this witness closes, so the derivation must never do it either.
+ * FAIL-CLOSED: `complete` is a POSITIVE claim, true only where completeness was
+ * established at every site. A missing reconstruction, an undefined flag, a
+ * stage that threw — all incomplete. Reading an absent flag as complete would
+ * launder a failed read into a fact, the exact bug this witness closes.
  */
 /**
- * The STRUCTURAL identity of an enumeration site (day 6).
+ * The STRUCTURAL identity of an enumeration site.
  *
- * `where` is prose meant for a reader ("authority:0x… (depth 2, via owner)").
- * `site` is the same thing as data, and it exists because two layers narrate
- * the same gap — the exit-window assessment when it degrades over one, and the
- * verdict which appends every gap on every branch — and the second must be able
- * to tell "this is the gap the assessment already stated" from "this is a
- * different gap that happens to share some words".
- *
- * The dedup used to compare `where` as a SUBSTRING of each `missing[]` entry.
- * That works on the current calibration set by an accident of wording, not by
- * construction, and the failure it invites is silent: `where` for the target is
- * the bare string "target", so any unrelated missing[] sentence containing the
- * word "target" anywhere would suppress a real enumeration gap and produce a
- * report that under-states what it failed to see. Comparing identities instead
- * means a suppression can only ever collapse the two representations of the
- * SAME site.
+ * `where` is prose for a reader; `site` is the same thing as data. Two layers
+ * narrate the same gap — the exit-window assessment and the verdict — and the
+ * second must tell "the gap already stated" from "a different gap sharing some
+ * words". The dedup used to compare `where` as a SUBSTRING, which works on the
+ * current set by an accident of wording: `where` for the target is the bare
+ * string "target", so any unrelated sentence containing that word would
+ * suppress a real gap. Comparing identities means a suppression can only
+ * collapse two representations of the SAME site.
  */
 export const enumerationSiteSchema = z.object({
   kind: z.enum(["stage", "target", "authority", "dependency", "authorityResolution", "capabilitySurface"]),
@@ -890,13 +876,12 @@ export const bypassCheckSchema = z.object({
 export type BypassCheck = z.infer<typeof bypassCheckSchema>;
 
 /**
- * The exit-window assessment, as a discriminated union on `status` — the same
- * type-level enforcement of weakest-link provenance that `GuardStatus` applies
- * to capabilities, applied here to the metric itself. ONLY the `binding`
- * variant carries `windowSeconds`. A delay that could not be proven binding is
- * structurally incapable of appearing as a window: zod rejects the shape. That
- * is deliberate, because "reported a comforting delay an admin can bypass" is
- * the worst failure this tool has available to it.
+ * The exit-window assessment as a discriminated union on `status` — the same
+ * type-level weakest-link enforcement `GuardStatus` applies to capabilities,
+ * applied to the metric itself. ONLY the `binding` variant carries
+ * `windowSeconds`, so a delay that could not be proven binding is structurally
+ * incapable of appearing as a window: zod rejects the shape. "Reported a
+ * comforting delay an admin can bypass" is the worst failure available here.
  *
  *  - `binding`                 every route resolved, every delay proven binding, minimum > 0.
  *  - `no_notice`               at least one resolved route imposes ZERO delay. Proven, not assumed.
@@ -904,25 +889,16 @@ export type BypassCheck = z.infer<typeof bypassCheckSchema>;
  *  - `immutable_within_checks` POSITIVE evidence of no mutation route, bounded by `caveats`.
  *  - `undetermined`            nothing could be resolved; `missing` names what is absent.
  *
- * THE DAY-5 SPLIT, and why it is an epistemic fix rather than a rename. Until
- * day 5 this union carried a status called `no_rule_change_route_found`, which
- * treated the ABSENCE OF A FOUND ROUTE as the ABSENCE OF A ROUTE. Those are two
- * different claims, and collapsing them let "unknown is never safe" — the rule
- * the whole project is built on — leak back in at the very last layer, where it
- * is hardest to see. Calibration caught it: the status fired on three mainnet
- * contracts and was substantively wrong on two, because both delegate authority
- * through an indirection Ripcord does not model (Balancer's `getAuthorizer()`,
- * rETH's RocketStorage registry). A human read "No exit-window risk was
- * identified" about contracts that are fully controllable.
+ * The old `no_rule_change_route_found` treated the ABSENCE OF A FOUND ROUTE as
+ * the ABSENCE OF A ROUTE. It fired on three mainnet contracts and was wrong on
+ * two, both delegating authority through an indirection Ripcord does not model
+ * (Balancer's `getAuthorizer()`, rETH's RocketStorage registry), so a human read
+ * "No exit-window risk was identified" about fully controllable contracts.
  *
- * So the DEFAULT IS INVERTED. `undetermined` is the safe outcome and the one
- * reached by falling through; `immutable_within_checks` is a POSITIVE CLAIM that
- * must be earned, and it carries the `basis[]` that earned it. Every condition
- * in that basis is a read Ripcord actually performed — no delegatecall in the
- * runtime bytecode, no owner, no roles, no capability finding, no authority
- * indirection marker, and a dispatcher that was actually decoded. Its bound
- * stays attached in `caveats[]`: unmatched selectors were not evaluated, and a
- * bespoke authority registry that exposes no getter at all remains invisible.
+ * So THE DEFAULT IS INVERTED: `undetermined` is what falling through produces,
+ * and `immutable_within_checks` is a positive claim carrying the `basis[]` that
+ * earned it — every condition a read Ripcord actually performed — with its bound
+ * in `caveats[]`.
  */
 export const exitWindowAssessmentSchema = z.discriminatedUnion("status", [
   z.object({
@@ -1297,44 +1273,29 @@ export type AuthorityIndirection = z.infer<typeof authorityIndirectionSchema>;
 
 /**
  * The headline judgement, composed from the two sides. It is DATA, with every
- * input and its confidence attached, not a prose sentence bolted onto the end
- * of a report.
+ * input and its confidence attached, not prose bolted onto the end of a report.
  *
- * The comparison is `timeToExit >= exitWindow` → trapped, using >= and not >
- * deliberately: if leaving takes exactly as long as the notice you are
- * guaranteed, you finish leaving at the moment the change takes effect, which
- * is not leaving BEFORE it. `marginSeconds` is published so a dead heat is
- * visible as a dead heat rather than disappearing into a category.
- *
- * Every statement is CAPABILITY, not intent: "before the rules CAN change,"
- * never "will."
+ * The comparison is `timeToExit >= exitWindow` → trapped, using >= because
+ * finishing your exit at the instant a change lands is not leaving BEFORE it.
+ * `marginSeconds` is published so a dead heat reads as one. Every statement is
+ * CAPABILITY, not intent: "before the rules CAN change", never "will".
  *
  *  - `trapped`                     both sides determined, timeToExit >= window.
- *  - `no_notice`                   a zero-notice rule-change route exists, so no
- *                                  exit speed can beat it — the comparison
+ *  - `no_notice`                   a zero-notice route exists, so the comparison
  *                                  collapses rather than being computed.
- *  - `can_exit_in_time`            both sides determined and tight, timeToExit < window.
- *                                  RETIRED since the enumeration-completeness /
+ *  - `can_exit_in_time`            RETIRED since the enumeration-completeness and
  *                                  capability-surface fixes: not establishable
- *                                  for any contract with both a privileged party
- *                                  and an unevaluated surface, and it occurs
- *                                  nowhere in the calibration set.
- *  - `immutable_within_checks`     POSITIVE evidence of no rule-change route, so
- *                                  there is nothing to compare against. Earned,
- *                                  never reached by falling through — see the
- *                                  day-5 split on `exitWindowAssessmentSchema`.
- *  - `no_direct_restriction_found` (day 7) The fork exit-restriction engine
- *                                  established a baseline exit and evaluated every
- *                                  registered candidate without any of them closing
- *                                  it. DELIBERATELY WEAKER than can_exit_in_time
- *                                  and never a safety guarantee: it is scoped to
- *                                  the N functions actually evaluated and states
- *                                  so, because argument space and indirect/
- *                                  economic restrictions are not exhausted by
- *                                  testing. Unreachable unless the exit action was
- *                                  confidently identified and a baseline
- *                                  established.
- *  - `undetermined`                either side is unresolved; `missing` names exactly what.
+ *                                  for a contract with both a privileged party
+ *                                  and an unevaluated surface.
+ *  - `immutable_within_checks`     POSITIVE evidence of no rule-change route.
+ *                                  Earned, never reached by falling through.
+ *  - `no_direct_restriction_found` the fork engine established a baseline exit
+ *                                  and no registered candidate closed it.
+ *                                  DELIBERATELY WEAKER and never a safety
+ *                                  guarantee: scoped to the N functions actually
+ *                                  evaluated, and unreachable without a
+ *                                  confidently identified exit action.
+ *  - `undetermined`                either side is unresolved; `missing` names what.
  */
 export const verdictStatusSchema = z.enum([
   "trapped",

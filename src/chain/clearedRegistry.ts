@@ -1,33 +1,24 @@
 /**
- * The cleared dependency registry (consolidation pass).
+ * The cleared dependency registry.
  *
- * The disclosure gate makes a report non-publishable if ANY capability — at
- * the target OR anywhere in its dependency graph — routes to
- * needsManualVerification (probing couldn't attribute a guard, so "unguarded"
- * can't be ruled out). That rule is correct, but without this registry it trips
- * on essentially every protocol on earth, because almost all of them hold USDC,
- * and USDC's blacklist/pause/mint are exactly the kind of powerful,
- * probe-resistant capabilities the gate is built to catch.
+ * The disclosure gate makes a report non-publishable if ANY capability — at the
+ * target or anywhere in its dependency graph — routes to needsManualVerification.
+ * That rule is correct, but without this registry it trips on essentially every
+ * protocol on earth, because almost all of them hold USDC, whose
+ * blacklist/pause/mint are exactly the powerful probe-resistant capabilities the
+ * gate is built to catch.
  *
- * The catch is that those USDC capabilities are not latent vulnerabilities —
- * they are the loudly-documented, audited design of a centrally-issued fiat
- * stablecoin. Circle CAN freeze a USDC balance; that is the defining, publicly
- * known property of the asset, not something Ripcord discovered. So this
- * registry records, per (token, capability), that the capability is DOCUMENTED
- * DESIGN, with a one-line justification and a source, and clears it from the
- * publication gate.
- *
- * This is deliberately a curated statement of "who can freeze / mint the major
- * assets," legible on its own. The discipline around it matters as much as the
- * data:
- *   - It is VERSIONED (`clearedRegistryVersion`), and every report that relies
- *     on it records that version — clearing is auditable and reversible, never
- *     a silent allowlist.
- *   - It clears a capability only on the SPECIFIC token it documents. The same
- *     signature on a different token is NOT cleared and still blocks.
- *   - It never clears the TARGET's own capabilities — only dependencies. A
- *     protocol's own privileged functions are the whole point of the scan and
- *     are never waved through by holding a blessed token.
+ * Those are not latent vulnerabilities; they are the documented, audited design
+ * of a centrally-issued fiat stablecoin. Circle CAN freeze a USDC balance — the
+ * defining public property of the asset, not something Ripcord discovered. So
+ * this registry records, per (token, capability), that the capability is
+ * DOCUMENTED DESIGN with a justification and a source, and clears it from the
+ * gate. The discipline around it matters as much as the data:
+ *   - VERSIONED (`clearedRegistryVersion`), and every report records the version
+ *     it used — a clearing is auditable and reversible, never a silent allowlist.
+ *   - Cleared only on the SPECIFIC token it documents; the same signature on
+ *     another token still blocks.
+ *   - NEVER clears the target's own capabilities, only dependencies.
  */
 import type { Hex } from "viem";
 

@@ -1,32 +1,24 @@
 /**
  * OpenZeppelin AccessControl detection.
  *
- * Detection: DEFAULT_ADMIN_ROLE() succeeding is treated as evidence the
- * contract implements AccessControl (it is universal across all versions,
- * including non-Enumerable ones).
+ * DEFAULT_ADMIN_ROLE() succeeding is treated as evidence the contract implements
+ * AccessControl — universal across all versions, including non-Enumerable ones.
  *
- * Method selection: getRoleMemberCount(DEFAULT_ADMIN_ROLE) is an
- * Enumerable-only extension. If it succeeds, the contract is
- * AccessControlEnumerable and we discover the full set of roles ever
- * touched via a RoleGranted/RoleRevoked event scan (just to learn *which*
- * role hashes exist — event scanning can't miss a role, since every role
- * must have been granted at least once for membership to be non-empty),
- * then read *current* membership straight from the Enumerable getters,
- * which is authoritative and doesn't require replaying history by hand.
+ * getRoleMemberCount(DEFAULT_ADMIN_ROLE) is an Enumerable-only extension. If it
+ * succeeds, a RoleGranted/RoleRevoked scan discovers WHICH role hashes exist
+ * (event scanning cannot miss a role, since every role must have been granted at
+ * least once for membership to be non-empty) and current membership is then read
+ * straight from the Enumerable getters, which is authoritative. If Enumerable is
+ * absent, membership is reconstructed by replaying those events in order from
+ * the deployment block to the pinned block.
  *
- * If Enumerable is absent, current membership is reconstructed by replaying
- * RoleGranted/RoleRevoked in order from the contract's deployment block to
- * the pinned block.
- *
- * The log range [deploymentBlock, pinnedBlock] is chunked to the provider's
- * PROBED eth_getLogs limit (see rpcPreflight.ts), not a fixed guess — the fix
- * for KNOWN EDGE #7, where a hard-coded 10k-block chunk silently failed on any
- * provider with a smaller cap. If covering the full range would exceed the
- * request budget, the scan degrades to the most recent affordable window and
- * labels the result `reconstruction.complete = false` with a lowered
- * confidence and the exact block window it covered — never a silent truncation
- * that would read as "no roles found," and never a full-confidence claim over
- * a partial scan.
+ * The log range is chunked to the provider's PROBED eth_getLogs limit (see
+ * rpcPreflight.ts), not a fixed guess — the fix for KNOWN EDGE #7, where a
+ * hard-coded 10k chunk silently failed on any smaller cap. If the full range
+ * would exceed the request budget the scan degrades to the most recent
+ * affordable window and labels the result `reconstruction.complete = false` with
+ * a lowered confidence and the exact window covered: never a silent truncation
+ * reading as "no roles found", never full confidence over a partial scan.
  */
 import { decodeFunctionResult, encodeFunctionData, type Hex } from "viem";
 import type { Evidence, ChainReader } from "../chain/client.js";

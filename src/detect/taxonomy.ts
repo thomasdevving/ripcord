@@ -1,37 +1,28 @@
 /**
- * Versioned capability taxonomy: known function signatures grouped by the
- * POWER they grant, not by name. This table — not scattered conditionals —
- * is what a report's capability grouping is driven by, and it is what
- * `rulesetVersion` (schema.ts) actually refers to: bump it whenever this
- * table changes.
+ * Versioned capability taxonomy: known function signatures grouped by the POWER
+ * they grant, not by name. This table — not scattered conditionals — drives a
+ * report's capability grouping, and is what `rulesetVersion` refers to: bump it
+ * whenever the table changes.
  *
- * Every entry is a FULL signature (name + exact parameter types), matched
- * by computing its selector with viem and checking the dispatcher's
- * extracted selector set — never by matching a bare name against anything,
- * since selectors are opaque 4-byte values and the extractor has no access
- * to source-level names at all. `mint(address,uint256)` and `mint(uint256)`
- * are different selectors and different table entries.
+ * Every entry is a FULL signature, matched by computing its selector with viem
+ * against the dispatcher's extracted set — never by matching a bare name, since
+ * the extractor has no access to source-level names at all.
+ * `mint(address,uint256)` and `mint(uint256)` are different entries.
  *
- * `specificity` reflects how safely a matched *name* can be assumed to carry
- * the significance this table assigns it — it is NOT a confidence/certainty
- * score, and is named `nameMatchSpecificity` in the report precisely so it is
- * never read as one (see the schema note). The selector match itself is always
- * exact — a keccak comparison, no fuzziness:
- *   "standard" — widely-adopted signatures (OZ Ownable/AccessControl/Pausable,
- *            common ERC20 mint/burn extensions, EIP-1967-adjacent upgrade
- *            functions). The name reliably implies the capability.
- *   "generic"  — commonly-reused names with no single dominant standard behind
- *            them (sweep, skim, emergencyWithdraw, adminWithdraw, rescueTokens
- *            and similar escape hatches, ad hoc economic setters). The brief's
- *            own example: one project's `sweep()` is another's unrelated
- *            helper. The match is exact, but what the name IMPLIES varies by
- *            project — a semantic caveat, not lower detection certainty.
+ * `specificity` says how safely a matched NAME can be assumed to carry the
+ * significance this table assigns it. It is not a certainty score, and is
+ * surfaced as `nameMatchSpecificity` precisely so it is never read as one; the
+ * selector match itself is always an exact keccak comparison.
+ *   "standard" — widely-adopted signatures where the name reliably implies the
+ *            capability (OZ Ownable/AccessControl/Pausable, common ERC20 mint
+ *            and burn extensions, EIP-1967-adjacent upgrade functions).
+ *   "generic"  — reused names with no dominant standard behind them (sweep,
+ *            skim, emergencyWithdraw, rescueTokens, ad hoc setters). The match
+ *            is exact; what the name IMPLIES varies by project.
  *
- * A selector present in a scanned contract but absent from this table is
- * simply unclassified — see KNOWN EDGES in CLAUDE.md: Ripcord does not
- * attempt reverse-lookup against an external 4byte-style selector database,
- * since that would be a live, non-deterministic dependency inconsistent
- * with pinned-block reproducibility. Unclassified is not "no capability."
+ * A selector absent from this table is simply unclassified, never "no
+ * capability". There is no reverse-lookup against a 4byte-style database: that
+ * would be a live, non-deterministic dependency.
  */
 import { toFunctionSelector, type Hex } from "viem";
 import type { CapabilityCategory } from "../report/schema.js";

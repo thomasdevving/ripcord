@@ -55,35 +55,25 @@ function findRevertData(err: unknown, depth = 0): Hex | null {
 /**
  * PORT OWNERSHIP, AND WHY ANVIL CHOOSES THE PORT.
  *
- * This used to be `8600 + (blockNumber + pid) % 300` — deterministic, and
- * therefore COLLIDING for two forks started from the same process at the same
- * pinned block. That is not a hypothetical: the post-analysis asset-context
- * layer starts forks outside the job-capacity limiter, so two runs on one block
- * were an ordinary event.
+ * This used to be `8600 + (blockNumber + pid) % 300` — deterministic, and so
+ * COLLIDING for two forks started from one process at the same pinned block.
+ * The asset-context layer starts forks outside the job limiter, so that was an
+ * ordinary event, and it did not fail loud: the second anvil fails to BIND while
+ * the readiness loop polls the port and gets a healthy answer from the FIRST
+ * anvil, whose fork block and expected hash are identical. The second engine
+ * then drives the first engine's fork, interleaving transactions into someone
+ * else's differential.
  *
- * The collision itself would be survivable if it failed loud. It did not. The
- * second anvil fails to BIND, but the readiness loop polls the port and gets a
- * healthy answer — from the FIRST anvil — whose fork block, and therefore whose
- * `expectedBlockHash` check, is identical. The second engine then drives the
- * first engine's fork, interleaving transactions into someone else's
- * differential. A corrupted before/after comparison is exactly the result this
- * project must never produce silently.
+ * An in-memory reservation set fixes only the one-process case; at least two
+ * processes here spawn forks, and there is an unavoidable gap between "this port
+ * looks free" and a child owning it. Passing port 0 delegates allocation to the
+ * OS inside Anvil's own bind call, and we learn the port only from THIS child's
+ * `Listening on 127.0.0.1:<port>` line — no probe/bind window, no cross-process
+ * lock. An explicitly requested port follows the same rule: a foreign node
+ * answering there is ignored unless our child announced that exact bind.
  *
- * An in-memory reservation set fixed only the one-process case. Ripcord has at
- * least two processes that can spawn forks (the worker and the post-analysis
- * service), and there is an unavoidable bind gap between "this port looks
- * free" and a child actually owning it.
- *
- * Passing port 0 delegates allocation to the operating system in Anvil's own
- * bind call. We learn the selected port only from THIS child process's
- * `Listening on 127.0.0.1:<port>` line, and create the RPC client afterwards.
- * There is no probe/release/bind window and no cross-process lock to coordinate.
- * An explicitly requested port follows the same ownership rule: a foreign node
- * can answer there, but it is ignored unless our child first announces that it
- * successfully bound that exact port.
- *
- * Exact-head and pinned-hash checks remain as state-identity checks. They no
- * longer double as a fallible substitute for process ownership.
+ * Exact-head and pinned-hash checks remain STATE-identity checks. They no longer
+ * double as a fallible substitute for process ownership.
  */
 const LISTENING_LINE = /Listening on 127\.0\.0\.1:(\d{1,5})/;
 

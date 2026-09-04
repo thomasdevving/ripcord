@@ -1,44 +1,24 @@
 /**
- * THE WEBAPP BOUNDARY, AS A TEST RATHER THAN A PROMISE.
+ * THE WEBAPP BOUNDARY, AS A TEST RATHER THAN A PROMISE. Sibling of
+ * scripts/verify-boundary.mjs. Seven properties, each a way this integration
+ * could quietly go wrong:
  *
- * Sibling of scripts/verify-boundary.mjs, which does the same job for the Mobula
- * live layer. Both exist because "we were careful" is not a control.
+ *  1. The shared DTO module imports no Node builtin — it is compiled into the
+ *     browser bundle.
+ *  2. Browser code never VALUE-imports the engine (`import type` is erased and
+ *     is how the report type stays single-sourced); a value import would ship
+ *     detector code and create a second place risk logic could be evaluated.
+ *  3. No secret in the BUILT bundle — a `VITE_`-prefixed variable is inlined at
+ *     build time, which is how provider keys end up in a JS file.
+ *  4. No Node builtin in the built bundle, measured on the shipping artifact.
+ *  5. The server never imports the CLI, which parses argv and calls exit.
+ *  6. The pinned path never imports the server, so the engine stays usable and
+ *     deterministic with no webapp present. A transitive import walk.
+ *  7. The production image carries the Mobula sidecars; excluding them makes
+ *     every deployed report silently look as if no snapshot was stored.
  *
- * Seven properties, each corresponding to a way this integration could quietly go
- * wrong:
- *
- *  1. THE SHARED DTO MODULE IMPORTS NO NODE BUILTIN. It is compiled into the
- *     browser bundle. A `node:fs` import there either breaks the build or, worse,
- *     drags server code into a public asset.
- *
- *  2. BROWSER CODE NEVER VALUE-IMPORTS THE ENGINE. `import type` is erased and is
- *     fine — it is how the report type stays single-sourced. A value import would
- *     ship detector code, zod, and potentially the taxonomy to every visitor, and
- *     would create a second place risk logic could be evaluated.
- *
- *  3. NO SECRET IN THE BUILT BUNDLE. Checked against the actual built output, not
- *     the sources: a `VITE_`-prefixed variable is inlined at BUILD time, which is
- *     how provider keys end up in a JS file. There are none, and this proves it.
- *
- *  4. NO NODE BUILTIN IN THE BUILT BUNDLE, for the same reason as (1) but
- *     measured on the artifact that actually ships.
- *
- *  5. THE SERVER NEVER IMPORTS THE CLI. `src/cli.ts` parses argv and calls
- *     process.exit; importing it as a library is the mistake this codebase would
- *     be most likely to make under time pressure.
- *
- *  6. THE PINNED PATH NEVER IMPORTS THE SERVER. The engine must stay usable, and
- *     deterministic, with no webapp present at all. A transitive import walk, the
- *     same technique verify-boundary.mjs uses.
- *
- *  7. THE PRODUCTION IMAGE CARRIES THE MOBULA SIDECARS. The report API reads
- *     committed snapshots at runtime. Excluding calibration/live from the build
- *     context or failing to copy it makes every deployed report silently look as
- *     if no snapshot was stored.
- *
- * Deliberately NARROW, and it says so: it checks these seven things and prints what
- * a human still has to look at. A checker that implied full coverage would be its
- * own false-clean.
+ * Deliberately NARROW, and it says so: it prints what a human still has to look
+ * at. A checker that implied full coverage would be its own false-clean.
  */
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join, extname, dirname, resolve } from "node:path";

@@ -1,40 +1,25 @@
 /**
  * THE MOBULA BOUNDARY, AS A TEST RATHER THAN A PROMISE.
  *
- * Ripcord's whole claim is that a report is a deterministic, block-pinned
- * artifact: same target, same block, byte-identical output, cold or warm, today
- * or next year. The live layer is the exact opposite — a third-party read of the
- * present that changes every time you ask. Both are useful; mixing them would
- * destroy the first.
+ * A report is a deterministic, block-pinned artifact: same target, same block,
+ * byte-identical output, cold or warm. The live layer is the exact opposite — a
+ * third-party read of the present. Both are useful; mixing them destroys the
+ * first, and "we were careful" is not a control. Four properties, checked in CI:
  *
- * "We were careful" is not a control. This script is, and it runs in CI beside
- * verify:pages and verify:claims. It checks four properties:
+ *  1. NO IMPORT PATH from the pinned code (src/chain, src/detect, src/report,
+ *     src/fork, src/cli.ts) into src/live. Checked as a real transitive walk,
+ *     not a grep, because an indirect import is still an import.
+ *  2. NO MOBULA REFERENCE anywhere in the pinned path — no hostname, env var or
+ *     URL. Belt and braces with (1): that catches structure, this catches a
+ *     stray inline call that skipped the module.
+ *  3. NO LIVE DATA IN A PINNED REPORT. A report that grew a live field would be
+ *     non-deterministic even if nothing read it.
+ *  4. NO SECRET IN A COMMITTED ARTIFACT. Sidecars and pages are committed; the
+ *     key lives only in the build environment. gitleaks covers the general case,
+ *     this the specific one this feature introduces.
  *
- *   1. NO IMPORT PATH from the pinned code into the live layer. The pinned path
- *      is src/chain, src/detect, src/report, src/fork and src/cli.ts. If any of
- *      them ever imports src/live, a live value could reach a verdict, and the
- *      determinism guarantee is gone. Checked as a real transitive walk, not a
- *      grep for the word "mobula", because an indirect import is still an import.
- *
- *   2. NO MOBULA REFERENCE anywhere in the pinned path — no hostname, no env
- *      var, no fetch of a mobula URL. Belt and braces with (1): (1) catches
- *      structure, this catches a stray inline call that skipped the module.
- *
- *   3. NO LIVE DATA IN A PINNED REPORT. Every report JSON is scanned for the
- *      live layer's own field names and for the vendor's hostnames. A report
- *      that grew a live field would be non-deterministic even if nothing read
- *      it, and it would put a timestamped market number inside an artifact whose
- *      entire value is that it does not have one.
- *
- *   4. NO SECRET IN A COMMITTED ARTIFACT. Sidecars and pages are committed; the
- *      API key lives only in the build environment. Any occurrence of the key's
- *      env var name with a value, or of an `Authorization` header, in
- *      calibration/live or site is a failure. gitleaks covers the general case;
- *      this covers the specific one this feature introduces.
- *
- * It also states, in one place, that the sidecars are DELIBERATELY not
- * deterministic — see the note printed at the end — so nobody later mistakes a
- * changing sidecar for a determinism regression.
+ * It also states in one place that the sidecars are DELIBERATELY not
+ * deterministic, so nobody mistakes a changing sidecar for a regression.
  */
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join, dirname, resolve, extname } from "node:path";

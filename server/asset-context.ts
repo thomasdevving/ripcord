@@ -327,34 +327,30 @@ export async function verifyDisplayedCandidates(
  * Owns the asynchronous refresh for a stored, publishable live report.
  *
  * BOUNDED ON PURPOSE, IN THREE DIMENSIONS. These refreshes start AFTER a job's
- * worker has exited, so they are invisible to `maxActiveJobs` — the limiter
- * that exists precisely to stop N anvil forks running at once. Left unbounded,
- * N jobs completing together produced N vendor fetches and N forks with no
- * ceiling, and a fork that hung left its sidecar `pending` forever with every
- * open browser tab polling it.
+ * worker has exited, so they are invisible to `maxActiveJobs` — the limiter that
+ * exists to stop N anvil forks running at once. Left unbounded, N jobs
+ * completing together produced N vendor fetches and N forks with no ceiling, and
+ * a hung fork left its sidecar `pending` forever with every tab polling it.
  *
  *   - CONCURRENCY: `maxActiveAssetContexts` run at a time.
- *   - QUEUE DEPTH: beyond `maxQueuedAssetContexts` waiting, a refresh is
- *     refused immediately and says so, rather than queueing without bound.
+ *   - QUEUE DEPTH: beyond `maxQueuedAssetContexts`, a refresh is refused
+ *     immediately and says so, rather than queueing without bound.
  *   - TIME: `assetContextTimeoutMs` caps one refresh end to end, and the fork
  *     batch receives the remaining budget as its own deadline.
  *
- * Every one of those limits produces an explicit `unavailable` sidecar with a
- * stated reason. None of them produces silence.
+ * Every limit produces an explicit `unavailable` sidecar with a stated reason.
+ * None of them produces silence.
  */
 /**
  * A counted semaphore with a bounded wait queue.
  *
  * Extracted because its one invariant — never more than `maxActive` holders —
- * is not observable through `AssetContextService`'s public surface, and an
- * invariant that cannot be tested directly is one that gets quietly broken.
- * It was: the first version decremented the count in `release()` and let the
- * woken waiter increment it again after its own microtask resumed. Those are
- * two turns of the event loop, and an `acquire()` landing between them takes
- * the slot the waiter is also about to take.
- *
- * THE SLOT IS TRANSFERRED, NEVER RE-TAKEN. `release()` hands its slot straight
- * to the next waiter without the count ever dipping, so the window does not
+ * is not observable through AssetContextService's public surface, and an
+ * invariant that cannot be tested directly gets quietly broken. It was: the
+ * first version decremented in `release()` and let the woken waiter increment
+ * after its own microtask resumed, so an `acquire()` landing between those two
+ * turns took the slot the waiter was about to take. THE SLOT IS NOW
+ * TRANSFERRED, NEVER RE-TAKEN — the count never dips, so the window does not
  * exist rather than being unlikely.
  */
 export class BoundedSemaphore {

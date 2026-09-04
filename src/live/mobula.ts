@@ -1,33 +1,26 @@
 /**
  * Mobula REST client for Ripcord's LIVE layer.
  *
- * THE BOUNDARY THIS FILE SITS ON. Everything else in `src/` exists to produce a
- * report that is pinned to a block and byte-identical on a cold re-run. This
- * file is the opposite by construction: it reads the present, over the network,
- * from a third party, and its answer changes every time you ask. Those two
- * things must never mix, so nothing in the pinned path (cli.ts -> PinnedChain ->
- * buildReport -> detect/* -> report/*) imports this module, and
- * scripts/verify-boundary.mjs fails the build if that ever stops being true.
+ * THE BOUNDARY THIS FILE SITS ON. Everything else in `src/` produces a report
+ * pinned to a block and byte-identical on a cold re-run. This file is the
+ * opposite by construction: it reads the present, over the network, from a third
+ * party. Nothing in the pinned path imports it, and scripts/verify-boundary.mjs
+ * fails the build if that stops being true.
  *
- * WHY NOT PinnedChain. It would be easy to route these calls through the same
- * client the detectors use and get caching for free. That would be a mistake:
- * DiskCache is keyed by (chainId, blockNumber, method, params) and justified by
- * "a historical block never changes, so a cache hit is permanently valid." A
- * live price has no block and is stale the moment it lands. Caching it under
- * that key would make a warm run silently serve yesterday's market as today's —
- * the cache boundary laundering a failure into a fact, which is the exact class
- * of defect KNOWN EDGES #14/#23/#31 are about. So: no cache, no pinning, and a
- * `fetchedAt` timestamp carried on every result so the staleness is visible.
+ * WHY NOT PinnedChain. DiskCache is keyed by (chainId, blockNumber, method,
+ * params) and justified by "a historical block never changes, so a hit is
+ * permanently valid". A live price has no block and is stale the moment it
+ * lands; caching it under that key would make a warm run serve yesterday's
+ * market as today's — the cache boundary laundering a failure into a fact. So
+ * no cache, no pinning, and a `fetchedAt` timestamp on every result.
  *
- * FAILURE DISCIPLINE. The project rule is "fail loud," and in the pinned path
- * that means throwing so a caller can record an explicit unknown. Here it means
- * something slightly different, because a third-party outage is not a fact about
- * the contract and must never be able to take down a page whose verdict does not
- * depend on it. So every call returns a discriminated `MobulaResult` instead of
- * throwing, and the failure carries its reason as a string that gets rendered.
- * The loudness moves from the exception to the page: "live data unavailable —
- * <reason>". What is forbidden is the third option, a silent empty result that
- * looks like "this contract holds nothing."
+ * FAILURE DISCIPLINE. In the pinned path "fail loud" means throwing. Here it
+ * means something different, because a vendor outage is not a fact about the
+ * contract and must never take down a page whose verdict does not depend on it.
+ * Every call returns a discriminated `MobulaResult` carrying its reason, and the
+ * loudness moves to the page: "live data unavailable — <reason>". What is
+ * forbidden is the third option, a silent empty result that looks like "this
+ * contract holds nothing".
  */
 
 /** Success carries the payload; failure carries a reason meant to be READ, not swallowed. */

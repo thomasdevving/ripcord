@@ -1,38 +1,25 @@
 /**
  * File-backed job and report storage for a SINGLE replica.
  *
- * A database is not warranted here and would be the wrong kind of complexity:
- * one Railway service, one replica, a mounted volume at /data. What this layer
- * does owe the rest of the system is four properties that are easy to get wrong
- * with plain `writeFile`:
+ * A database is not warranted here: one service, one replica, a mounted volume.
+ * What this layer owes the rest of the system is five properties that are easy
+ * to get wrong with plain `writeFile`:
  *
- *  1. ATOMIC WRITES. Every record is written to a temp file in the same
- *     directory and then `rename`d over the target. A rename within a
- *     filesystem is atomic, so a reader (or a restart) never observes a
- *     half-written JSON document. Without this, a SIGTERM landing mid-write
- *     leaves a corrupt job record that fails to parse forever after.
- *
- *  2. SAFE ID → PATH RESOLUTION. An id from a URL never becomes a path. Ids are
- *     validated against a strict character class and the resolved path is
- *     checked to still be inside its directory, so `../../etc/passwd` and its
- *     encoded variants cannot escape. This matters more than usual here because
- *     the same process also holds committed calibration reports and an RPC cache.
- *
- *  3. INTERRUPTED ≠ COMPLETED. On boot, any job still marked `running` is moved
- *     to `interrupted`. It did not finish and it did not fail; nobody knows how
- *     far it got. Resuming it fictitiously, or marking it complete, would
- *     manufacture a result — the same false-clean this project refuses
- *     everywhere else, arrived at through a restart instead of a detector.
- *
- *  4. BOUNDED RETENTION. Old jobs and their artifact directories are pruned by
- *     count, so a demo left running does not fill the volume. Completed
- *     PUBLISHABLE reports are pruned last and separately, because their URLs are
- *     meant to keep working after the run that produced them is long gone.
- *
- *  5. ORDERED ASSET-CONTEXT WRITES. Atomic replacement protects readers from a
- *     partial document, but two valid concurrent replacements can still finish
- *     out of order. Sidecar writes are therefore serialised per report id so an
- *     older generation cannot land after its successor.
+ *  1. ATOMIC WRITES — temp file in the same directory, then `rename`. A reader
+ *     or a restart never observes a half-written document; without it a SIGTERM
+ *     mid-write leaves a job record that fails to parse forever after.
+ *  2. SAFE ID → PATH RESOLUTION. An id from a URL never becomes a path: strict
+ *     character class, and the resolved path must still be inside its directory.
+ *     The same process also holds committed reports and an RPC cache.
+ *  3. INTERRUPTED ≠ COMPLETED. On boot a job still `running` becomes
+ *     `interrupted`. Resuming or completing it would manufacture a result — the
+ *     same false-clean this project refuses everywhere else, through a restart.
+ *  4. BOUNDED RETENTION by count, so a demo left running does not fill the
+ *     volume. Publishable reports are pruned last and separately, because their
+ *     URLs are meant to keep working.
+ *  5. ORDERED ASSET-CONTEXT WRITES. Atomic replacement protects a reader from a
+ *     partial document, but two valid concurrent replacements can still land out
+ *     of order, so sidecar writes are serialised per report id.
  */
 import { mkdir, readFile, rename, writeFile, readdir, rm, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";

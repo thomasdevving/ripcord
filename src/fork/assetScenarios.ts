@@ -103,34 +103,26 @@ export interface AssetScenarioInput {
 }
 
 /**
- * Per-asset outcomes. The three negative ones are deliberately NOT
- * interchangeable, because they are claims about different things:
+ * Per-asset outcomes. The negative ones are deliberately NOT interchangeable,
+ * because they are claims about different things:
  *
- *   `unsupported_asset`  — the PROTOCOL positively rejected the asset. A real
- *                          contract revert from `getAssetInfoByAddress` was
- *                          observed, so this is a fact about Compound.
- *   `role_unresolved`    — we could not determine the role at all. The role
- *                          read did not complete, so NOTHING is claimed about
- *                          the protocol. Conflating this with the line above
+ *   `unsupported_asset`  — the PROTOCOL positively rejected the asset: a real
+ *                          contract revert from `getAssetInfoByAddress`.
+ *   `role_unresolved`    — the role read did not complete, so NOTHING is claimed
+ *                          about the protocol. Conflating it with the line above
  *                          would turn an RPC timeout into "Compound does not
- *                          recognise this token" — the exact absence-from-
- *                          failure defect KNOWN EDGE #31 exists to prevent.
+ *                          recognise this token" (KNOWN EDGE #31).
  *   `token_interface_rejected`
- *                        — the role WAS established, and then the TOKEN's own
- *                          contract refused a call we need for setup
- *                          (`decimals()`, `balanceOf()`). A positively
- *                          identified revert, so it is a fact about the token.
- *   `read_failed`        — a later setup read failed as INFRASTRUCTURE. The
- *                          role WAS established; the sandbox was not.
- *                          Kept separate from the line above for the same
- *                          reason `role_unresolved` is kept separate from
- *                          `unsupported_asset`: one is the chain answering,
- *                          the other is our connection failing, and a state
- *                          whose documentation says "infrastructure" must not
- *                          quietly also mean "the contract said no".
+ *                        — the role WAS established and then the TOKEN's own
+ *                          contract refused a setup call: a fact about the token.
+ *   `read_failed`        — a later setup read failed as INFRASTRUCTURE. Kept
+ *                          separate for the same reason: one is the chain
+ *                          answering, the other our connection failing, and a
+ *                          state that quietly means both is the shape of every
+ *                          conflation this project has had to fix.
  *
- * `baseline_unestablished` stays reserved for what it has always meant: the
- * chain answered, and the open control exit could not be demonstrated.
+ * `baseline_unestablished` keeps its meaning: the chain answered, and the open
+ * control exit could not be demonstrated.
  */
 export type AssetScenarioState =
   | "covered_by_primary_report"

@@ -1,75 +1,27 @@
 /**
- * Time to exit (day 4, the second half of the metric).
+ * Time to exit: how long a holder actually needs to leave, as a LOWER BOUND
+ * with its gaps named.
  *
- * The exit window says how much notice you get before the rules can change.
- * This says how long you actually need to get out. The verdict is the
- * comparison, and it is only worth as much as the honesty of these two
- * numbers — so this file is built to produce a LABELLED PARTIAL model rather
- * than a precise-looking one.
+ * Measured: cooldown/unstaking accessors from a curated versioned table
+ * (selectors derived via viem, matched exactly); two-step request/claim shapes
+ * detected structurally from the dispatcher's selector set, yielding a leg of
+ * UNKNOWN length; the pause state at the pinned block (a halted exit is
+ * unbounded, not "large"); and exit-blockability from day-2 ACCESS_RESTRICTION
+ * capabilities attributed to a holder — capability, never prediction.
  *
- * WHAT IS MEASURED, and how:
+ * Measured legs are SUMMED, because these mechanisms are sequential. A claim
+ * window adds zero duration — it is a deadline, not a delay — but is recorded
+ * so the hazard stays visible.
  *
- * 1. COOLDOWN / UNSTAKING PERIODS. A curated, versioned table of accessor
- *    signatures (below) is called at the pinned block. Each is a full
- *    signature whose selector is derived by viem, matched exactly — the same
- *    discipline taxonomy.ts uses, and for the same reason: a name is not a
- *    selector. A resolving accessor gives a real, evidence-backed duration.
+ * `atLeastSeconds` is always a floor. `tight` is deliberately hard to earn:
+ * readable dispatcher, every detected leg measured, nothing currently
+ * blocking. An unmeasured leg removes `tight` entirely.
  *
- * 2. TWO-STEP REQUEST/CLAIM SHAPES. Some protocols make you queue an exit
- *    without exposing the wait as a readable constant. Those are detected
- *    structurally, from the dispatcher's own selector set: a request-side
- *    selector present alongside a claim-side one. This yields a leg of
- *    UNKNOWN length — which is the point. A queued exit whose duration we
- *    cannot read makes the whole time-to-exit "at least X, possibly more,"
- *    and that is strictly more useful than either guessing or ignoring it.
- *
- * 3. CURRENT BLOCK STATE. `paused()` and friends are read. If exit is halted
- *    at the pinned block, time-to-exit is not "large," it is UNBOUNDED, and
- *    the model says so with its own status.
- *
- * 4. EXIT BLOCKABILITY. The general signal, and the one that needs no table:
- *    an ACCESS_RESTRICTION capability (pause/blacklist/freeze — day 2's own
- *    taxonomy) attributed to a holder means someone can stop you leaving. It
- *    is reported as CAPABILITY, never prediction. This is deliberately kept
- *    on the time-to-exit side rather than treated as a window bypass: a pause
- *    does not shorten the notice before a rule change, it removes the exit,
- *    and those are different failures.
- *
- * THE COMPOSITION RULE, stated because an auditor will interrogate it:
- *   Measured legs are SUMMED, not maxed. These mechanisms are sequential in
- *   the shape they almost always take — request, wait out the cooldown, then
- *   claim within a window — so a holder passes through them in series. A
- *   claim window is the exception and is recorded as a leg of ZERO added
- *   duration: it does not lengthen the exit, it constrains WHEN the exit must
- *   be taken, which is a real hazard (miss it and you restart) but not extra
- *   waiting. It is recorded rather than dropped so the hazard is visible.
- *
- * THE BOUNDING RULE:
- *   `atLeastSeconds` is always a FLOOR. `tight` says whether that floor is
- *   believed to be the whole story, and it is deliberately hard to earn: it
- *   requires that the dispatcher was readable, that every detected leg was
- *   measured, and that nothing is currently blocking exit. Only a tight bound
- *   lets the verdict make a two-sided comparison. An unmeasured leg does not
- *   just lower confidence — it removes `tight` entirely, because a number
- *   that hides a gap is worse than an admitted gap.
- *
- * WHAT IS NOT MODELLED, on purpose:
- *   LIQUIDITY DEPTH. Estimating whether a position could actually be sold
- *   needs pool discovery and depth integration across venues — an indexer,
- *   which this project deliberately does not have (the same reason the
- *   major-token list is curated, KNOWN EDGE #5). Every plausible shortcut
- *   here produces a number that looks authoritative and isn't, which is the
- *   worst possible failure for the headline metric. So it is reported as
- *   `modelled: false` with the reason, and the schema makes that a literal
- *   false so a made-up number cannot be expressed.
- *
- * A NOTE ON MUTABLE COOLDOWNS. Where a cooldown's own setter is present in
- * the contract's dispatcher, the leg records `mutableBy`. A time-to-exit the
- * protocol's authority can raise is not a property of the protocol; it is a
- * property of that authority's current choice. Ethena's sUSDe is the live
- * example: `cooldownDuration()` reads 86400 while `setCooldownDuration` is
- * present and `MAX_COOLDOWN_DURATION()` is 90 days. Reporting "1 day" without
- * that context would be true and misleading at once.
+ * Liquidity depth is not modelled — that needs an indexer, and every shortcut
+ * produces an authoritative-looking wrong number; `modelled` is a literal
+ * false so one cannot be expressed. Where a cooldown's own setter exists the
+ * leg records `mutableBy`: a duration the authority can raise is not a
+ * protocol constant.
  */
 import { decodeFunctionResult, encodeFunctionData, parseAbiItem, toFunctionSelector, type Hex } from "viem";
 import type { ChainReader } from "../chain/client.js";

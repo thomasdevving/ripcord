@@ -1,34 +1,24 @@
 import { forkTransactions as extractForkTransactions } from "../shared/fork.js";
 /**
- * ENGINE OBSERVATIONS → TRANSPORT EVENTS, and the disclosure boundary that
- * governs which of them may leave the process early.
+ * ENGINE OBSERVATIONS → TRANSPORT EVENTS, and the disclosure boundary governing
+ * which of them may leave the process early. The only adapter between
+ * src/report/observer.ts (in-process, sees everything) and the SSE stream
+ * (public, sees what the gate allows).
  *
- * This is the only adapter between `src/report/observer.ts` (in-process, sees
- * everything) and the SSE stream (public, sees what the gate allows). Three
- * responsibilities, in order of how badly getting them wrong would hurt:
- *
- *  1. THE EARLY-STREAM BOUNDARY. During a run the publication gate has not run
- *     yet, so a capability whose guard could not be attributed is still
- *     undecided. Streaming its signature would publish a possible "this live
- *     contract may be unguarded" claim that the gate might be about to block —
- *     and once a browser has it, no later decision can take it back. So
- *     `onCapabilities` forwards COUNTS ONLY: no signature, no selector, no
- *     probe payload, no manual-verification entry. What may stream early is the
- *     structural layer — proxy slots, owner, role holders, authority paths —
- *     which the gate never blocks on because none of it carries that reading.
- *
- *  2. THE POWER MAP IS BUILT FROM FOUND FACTS ONLY. Every node here comes from
- *     a detector's output. Nothing is inferred from an address's shape, no edge
- *     is drawn because it "should" exist, and a Safe threshold appears only when
- *     the account classifier actually read one. An unresolved authority stays in
- *     the graph as an explicit unknown node with its termination reason, rather
- *     than being dropped — a missing node reads as "nothing there", which is the
- *     one thing it must never read as.
- *
+ *  1. THE EARLY-STREAM BOUNDARY. During a run the publication gate has not run,
+ *     so a capability whose guard could not be attributed is still undecided.
+ *     Streaming its signature would publish a possible "this live contract may
+ *     be unguarded" claim the gate might be about to block, and once a browser
+ *     holds it no later decision takes it back. So `onCapabilities` forwards
+ *     COUNTS ONLY. The structural layer — proxy slots, owner, role holders,
+ *     authority paths — may stream, because the gate never blocks on it.
+ *  2. THE POWER MAP IS BUILT FROM FOUND FACTS ONLY. Nothing is inferred from an
+ *     address's shape, no edge is drawn because it "should" exist, and an
+ *     unresolved authority stays in the graph as an explicit unknown node with
+ *     its termination reason — a missing node reads as "nothing there", which is
+ *     the one thing it must never read as.
  *  3. EDGE DIRECTION IS EXPLICIT. `implementation` is drawn as "supplies code
- *     to", never as an owner: an implementation address holds no power over the
- *     proxy, and a graph that suggests otherwise would be teaching the reader
- *     something false about proxies on the first screen they see.
+ *     to", never as an owner: an implementation holds no power over the proxy.
  */
 import type {
   AccessControlResult,

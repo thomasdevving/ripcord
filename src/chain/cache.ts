@@ -125,36 +125,24 @@ export class DiskCache {
   }
 
   /**
-   * Wraps a fetch function with get/set. The wrapped function is the single
-   * place cache semantics live.
+   * Wraps a fetch function with get/set — the single place cache semantics live.
    *
-   * THE INVARIANT THIS ENFORCES: a cache MISS must return exactly what a later
-   * cache HIT would return. Without normalization it did not, and the
-   * difference was not cosmetic — it was a type change. `set` serializes
-   * bigints to strings (JSON cannot represent a bigint), so a HIT yields
-   * `blockNumber: "12345"` while a MISS yielded the raw viem value
-   * `blockNumber: 12345n`. Same code, same block, different types, decided
-   * purely by whether someone had run the scan before.
+   * THE INVARIANT: a cache MISS must return exactly what a later cache HIT
+   * would. Without normalization it did not, and the difference was a TYPE
+   * change: `set` serializes bigints to strings (JSON cannot represent one), so
+   * a HIT yielded `blockNumber: "12345"` while a MISS yielded viem's raw
+   * `12345n` — same code, same block, different types, decided purely by whether
+   * someone had run the scan before.
    *
-   * That surfaced on day 4 as a hard failure — a cold-cache scan of Ethena's
-   * sUSDe died with "Do not know how to serialize a BigInt" when the report
-   * reached `JSON.stringify`, because `getLogs` evidence embeds viem log
-   * objects whose `blockNumber` is a bigint. It only reproduced cold, and only
-   * when a log scan actually returned a log, which is why every warm rerun and
-   * every fixture with an empty log window had looked fine.
-   *
-   * The crash was the lucky part. The same defect silently made a COLD report
-   * differ from a WARM one in those evidence fields, which quietly weakens the
-   * determinism guarantee the whole cache exists to provide. Normalizing here —
-   * round-tripping a freshly-fetched value through the identical serialization
-   * `set` uses — makes cold and warm byte-identical by construction rather than
-   * by luck, and it applies even when caching is DISABLED so `--no-cache` can
-   * never take a different code path either.
-   *
-   * This is the fourth defect to enter through the cache boundary (see KNOWN
-   * EDGES #14 and the day-6 audit pass): the boundary is where "a value from
-   * the network" and "a value from disk" have to be indistinguishable, and
-   * every place they are not is a bug waiting for a cold run.
+   * It surfaced as a cold-cache scan dying on "Do not know how to serialize a
+   * BigInt", because `getLogs` evidence embeds viem log objects. It reproduced
+   * only cold, and only when a log scan actually returned a log. The crash was
+   * the lucky part: the same defect silently made a COLD report differ from a
+   * WARM one in those fields, weakening the determinism guarantee the cache
+   * exists to provide. Round-tripping a freshly-fetched value through the
+   * identical serialization `set` uses makes cold and warm byte-identical by
+   * construction, and it applies even when caching is DISABLED so `--no-cache`
+   * cannot take a different code path either.
    */
   async wrap<T>(key: CacheKey, fetchFn: () => Promise<T>): Promise<{ value: T; fromCache: boolean }> {
     const cached = await this.get<T>(key);

@@ -1,48 +1,24 @@
 /**
  * Composes the Mobula endpoints into one LIVE exposure view for a target.
  *
- * WHAT THIS IS FOR. The pinned report's dependency graph answers "does this
- * contract hold any of six curated major ERC20s at block N" — a deliberate,
- * documented limitation (KNOWN EDGE #5: no indexer, no balance discovery). That
- * limitation is honest but it is still a limitation, and it is exactly the shape
- * of thing a live indexed source closes. So this layer answers a DIFFERENT
- * question with different epistemics: "what does this address hold right now,
- * across every chain, according to a third party." It sits beside the verdict
- * and is never an input to it.
+ * The pinned dependency graph answers "does this contract hold any of six
+ * curated majors at block N" (KNOWN EDGE #5: no indexer). This layer answers a
+ * DIFFERENT question with different epistemics — "what does this address hold
+ * right now, across every chain, according to a third party" — and is never an
+ * input to the verdict. Lido's withdrawal queue is the clearest case: ~$63M of
+ * NATIVE ETH that no MAJOR_TOKENS entry could ever match.
  *
- * THE CLEAREST CASE, and the reason native assets get their own handling below:
- * Lido's withdrawal queue holds ~$63M of NATIVE ETH. Native ETH is not an ERC20,
- * so no entry in MAJOR_TOKENS could ever match it, at any block, under any
- * provider. That is not a gap the pinned layer should close by guessing — it is
- * a gap this layer closes by asking someone who indexes.
- *
- * ---------------------------------------------------------------------------
- * THREE PROBLEMS WITH LIVE WALLET DATA, ALL FOUND BY LOOKING AT IT
- * ---------------------------------------------------------------------------
- *
- * 1. THE NAMES ARE ATTACKER-CONTROLLED. Holdings for any well-known address are
- *    full of airdropped phishing tokens whose symbol and name are chosen by
- *    whoever minted them — verified live on Lido's queue, which carries entries
- *    reading "⚠️ URGENT WHATSAPP MODERATOR +31…" and "Visit website nano-eth
- *    .net to claim rewards". Escaping stops them being markup. It does NOT stop
- *    them being believed. So this layer treats the (chainId, contract address)
- *    pair as the token's IDENTITY, and the vendor's name and symbol as
- *    unverified display metadata that the renderer must label as such. A
- *    phishing token that clears the value floor still cannot present itself as
- *    a legitimate asset, because its name is never what identifies it.
- *
- * 2. THE VALUES CAN BE FICTION. cbETH's wallet reports a `totalWalletBalanceUSD`
- *    of $11.8 TRILLION, produced by one empty-symbol token at $237bn per unit
- *    that passed Mobula's own `filterSpam=true&minLiquidity=10000`. Publishing a
- *    vendor's portfolio total verbatim would put that figure on a Ripcord page.
- *    So the headline is computed HERE, from holdings this layer is willing to
- *    stand behind, and a holding earns that by its `valuation` basis below.
- *
- * 3. FILTERING MUST BE VISIBLE AND ITEMISED. Withholding a row is fine;
- *    withholding it silently is the same failure as an unlabelled partial scan.
- *    And a single "N filtered" number would blur together things with different
- *    meanings, because most junk is not below the floor — it is UNPRICEABLE.
- *    So `withheld` has one bucket per REASON, each with its own count.
+ * Three problems with live wallet data, all found by looking at it:
+ *  1. THE NAMES ARE ATTACKER-CONTROLLED. Real holdings carry airdropped
+ *     phishing tokens whose symbol and name the minter chose. Escaping stops
+ *     them being markup, not being believed — so identity is the (chainId,
+ *     address) pair and the vendor's name/symbol are unverified display data.
+ *  2. THE VALUES CAN BE FICTION. One wallet's vendor portfolio total read
+ *     $11.8tn, from a token that passed the vendor's own spam filter. The
+ *     headline is computed HERE, from holdings with a `valuation` basis.
+ *  3. FILTERING MUST BE ITEMISED. Withholding silently is the same failure as
+ *     an unlabelled partial scan, and one "N filtered" number would blur
+ *     below-the-floor with UNPRICEABLE, so `withheld` has a bucket per reason.
  */
 import { fetchHoldings, fetchPrices, fetchMetadata, chainName, isNativeAsset, tokenKey } from "./mobula.js";
 import type { MobulaHolding } from "./mobula.js";

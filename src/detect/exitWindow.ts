@@ -1,83 +1,27 @@
 /**
- * The Exit Window (day 4, the metric the whole project exists for).
+ * The Exit Window: the notice before a rule change takes effect, MINUS every
+ * way that notice can be cut. Optimism here is the most damaging failure this
+ * tool has, so a delay is worth nothing until positive evidence says otherwise.
  *
- * Day 3 finds that a timelock exists and reads its delay. That raw delay is
- * NOT the exit window. The exit window is the delay MINUS every way it can be
- * cut to zero, and getting that wrong in the optimistic direction — printing a
- * comforting "2 days" that an admin can bypass in one transaction — is the
- * single most damaging thing this tool could do. An auditor who catches one
- * laundered delay is right to discard the entire report. So every rule here
- * leans the same way: a delay is worth nothing until positive evidence says
- * otherwise.
+ * The model:
+ *  1. The window is a property of a ROUTE, not of a protocol. Each depth-1
+ *     authority is its own route; the protocol's window is the MINIMUM across
+ *     them — a two-day timelock is worth nothing beside an un-delayed role.
+ *  2. A multisig is not a delay. It raises how many parties must agree and
+ *     adds zero notice, so a Safe-terminated route is `immediate`.
+ *  3. Binding-ness is decided BY PROBE, not by name: a self-call gate on the
+ *     delay's own mutator is `proven_binding`, an Ownable/AccessControl gate
+ *     is `shortenable`, anything else is `cannot_determine` and is never
+ *     credited as binding.
+ *  4. An unproven delay is carried as `nominalDelaySeconds`, never as
+ *     `windowSeconds` — the schema's discriminated union enforces it.
+ *  5. `checksPerformed[]` records every check that ran, so an empty
+ *     `bypasses[]` means "checked, found none" rather than "never looked".
  *
- * THE MODEL, stated so it can be argued with:
- *
- * 1. The window is a property of a ROUTE, not of a protocol. Each depth-1
- *    authority (proxyAdmin / owner / each AccessControl role) is a separate
- *    route to changing the rules, and each carries its own notice period. The
- *    protocol's window is the MINIMUM across routes: a two-day timelock on the
- *    upgrade path is worth nothing beside an un-delayed `setOracle` role. This
- *    is the brief's "can the guarded action reach the target through a
- *    DIFFERENT path that is not timelocked at all?" answered structurally,
- *    for every path at once, instead of by looking for one specific shortcut.
- *
- * 2. A MULTISIG IS NOT A DELAY. A 3-of-11 Safe raises the number of parties
- *    who must agree; it adds exactly zero notice. The exit window measures
- *    TIME, so a Safe-terminated route is `immediate` — noticeSeconds 0 — with
- *    the threshold recorded elsewhere as the (real, different) collusion
- *    property it is. This is the PAID fixture's entire lesson and the most
- *    load-bearing modelling call in the file.
- *
- * 3. BINDING-NESS IS DECIDED BY PROBE, NOT BY NAME OR SOURCE. A contract that
- *    exposes `getMinDelay()` is not thereby a real timelock. What makes a
- *    delay binding is that the delay's own mutator can be reached ONLY through
- *    the timelock itself, so shortening the delay is itself subject to the
- *    current delay. We establish that the same way day 2 establishes guards:
- *    a real `eth_call` at the pinned block from an unrelated address, reading
- *    the revert. Verified live before this file was written:
- *      - OZ v4 TimelockController.updateDelay → "TimelockController: caller
- *        must be timelock"
- *      - Compound/Bravo Timelock.setDelay → "Timelock::setDelay: Call must
- *        come from Timelock."
- *    Both are self-call gates: `proven_binding`. An Ownable/AccessControl-
- *    shaped revert instead means a role holder can shorten the delay directly:
- *    `shortenable`. Anything else: `cannot_determine`, which is NEVER treated
- *    as binding.
- *
- *    A note on why this is a probe and not the fork: the fork was considered
- *    and rejected here. Impersonating a role holder and calling `updateDelay`
- *    on a fork would tell us exactly what the revert shape already tells us,
- *    at the cost of an anvil spin-up per timelock — and anvil impersonation
- *    ignores signatures, so it would ALSO answer a slightly different question
- *    than the one asked. The static probe is cheaper, cached, pinned, and
- *    strictly more faithful. The fork stays the proof engine's tool.
- *
- * 4. WE DO NOT ACCEPT A DELAY WE COULD NOT VERIFY. If binding-ness is
- *    undetermined, the assessment is `not_proven_binding` and the raw number
- *    is carried in `nominalDelaySeconds`, never as `windowSeconds`. The schema
- *    enforces this (exitWindowAssessmentSchema is a discriminated union in
- *    which only the `binding` variant HAS a windowSeconds field) so it cannot
- *    be lost to caller discipline — the same technique GuardStatus uses for
- *    capability holders.
- *
- * 5. "NONE FOUND" AND "NOT CHECKED" ARE DIFFERENT ANSWERS. Every check that
- *    ran is recorded in `checksPerformed` with its result, and the checks
- *    Ripcord deliberately does NOT make (governance proposal paths, Safe
- *    modules) are listed there too with `performed: false`. An empty
- *    `bypasses[]` beside a populated `checksPerformed[]` is a claim; an empty
- *    `bypasses[]` on its own would be a silence pretending to be one.
- *
- * WHAT IS DELIBERATELY EXCLUDED, and why:
- *   - `pendingOwner` is not a route. A pending owner holds no power until it
- *     accepts; counting it would inflate the route set with an authority that
- *     cannot currently act. Recorded as a check, not silently dropped.
- *   - A CANCELLER or guardian is not a window bypass. Cancelling a queued
- *     operation removes a change, it does not make one arrive sooner, so it
- *     cannot shorten the window. An emergency pause is likewise not a window
- *     bypass — it is an EXIT-blocking capability, and it is modelled on the
- *     time-to-exit side (timeToExit.ts) where its effect actually lands.
- *     Both are recorded as checks so the reasoning is visible rather than
- *     looking like an omission.
+ * Deliberately excluded, recorded as checks rather than dropped: `pendingOwner`
+ * (holds no power until it accepts) and cancel/guardian powers (they remove a
+ * change rather than make one arrive sooner; a pause blocks the EXIT and is
+ * modelled in timeToExit.ts, where its effect actually lands).
  */
 import { decodeAbiParameters, encodeFunctionData, toFunctionSelector, type Hex } from "viem";
 import type { ChainReader } from "../chain/client.js";

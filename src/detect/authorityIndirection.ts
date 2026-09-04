@@ -1,42 +1,26 @@
 /**
- * Authority INDIRECTION markers (day 5, from calibration).
+ * Authority INDIRECTION markers.
  *
- * This module detects that a contract delegates its authorisation to some other
- * contract. It deliberately does NOT resolve what that contract is, who
- * controls it, or what it permits. Its entire job is to turn "Ripcord found no
- * authority" into "Ripcord found a handle to authority it does not follow" —
- * which is the difference between an absence of evidence and evidence of
- * absence, and therefore the difference between an honest `undetermined` and a
- * false clean bill.
+ * Detects that a contract delegates its authorisation elsewhere, and
+ * deliberately does NOT resolve what that contract is or what it permits. The
+ * job is to turn "Ripcord found no authority" into "Ripcord found a handle to
+ * authority it does not follow" — the difference between an absence of evidence
+ * and evidence of absence, and so between an honest `undetermined` and a false
+ * clean bill.
  *
- * WHY IT EXISTS. Day-5 calibration ran three contracts into
- * `no_rule_change_route_found`, and two of them were wrong in the one direction
- * this project cannot afford:
- *   - Balancer Vault (0xBA122222…) exposes `getAuthorizer()` → a separate
- *     TimelockAuthorizer holding every permission over the Vault. No owner, no
- *     roles, no proxy — so every day-1 check came back empty and the verdict
- *     read as "no exit-window risk was identified."
- *   - rETH (0xae78736C…) checks callers against a RocketStorage registry it
- *     does not expose at all.
- * The first is catchable with a two-selector probe. The second is not, and that
- * is precisely why the fix cannot stop here: the assessment's DEFAULT was also
- * inverted (see exitWindow.ts) so that "clean" is a positive claim requiring
- * positive evidence, and an undetected bespoke registry lands in `undetermined`
- * rather than in a pass.
+ * Calibration ran three contracts into the old `no_rule_change_route_found`, two
+ * wrongly: Balancer's Vault exposes `getAuthorizer()` → a separate
+ * TimelockAuthorizer holding every permission, with no owner, roles or proxy for
+ * the day-1 checks to find; rETH checks callers against a RocketStorage registry
+ * it does not expose at all. The first is catchable with a two-selector probe;
+ * the second is why the assessment's DEFAULT was also inverted (exitWindow.ts),
+ * so a bespoke registry lands in `undetermined` rather than in a pass.
  *
- * SCOPE, held deliberately narrow. A marker is one zero-argument getter that
- * returns a non-zero address. That is the whole test. Ripcord does not call
- * into the returned contract, does not enumerate its permissions, and never
- * claims the marker proves power exists — only that a documented handle to
- * authority is present and unresolved. Following it would be a resolution
- * layer, and a resolution layer for arbitrary authorisation modules is a much
- * larger piece of work than day 5 has room for (see KNOWN EDGES).
- *
- * The consequence of a marker is always conservative: it can only ever move an
- * assessment toward `undetermined`. It can never establish a window, shorten
- * one, or attribute power to anybody. A false positive here therefore costs a
- * lost "immutable" claim and nothing else, which is why the list can afford to
- * be a little generous while the non-zero-address requirement keeps it honest.
+ * SCOPE: a marker is one zero-argument getter returning a non-zero address, and
+ * that is the whole test. Ripcord never calls into what it finds. The effect is
+ * always subtractive — a marker can only move an assessment toward
+ * `undetermined`, never establish or shorten a window — so a false positive
+ * costs a lost "immutable" claim and nothing else.
  */
 import { decodeAbiParameters, toFunctionSelector, type Hex } from "viem";
 import type { ChainReader, Evidence } from "../chain/client.js";

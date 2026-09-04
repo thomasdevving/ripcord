@@ -1,53 +1,26 @@
 /**
- * The guard-revert DIALECT dictionary (day 5, from calibration).
+ * The guard-revert DIALECT dictionary, built from calibration.
  *
- * Day 2 established the method: ask the contract, don't read its source. Probe
- * a capability from unrelated addresses and interpret the revert. What day-5
- * calibration established is that the day-2 vocabulary was too narrow — it
- * recognised exactly four shapes (OZ v4/v5 Ownable and AccessControl), and
- * across 23 real mainnet reports that produced 27 "no auth-shaped revert
- * observed" results of which ZERO turned out to be genuinely unguarded. Twenty
- * of them were contracts stating plainly, in their own revert string, that a
- * guard had fired — in a dialect Ripcord could not read:
+ * Day 2 recognised four shapes (OZ v4/v5 Ownable and AccessControl). Across the
+ * calibration set that produced 27 "no auth-shaped revert observed" results of
+ * which ZERO were genuinely unguarded; most were contracts stating plainly, in
+ * their own revert string, that a guard had fired — Circle FiatToken "caller is
+ * not the blacklister", Maker "Dai/not-authorized", OZ v3, Morpho "not owner",
+ * Rocket Pool "Invalid or outdated contract", Ethena OnlyMinter(). The contract
+ * itself is the witness, the same evidence class as the day-2 four.
  *
- *   "Blacklistable: caller is not the blacklister"   (Circle FiatToken — USDC, cbETH)
- *   "Dai/not-authorized"                             (Maker ds-auth — DAI)
- *   "AccessControl: sender must be an admin to grant"(OpenZeppelin v3 — FXS)
- *   "not owner"                                      (Morpho Blue)
- *   "You are not an owner or the governance timelock"(Frax)
- *   "Invalid or outdated contract"                   (Rocket Pool — rETH)
- *   OnlyMinter()                                     (Ethena USDe, custom error)
+ * THE HARD BOUNDARY: this dictionary may only ever move a RECOGNISED revert
+ * toward "guarded". There is deliberately no rule reading "we did not recognise
+ * it, so assume guarded" — that inference is how false-clean gets built.
+ * Unrecognised stays unrecognised and keeps blocking publication.
  *
- * Recognising these is the SAME evidence class as the day-2 four: the contract
- * itself is the witness. It moves a finding from "unknown, possibly unguarded"
- * to "guarded" — a move in the safe direction.
+ * It also classifies a second, different thing: a revert proving the probe
+ * never REACHED an auth check (a zero-argument or state precondition firing
+ * first). That is inconclusive, not suspicious, and does not block.
  *
- * THE HARD BOUNDARY, and it is the whole reason this file can exist safely:
- * this dictionary may only ever move a RECOGNISED revert toward "guarded". It
- * is never consulted to argue the reverse. An unrecognised revert stays
- * unrecognised, keeps its "manual review required" routing, and keeps blocking
- * publication. There is deliberately no rule anywhere that reads "we did not
- * recognise it, so assume it is guarded" — that inference is how a tool builds
- * a false-clean result, and it is the exact failure this project exists to
- * avoid. The conservative default is the feature.
- *
- * A SECOND, DIFFERENT THING this file classifies: a revert that is positive
- * evidence the probe never REACHED an auth check. Probing with zero-valued
- * arguments means a contract can legitimately reject the call on a state or
- * argument check first — "ERC20: approve from the zero address" is our own zero
- * address coming back at us, and "Pausable: not paused" is a state precondition.
- * Those are not evidence of a missing guard; they are evidence that the
- * question was never asked. Day 2 lumped them in with genuine unknowns, so they
- * blocked publication as if they might be unguarded privileged functions. They
- * are now labelled for what they are — inconclusive, not suspicious — which is
- * neither "guarded" (nothing was proven) nor a possible vulnerability.
- *
- * IN-SAMPLE, AND SAID OUT LOUD: these dialects were found by reading the
- * calibration set's reverts. The coverage claim is therefore "this dictionary
- * knows these N dialects", never "Ripcord recognises guards in general". A
- * protocol using a dialect not listed here still blocks — correctly. Every
- * entry records where it was read live, and the few derived-not-observed
- * entries say so, exactly as KNOWN EDGE #16 does for the OZ v5 timelock error.
+ * IN-SAMPLE, and said out loud: these dialects were found by reading the
+ * calibration set's own reverts, so the claim is "this dictionary knows these
+ * N dialects", never "Ripcord recognises guards in general".
  */
 import { toFunctionSelector, type Hex } from "viem";
 

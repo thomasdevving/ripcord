@@ -2,38 +2,24 @@
  * THE JOB MANAGER — queue, worker lifecycle, event stream, cancellation.
  *
  * One object owns everything that can outlive an HTTP request, because the
- * alternative (state spread across route handlers) is how a service ends up with
- * an orphaned anvil process and a queue that never drains.
+ * alternative is an orphaned anvil process and a queue that never drains.
  *
- * The properties it is responsible for, and why each one is here rather than
- * "handled by the caller":
- *
- *  - A JOB OUTLIVES ITS REQUEST. `POST /api/jobs` returns 202 immediately and
- *    the analysis keeps running. Closing the browser tab does not cancel it, and
- *    a disconnected SSE consumer cannot change the outcome: events accumulate in
- *    a bounded history that a reconnecting client resumes from.
- *
- *  - EVERY EVENT HAS A MONOTONIC PER-JOB SEQUENCE. That is what makes reconnect
- *    correct rather than best-effort. A client resumes from `lastSeq`; if that
- *    cursor has fallen off the back of the bounded history, it gets a fresh
- *    consistent snapshot instead of a silent gap — a gap would render as
- *    "nothing happened", which is precisely the wrong thing to show.
- *
- *  - CANCELLATION IS AUTHORISED BY A SECRET, NOT BY THE JOB ID. Job ids appear
- *    in shareable URLs. If the id were sufficient, anyone with a link could kill
- *    someone else's run. The control token is returned exactly once, to the
+ *  - A JOB OUTLIVES ITS REQUEST. Closing the tab does not cancel it, and a
+ *    disconnected SSE consumer cannot change the outcome: events accumulate in
+ *    a bounded history a reconnecting client resumes from.
+ *  - EVERY EVENT HAS A MONOTONIC PER-JOB SEQUENCE, which is what makes reconnect
+ *    correct rather than best-effort. A cursor that has fallen off the back of
+ *    the history gets a fresh snapshot, not a silent gap — a gap renders as
+ *    "nothing happened", precisely the wrong thing to show.
+ *  - CANCELLATION IS AUTHORISED BY A SECRET, NOT BY THE JOB ID, because ids
+ *    travel in shareable URLs. The control token is returned once, to the
  *    submitter, and only its hash is stored.
- *
  *  - EVERY EXIT PATH KILLS THE WORKER. Success, failure, timeout, cancellation
- *    and service SIGTERM all route through `finish`, which terminates the child.
- *    The worker starts an owned process group; termination signals the group
- *    and checks exit before releasing the queue slot. Nothing here ever kills a
- *    process it did not spawn.
- *
- *  - REPEATED SUBMITS DO NOT STACK. A resubmit with the same idempotency key and
- *    the same parameters returns the existing job. A deliberate re-run omits the
- *    key and gets a new execution id — the distinction is the user's to make,
- *    not something inferred from timing.
+ *    and SIGTERM all route through `finish`. The worker owns a process group;
+ *    termination signals the group and checks exit before releasing the slot.
+ *  - REPEATED SUBMITS DO NOT STACK. Same idempotency key and parameters returns
+ *    the existing job; a deliberate re-run omits the key — the distinction is
+ *    the user's to make, not something inferred from timing.
  */
 import { fork, type ChildProcess } from "node:child_process";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";

@@ -1,41 +1,25 @@
 /**
  * Dispatcher-based selector extraction.
  *
- * Day 1's `containsOpcode` (bytecode.ts) walks bytecode linearly from offset
- * 0 to the end, respecting PUSH-immediate lengths, but with no notion of
- * reachability: it happily "executes" bytes that the contract itself would
- * never reach — most importantly, a CODECOPY'd child contract's creation
- * bytecode embedded inline by `new Foo(...)`. That child blob is itself
- * valid EVM bytecode (it's a real contract's real init code), so a naive
- * linear walk decodes it "successfully" and, if the child has its own
- * selector dispatcher, extracts the CHILD's selectors as if they belonged to
- * the parent. That is a phantom capability — the single worst class of false
- * positive for this tool.
+ * Day 1's `containsOpcode` walks bytecode linearly with no notion of
+ * reachability, so it happily decodes a CODECOPY'd child contract's creation
+ * bytecode embedded by `new Foo(...)` — a real contract's real init code — and
+ * extracts the CHILD's selectors as if they were the parent's. That is a phantom
+ * capability, the worst class of false positive for this tool.
  *
- * The fix here is a minimal static reachability walk, not a full CFG/data-
- * flow analysis: starting at offset 0, follow only JUMP/JUMPI targets that
- * are (a) pushed onto the stack by a literal PUSH immediately beforehand and
- * (b) land on a real JUMPDEST. Any block ends at the first terminator
- * (STOP/RETURN/REVERT/INVALID/SELFDESTRUCT) it hits, with no fallthrough
- * past it. A CODECOPY'd data blob is never the target of a real jump and
- * always sits past a terminator in program order, so it is structurally
- * unreachable from this walk and never gets decoded as if it were code.
- * This under-approximates reachability (a dynamic jump table is not
- * followed) but Solidity's own selector dispatcher — the thing we actually
- * need to read — always uses static PUSH-immediate jump targets, so nothing
- * real is lost for this specific purpose. "Narrow and working beats broad
- * and flaky."
+ * The fix is a minimal static reachability walk, not full CFG analysis: from
+ * offset 0, follow only JUMP/JUMPI targets pushed by a literal PUSH immediately
+ * beforehand that land on a real JUMPDEST, and end each block at its first
+ * terminator with no fallthrough. A CODECOPY'd blob is never the target of a
+ * real jump and always sits past a terminator, so it is structurally
+ * unreachable. This under-approximates (a dynamic jump table is not followed),
+ * but solc's own dispatcher always uses static targets, so nothing real is lost.
  *
- * Selector collection: within reachable blocks, any `PUSH4 <value> EQ
- * PUSHn <dest> JUMPI` window is a real selector comparison — the value is
- * recorded as a selector. `GT`/`LT` in the same window shape is a binary-
- * search pivot boundary, not necessarily a real function's selector (it may
- * just be the midpoint the compiler chose to split the search space); it is
- * counted but never added to the selector set. This is safe because solc's
- * binary-search dispatch always terminates each leaf with a direct EQ check
- * against the real selector — pivots are redundant with, not a substitute
- * for, the EQ leaves. Verified empirically against a real many-function
- * binary-search contract in dispatcher.test.ts.
+ * Selector collection: a `PUSH4 <value> EQ PUSHn <dest> JUMPI` window is a real
+ * comparison and the value is recorded. GT/LT in the same shape is a
+ * binary-search pivot — counted, never added to the selector set — because
+ * solc's binary search always terminates each leaf in a direct EQ check against
+ * the real selector. Verified empirically in dispatcher.test.ts.
  */
 import type { Hex } from "viem";
 import { stripSolidityMetadata } from "./bytecode.js";

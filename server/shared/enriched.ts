@@ -1,42 +1,24 @@
 /**
- * THE ENRICHED ASSESSMENT — where sidecar evidence is finally allowed to touch
- * a conclusion, and the one place in this project where that is true.
+ * THE ENRICHED ASSESSMENT — the one place sidecar evidence is allowed to reach
+ * a conclusion.
  *
- * Everything else in the second Mobula layer is deliberately inert: the asset
- * context cannot change the report, the coverage panel only describes the scope
- * of existing evidence. But refusing to connect the two forever has a cost of
- * its own, and it is a real one. A run can hold a fork-confirmed, zero-notice
- * restriction on four collateral assets while the deterministic report beside it
- * says only that USDC suppliers can be stopped — two artifacts, disagreeing
- * about how much was tested, with nothing reconciling them. A reader has to do
- * that join by hand, and a reader doing a join by hand is how a finding gets
- * missed.
+ * Everything else in the second Mobula layer is deliberately inert. But refusing
+ * to connect the two forever has its own cost: a run can hold a fork-confirmed
+ * zero-notice restriction on four collateral assets while the report beside it
+ * names only the base asset — two artifacts disagreeing about how much was
+ * tested, with nothing reconciling them, and a reader doing that join by hand is
+ * how a finding gets missed.
  *
- * So this composes ONE statement from both. Four rules make that safe, and each
- * is enforced by the types below rather than by care.
- *
- *  1. THE PINNED REPORT IS NEVER MODIFIED. This is a separate artifact,
- *     computed on demand from two things that already exist. `changesVerdict`
- *     is a literal `false`: the schema cannot express a version of this that
- *     edited the verdict, so no future caller can be tempted to.
- *
- *  2. THE DIRECTION IS CAUTION-ONLY. There is no outcome variant that softens
- *     anything. A confirmed restrictor can broaden a finding's scope, or state
- *     something stricter than the report reached on its own. A clean sidecar —
- *     every candidate `no_effect` — produces `no_change` and nothing else, ever.
- *     This mirrors what the exit window already does with enumeration gaps: an
- *     incomplete input may push toward caution and may never push away from it.
- *
- *  3. THE LINK MUST BE EARNED. A sidecar is joined to a report only when target,
- *     chain, block number, block hash and fork block all match. Anything else is
- *     `unusable`, with the mismatch named. Attaching a fork result to the wrong
- *     block would be a fabricated finding, which is worse than no finding.
- *
- *  4. THE SCOPE TRAVELS WITH THE CLAIM. Every outcome carries the exact assets
- *     it rests on and the exact assets it does not, by (chain, address). "Four
- *     restrictors confirmed" without naming which four is a number a reader
- *     cannot check, and an unresolved candidate must never be silently absorbed
- *     into a total.
+ * Four rules make composing them safe, each enforced by the types below:
+ *  1. THE REPORT IS NEVER MODIFIED. `changesVerdict` is a literal `false`, so
+ *     the schema cannot express a version of this that edited the verdict.
+ *  2. CAUTION-ONLY. No outcome variant softens anything; a clean sidecar
+ *     produces `no_change` and nothing else, ever.
+ *  3. THE LINK MUST BE EARNED. Target, chain, block number, block hash and fork
+ *     block must all match; anything else is `unusable` with the mismatch
+ *     named. Attaching a fork result to the wrong block is a fabricated finding.
+ *  4. SCOPE TRAVELS WITH THE CLAIM. Every outcome names the assets it rests on
+ *     and the ones it does not, so a total is always reconcilable.
  *
  * Browser-safe: types and pure constants only, no Node imports.
  */

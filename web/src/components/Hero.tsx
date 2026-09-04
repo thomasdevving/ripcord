@@ -1,43 +1,27 @@
 /**
  * The hero band: the thesis, and the two controls that act on it.
  *
- * ONE PRIMARY, ONE PLAIN LINK, and they are not equals. "Scan an Address" opens
- * the scan page, where the address and the run settings live together with room
- * to explain themselves. "See a Sample Report" opens a finished report, so a
- * reader who wants to judge the output before running anything can.
+ * One primary and one plain link, not equals. The band held the address input
+ * for one revision; it moved to /scan because a form short enough to sit under a
+ * headline cannot show its own settings, and the run mode is the most
+ * consequential control in the product. What that arrangement protected was the
+ * DISTANCE to a running analysis, and that is still one click.
  *
- * The band held the address input for one revision. It was moved out because a
- * form that must stay short enough to sit under a headline is a form that
- * cannot show its own settings — and the run mode is the most consequential
- * control in the product. What the old arrangement protected was the DISTANCE
- * to a running analysis, and that is still one click.
+ * THE EXAMPLE CARD IS A QUOTATION, NOT A PREVIEW. Every figure is read from
+ * calibration/reports/compound-comet-cusdcv3.json at block 25,800,000 and the
+ * card carries the address and block it was measured at, because nothing here
+ * may look like a result the visitor's own run has not produced.
  *
- * THE EXAMPLE CARD IS A QUOTATION, NOT A PREVIEW, and that distinction is the
- * whole reason it is allowed to exist here. Every figure is read from
- * calibration/reports/compound-comet-cusdcv3.json at block 25,800,000, and the
- * card carries the address and block it was measured at. The same rule the
- * presets follow: nothing on this screen may look like a result the visitor's
- * own run has not produced yet.
+ * THE SOURCE REPORT MUST BE PUBLISHABLE. The first draft quoted sUSDe, whose
+ * report the disclosure gate blocks — putting its verdict and figures on the
+ * front page would have published exactly what the gate withholds, through a
+ * surface nobody thought to check. The figures are hardcoded strings because
+ * that is what a quotation is, and verify-claims.mjs re-derives every one from
+ * that report so it cannot drift. No verdict is computed here.
  *
- * THE SOURCE REPORT MUST BE PUBLISHABLE, and that is not a detail. The first
- * draft quoted Ethena's sUSDe, whose report the disclosure gate BLOCKS — it is
- * absent from the listing and /api/reports returns 451 for it. Putting its
- * verdict, address and figures on the product's front page would have published
- * exactly what the gate withholds, through a surface nobody thought to check.
- * Comet is publishable, so the card and the "See a sample report" link point at
- * the same report a visitor is allowed to open.
- *
- * The figures are hardcoded strings because that is what a quotation is, and
- * scripts/verify-claims.mjs re-derives every one of them from that report so the
- * quotation cannot drift from its source. No verdict is computed here — the
- * browser still evaluates no risk logic, and this component imports nothing from
- * the engine.
- *
- * The background is a sparse authority graph: nodes are addresses, edges are
- * authority between nearby ones, and every few seconds a query walks a
- * CONNECTED PATH of edges, lighting each segment behind it. That is the visual
- * echo of authority.ts resolving an upgrade path back to whoever holds it —
- * decoration would have been a random flare; this traces a chain.
+ * The background is a sparse authority graph whose query walks a CONNECTED PATH
+ * of edges — the visual echo of authority.ts resolving an upgrade path back to
+ * whoever holds it. Decoration would have been a random flare.
  */
 import { useEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";

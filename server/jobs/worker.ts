@@ -3,31 +3,25 @@ import { verifyBlockIdentity } from "../identity.js";
  * THE JOB WORKER — a forked child process that runs the real engine.
  *
  * It imports `buildReport`, `runProofEngine`, `runExitRestrictionEngine` and
- * `applyExitRestriction` DIRECTLY. It does not shell out to the CLI and it does
- * not parse the CLI's human-readable output: those strings are written for a
- * person reading a terminal, and treating them as a protocol would make every
- * wording change a silent breakage.
+ * `applyExitRestriction` DIRECTLY. It does not shell out to the CLI and does not
+ * parse its human-readable output: those strings are written for a person, and
+ * treating them as a protocol makes every wording change a silent breakage.
  *
- * WHY A CHILD PROCESS AT ALL. A Comet run is minutes of RPC round-trips, an
- * anvil spawn, and heavy synchronous bigint work. On the HTTP event loop that
- * stalls SSE heartbeats and /healthz, and a platform health check that times out
- * mid-demo restarts the container. Isolation also means a hard kill is available
- * as a real cancellation, and anything the engine leaks dies with the process.
+ * WHY A CHILD PROCESS. A Comet run is minutes of RPC round-trips, an anvil
+ * spawn and heavy synchronous bigint work; on the HTTP event loop that stalls
+ * SSE heartbeats and /healthz, and a health check timing out mid-demo restarts
+ * the container. Isolation also makes a hard kill a real cancellation.
  *
- * WHAT IT REFUSES TO DO:
- *   - It accepts no RPC URL, no cache path and no anvil argument from the HTTP
- *     request. Every one of those comes from server configuration, passed in the
- *     start message. A request cannot point the fork at an arbitrary endpoint.
- *   - It never sends unsanitised error text to the parent (see sanitize.ts): a
- *     viem or anvil failure routinely embeds the full RPC URL, key included.
- *   - It never invents a phase result. What it reports is what the engine's
- *     observer hooks gave it.
+ * WHAT IT REFUSES TO DO: accept an RPC URL, cache path or anvil argument from
+ * the HTTP request (all come from server config, so a request cannot point the
+ * fork at an arbitrary endpoint); send unsanitised error text to the parent (a
+ * viem or anvil failure routinely embeds the full RPC URL, key included); or
+ * invent a phase result.
  *
- * ORDER OF WORK matches the CLI's own semantics per mode, deliberately. In
- * particular `scan_withdrawal_test` does NOT run the drain proof, while
- * `scan_withdrawal_test_upgrade_proof` does — the CLI's `restrict` is the
- * superset, and quietly making the web's default flow mean something different
- * from the documented command would be the sort of drift docs/CALIBRATION.md
+ * ORDER OF WORK matches the CLI's semantics per mode, deliberately:
+ * `scan_withdrawal_test` does NOT run the drain proof while
+ * `scan_withdrawal_test_upgrade_proof` does, because the CLI's `restrict` is the
+ * superset and quiet drift from the documented command is what CALIBRATION.md
  * §11 exists to catch.
  */
 import { resolve } from "node:path";
