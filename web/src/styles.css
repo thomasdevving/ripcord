@@ -423,6 +423,34 @@ label {
 .chip.good { background: var(--good-bg); color: var(--good-ink); }
 .chip.warn { background: var(--warn-bg); color: var(--warn-ink); }
 .chip.crit { background: var(--crit-bg); color: var(--crit-ink); }
+.chip.processing { background: var(--good-bg); color: var(--accent); }
+
+.processing-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+}
+.processing-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  margin-top: 0.38em;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 38%, transparent);
+  animation: processing-pulse 1.5s ease-out infinite;
+}
+.chip .processing-dot { margin-top: 0; }
+
+@keyframes processing-pulse {
+  70% { box-shadow: 0 0 0 6px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .processing-dot { animation: none; }
+}
 
 /* --- run header ----------------------------------------------------------- */
 
@@ -825,11 +853,8 @@ pre.raw {
 .chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
 
 .coverage-detail-wrap {
-  position: relative;
-  z-index: 1;
-  margin-top: 8px;
-  min-width: 420px;
-  max-width: 620px;
+  width: 100%;
+  min-width: 0;
 }
 .coverage-detail {
   border: 1px solid var(--border);
@@ -847,6 +872,25 @@ pre.raw {
 }
 .coverage-detail h4:first-child { margin-top: 0; }
 .coverage-detail td, .coverage-detail th { word-break: break-word; }
+.coverage-summary-row.open > td { border-bottom-color: transparent; }
+.coverage-action-cell { text-align: right; white-space: nowrap; }
+.coverage-detail-row > td {
+  padding: 0 10px 14px;
+  border-bottom: 1px solid var(--baseline);
+}
+.coverage-detail-row .coverage-detail {
+  border-color: var(--baseline);
+  background: color-mix(in srgb, var(--plane) 92%, var(--accent) 8%);
+}
+.enriched-assessment.embedded {
+  margin-top: 0;
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+}
+
+@media (max-width: 680px) {
+  .coverage-action-cell { text-align: left; }
+  .coverage-detail-row > td { padding-left: 0; padding-right: 0; }
+}
 
 .empty { padding: 26px; text-align: center; color: var(--muted); font-size: 13px; }
 

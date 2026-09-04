@@ -213,6 +213,7 @@ export function ReportView({
   report,
   reportId,
   forkEvidence,
+  assetEvidence,
 }: {
   report: Report;
   reportId: string | null;
@@ -224,6 +225,12 @@ export function ReportView({
    * to reach the thing the report is about.
    */
   forkEvidence?: ReactElement | null;
+  /**
+   * Optional post-report asset context. It belongs before the technical
+   * appendix (capabilities, uncertainty and provenance), not after the apparent
+   * end of the report where a demo reader is likely to miss it.
+   */
+  assetEvidence?: ReactElement | null;
 }): ReactElement {
   const verdict = report.verdict;
   const tone = verdictTone(verdict?.status);
@@ -382,8 +389,10 @@ export function ReportView({
           </table>
 
           {er.candidates.length > 0 && (
-            <>
-              <h3>Candidates</h3>
+            <details>
+              <summary>
+                Candidate evaluation ({er.candidates.length}) — controller, calldata and classifier detail
+              </summary>
               {er.candidates.map((candidate, i) => (
                 <div className={`route ${candidate.result === "restrictor" ? "immediate" : "unknown"}`} key={i}>
                   <header>
@@ -399,7 +408,7 @@ export function ReportView({
                   </p>
                 </div>
               ))}
-            </>
+            </details>
           )}
 
           {er.evaluationGaps.length > 0 && (
@@ -413,15 +422,23 @@ export function ReportView({
             </div>
           )}
 
-          <div className="ceiling">
-            <strong>What this experiment does not establish</strong>
-            <ul>
-              {er.ceiling.map((item, i) => (
-                <li key={i}>{item}</li>
-              ))}
-            </ul>
-          </div>
-          <p className="note small">{er.sandboxNote}</p>
+          {/* A stored report passes the same limitations to ForkEvidence below,
+              where they belong beside A/B/C. Do not print them twice. The live
+              analysis renders ReportView without that evidence slot, so it
+              retains the standalone fallback here. */}
+          {!forkEvidence && (
+            <>
+              <div className="ceiling">
+                <strong>What this experiment does not establish</strong>
+                <ul>
+                  {er.ceiling.map((item, i) => (
+                    <li key={i}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+              <p className="note small">{er.sandboxNote}</p>
+            </>
+          )}
           {er.reproduceCommand && (
             <details>
               <summary>Reproduce this</summary>
@@ -483,8 +500,14 @@ export function ReportView({
         </section>
       )}
 
+      {assetEvidence}
+
       <section className="card">
-        <h2>Who holds power</h2>
+        <h2>Detected privileged capabilities</h2>
+        <p className="note" style={{ marginTop: 0 }}>
+          The Power Map shows the control chain. This table answers the different question of which recognised powers
+          Ripcord attributed to those controllers.
+        </p>
         <Capabilities report={report} />
       </section>
 

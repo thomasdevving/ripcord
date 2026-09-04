@@ -9,6 +9,10 @@ Both scripts use Compound III's Ethereum USDC market:
 Text in quotation marks is meant to be read aloud. Directions in square
 brackets are for the screen and are not spoken.
 
+These scripts describe the committed `mobula-live-layer` hackathon scope. The
+experimental AI selector work is deliberately not part of either demo or any
+claim below.
+
 ## 1. Extended video script — approximately 11–13 minutes
 
 This version is intentionally extensive. Record it in short sections and cut
@@ -197,9 +201,9 @@ visible in the recorded report. Otherwise cut the entire block.]
 
 ### 7:40/8:25–11:20 — The new Mobula second layer
 
-[Show **Combined with the per-asset pass** and then **Assets & analysis
-coverage**. Point to the two timestamps, candidate verification, supported fork
-scenarios, counts and one expanded asset row.]
+[Open **Assets & analysis coverage**. Start with **Combined with the per-asset
+pass** at the top of that section, then point to the two timestamps, candidate
+verification, supported fork scenarios, counts and one expanded asset row.]
 
 > “The deterministic report has now finished. The Mobula second layer starts
 > afterwards and produces a separate sidecar.
@@ -208,16 +212,21 @@ scenarios, counts and one expanded asset row.]
 > was useful context, but it did not test whether the discovered assets were
 > really part of the protocol's exit surface. The new layer goes further.
 >
-> First, Mobula proposes asset identities from its complete current holdings
-> response. Candidate discovery is not limited to the twelve rows shown in the
-> interface, the one-dollar display floor or assets for which the vendor could
-> calculate a price. That matters because a new or unpriced collateral asset is
-> exactly the kind of asset a value-ranked list could hide.
+> First, Ripcord uses every asset identity in the fresh holdings array Mobula
+> returned. That is not a claim that Mobula has discovered every asset the
+> address truly holds: the vendor request still applies its own spam and
+> liquidity filters. It means Ripcord's candidate pass is not limited again by
+> the twelve rows shown in this interface, the one-dollar display floor or
+> whether the vendor could calculate a price. That matters because a new or
+> unpriced collateral asset is exactly the kind of asset a value-ranked display
+> could hide.
 >
 > Ripcord then independently filters and verifies those candidates. It considers
-> up to sixty-four unique, valid, same-chain ERC20 addresses. Native assets,
-> malformed addresses, duplicates, other chains and candidates beyond the cap
-> are counted by reason rather than silently discarded.
+> up to sixty-four unique, same-chain, non-native addresses with a valid EVM
+> address shape. Native assets, malformed addresses, duplicates, other chains
+> and candidates beyond the cap are counted by reason rather than silently
+> discarded. An address is not treated as an ERC20 until its code and
+> `balanceOf` response have been checked.
 >
 > For each selected address, Ripcord reads the contract code and calls
 > `balanceOf` against the analysed Compound market at the pinned report block.
@@ -248,7 +257,10 @@ scenarios, counts and one expanded asset row.]
 >
 > This gives Mobula a precise role. It expands discovery and supplies current
 > market context. Ripcord independently verifies identities and produces the
-> security evidence. The vendor never determines the verdict.”
+> security evidence. These are deliberately two different clocks: Mobula's
+> discovery describes its fresh response, while every security claim is tied to
+> the historical block pinned in the report. The vendor never determines the
+> verdict.”
 
 ### 11:20–12:35 — What comes next
 
@@ -372,16 +384,19 @@ timeline. Then switch immediately to the completed report.]
 > no mainnet transaction is sent. Ripcord proves protocol capability, not
 > malicious intent.”
 
-[Show **Combined with the per-asset pass**, then **Assets & analysis coverage**.]
+[Open **Assets & analysis coverage** and show **Combined with the per-asset
+pass** at the top of that section.]
 
 > “After the deterministic report finishes, the new Mobula second layer begins.
 > It is separate, optional and cannot change the report's verdict.
 >
-> Mobula proposes every asset identity from its fresh holdings response, not only
-> the priced top twelve shown in the interface. Ripcord then selects up to
-> sixty-four valid same-chain ERC20 candidates and verifies their contract code
-> and Compound balance at the report's pinned block. Vendor symbols and balances
-> are treated as unverified context.
+> Ripcord uses every asset identity in the fresh holdings array Mobula returned,
+> not only the value-filtered top twelve shown in the interface. This does not
+> claim that the vendor found every asset the address truly holds. Ripcord then
+> selects up to sixty-four unique same-chain address candidates and checks their
+> contract code and `balanceOf` response for the Compound market at the report's
+> pinned block. Vendor symbols, balances and valuations remain unverified
+> context.
 >
 > Ripcord asks Compound itself whether each token is registered collateral. A
 > supported asset receives its own isolated fork experiment: create a sandbox
@@ -393,8 +408,10 @@ timeline. Then switch immediately to the completed report.]
 > to additional assets. A failed, unsupported or no-effect candidate never makes
 > the protocol look safer, and the core verdict remains unchanged.
 >
-> So Mobula expands what Ripcord can discover. Ripcord still verifies what is
-> real and proves what the authority can do.”
+> So Mobula expands what Ripcord can discover. Its snapshot is current vendor
+> context; the security evidence remains pinned to the report's historical
+> block. Ripcord still verifies what is real and proves what the authority can
+> do.”
 
 [Return to the roadmap/closing slides.]
 

@@ -1,11 +1,12 @@
 /**
- * The enriched assessment, rendered BESIDE the verdict and never in place of it.
+ * The enriched assessment, rendered alongside the coverage evidence and never
+ * in place of the verdict.
  *
  * Two presentation rules follow from what this artifact is:
  *
- *   The report's own verdict is always visible in the same block, quoted from
- *   the assessment's provenance. A statement that reaches further than the
- *   verdict must never be readable as a replacement for it.
+ *   The report's own verdict is quoted from the assessment's provenance. A
+ *   statement that reaches further than the verdict must never be readable as
+ *   a replacement for it.
  *
  *   Only a demonstrated restriction gets emphasis. `no_change` and
  *   `not_applicable` are rendered in the neutral tone — this panel has no
@@ -19,7 +20,13 @@ function short(address: string | null): string {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }
 
-export function EnrichedAssessmentPanel({ assessment }: { assessment: EnrichedAssessment }): ReactElement | null {
+export function EnrichedAssessmentPanel({
+  assessment,
+  embedded = false,
+}: {
+  assessment: EnrichedAssessment;
+  embedded?: boolean;
+}): ReactElement | null {
   const { outcome, counts, provenance } = assessment;
 
   // Nothing was demonstrated and no sidecar applies: the report stands alone and
@@ -28,8 +35,9 @@ export function EnrichedAssessmentPanel({ assessment }: { assessment: EnrichedAs
 
   const demonstrated = outcome.status === "scope_broadened" || outcome.status === "stricter_than_report";
 
+  const Wrapper = embedded ? "div" : "section";
   return (
-    <section className="panel" style={{ marginTop: 16 }}>
+    <Wrapper className={`panel enriched-assessment${embedded ? " embedded" : ""}`} style={{ marginBottom: embedded ? 14 : undefined }}>
       <header>
         <h3 style={{ margin: 0 }}>Combined with the per-asset pass</h3>
         {assessment.experimental && <span className="chip warn">experimental</span>}
@@ -126,6 +134,6 @@ export function EnrichedAssessmentPanel({ assessment }: { assessment: EnrichedAs
       <ul className="small muted" style={{ marginTop: 10 }}>
         {assessment.scopeNotes.map((note, i) => <li key={i}>{note}</li>)}
       </ul>
-    </section>
+    </Wrapper>
   );
 }

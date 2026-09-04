@@ -21,7 +21,6 @@ import { getReport, ApiRequestError } from "../api.js";
 import { navigate } from "../router.js";
 import { forkBlocksFromReport } from "../fork-blocks.js";
 import { AssetCoveragePanel } from "../components/AssetCoverage.js";
-import { EnrichedAssessmentPanel } from "../components/EnrichedAssessment.js";
 import { useAssetCoverage } from "../useAssetCoverage.js";
 import type { ReactElement } from "react";
 
@@ -95,13 +94,16 @@ export function ReportScreen({ reportId }: { reportId: string }): ReactElement {
       </div>
 
       <div className="banner info">
-        This is a stored report, with infrastructure details redacted for publication. It describes chain state at block{" "}
-        <span className="mono">{report.block.number}</span> and was generated on {report.generatedAt.slice(0, 10)} under
-        ruleset {report.rulesetVersion}. No chain read happens when you open this page.
+        <strong>Historical checkpoint:</strong> this stored report describes Ethereum at block{" "}
+        <span className="mono">{report.block.number}</span>. Opening it performs no new chain reads; exact generation,
+        ruleset and block-hash details are kept once under Provenance.
       </div>
       <ReportView
         report={report}
         reportId={reportId}
+        assetEvidence={
+          coverage ? <AssetCoveragePanel coverage={coverage} enriched={enriched} stalled={coverageStalled} /> : null
+        }
         forkEvidence={
           fork && report.exitRestriction ? (
             <ForkEvidence
@@ -114,12 +116,6 @@ export function ReportScreen({ reportId }: { reportId: string }): ReactElement {
           ) : null
         }
       />
-      {/* Rendered only when the coverage envelope actually arrived. A missing
-          Mobula snapshot still yields one (with Mobula marked unavailable), so
-          a null here means the coverage request itself failed — and the report
-          above must stand on its own regardless. */}
-      {enriched && <EnrichedAssessmentPanel assessment={enriched} />}
-      {coverage && <AssetCoveragePanel coverage={coverage} stalled={coverageStalled} />}
     </main>
   );
 }

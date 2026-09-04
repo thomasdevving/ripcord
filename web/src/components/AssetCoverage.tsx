@@ -24,10 +24,18 @@
  *    contains phishing lures as token names; identity is the address and chain,
  *    which is what the mono column carries.
  */
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import type { ReactElement } from "react";
-import type { AssetCoverage, AssetCoverageRow, BalanceEvidence, MobulaObservation } from "@shared/coverage";
+import type {
+  AssetCoverage,
+  AssetCoverageRow,
+  BalanceEvidence,
+  CoverageProvenance,
+  MobulaObservation,
+} from "@shared/coverage";
+import type { EnrichedAssessment } from "@shared/enriched";
 import { CopyButton } from "./CopyButton.js";
+import { EnrichedAssessmentPanel } from "./EnrichedAssessment.js";
 
 /** Short, concrete status text. Each state is a distinct claim, never a rung on one ladder. */
 function mobulaLabel(m: MobulaObservation): { text: string; tone: "" | "warn" } {
@@ -78,6 +86,44 @@ function usd(value: number | null): string {
 
 const short = (address: string | null, isNative: boolean) =>
   isNative ? "native asset" : address ? `${address.slice(0, 10)}…${address.slice(-6)}` : "address unknown";
+
+/**
+ * A row-level progress label must be weaker than the batch status behind it.
+ * During discovery we do not yet know which identities survive selection, so
+ * the row says it is awaiting selection. Once candidate verification has been
+ * stored, the exact candidate identity is known and can truthfully be labelled
+ * as queued/running in the fork batch. There is deliberately no percentage:
+ * the sidecar exposes phase boundaries, not trustworthy per-call progress.
+ */
+export function assetRowProgress(
+  row: AssetCoverageRow,
+  provenance: CoverageProvenance,
+): "candidate_pending" | "fork_pending" | null {
+  if (
+    provenance.candidateVerification.status === "pending" &&
+    row.mobula.state === "observed" &&
+    row.identity.chainRef === provenance.analysedChainRef &&
+    !row.identity.isNative &&
+    row.identity.address !== null
+  ) {
+    return "candidate_pending";
+  }
+
+  const hasPinnedCandidate = row.sources.includes("mobula_candidate_verification") &&
+    (row.balance.state === "verified" || row.balance.state === "verified_zero");
+  const alreadyCoveredAsBase = row.experiments.some((experiment) => experiment.kind === "withdrawal_restriction");
+  const alreadyHasCandidateOutcome = row.experiments.some((experiment) => experiment.kind === "candidate_withdrawal");
+  if (
+    provenance.candidateFork.status === "pending" &&
+    hasPinnedCandidate &&
+    !alreadyCoveredAsBase &&
+    !alreadyHasCandidateOutcome
+  ) {
+    return "fork_pending";
+  }
+
+  return null;
+}
 
 function RowDetail({ row }: { row: AssetCoverageRow }): ReactElement {
   return (
@@ -258,9 +304,18 @@ function RowDetail({ row }: { row: AssetCoverageRow }): ReactElement {
   );
 }
 
-export function AssetCoveragePanel({ coverage, stalled = false }: { coverage: AssetCoverage; stalled?: boolean }): ReactElement {
+export function AssetCoveragePanel({
+  coverage,
+  enriched = null,
+  stalled = false,
+}: {
+  coverage: AssetCoverage;
+  enriched?: EnrichedAssessment | null;
+  stalled?: boolean;
+}): ReactElement {
   const [open, setOpen] = useState<string | null>(null);
   const p = coverage.provenance;
+  const layerPending = p.candidateVerification.status === "pending" || p.candidateFork.status === "pending";
 
   return (
     <section className="card">
@@ -269,6 +324,21 @@ export function AssetCoveragePanel({ coverage, stalled = false }: { coverage: As
         See which assets were observed, which balances were verified at the analysis block, and which assets were
         included in a fork experiment.
       </p>
+
+      {layerPending && !stalled && (
+        <div className="banner info processing-banner" role="status" aria-live="polite">
+          <span className="processing-dot" aria-hidden="true" />
+          <div>
+            <strong>The core report is complete; the Mobula second layer is still running.</strong>
+            <div className="small" style={{ marginTop: 3 }}>
+              This section refreshes automatically. Per-asset labels distinguish work awaiting selection from exact
+              candidates queued for or running in the fork batch.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {enriched && <EnrichedAssessmentPanel assessment={enriched} embedded />}
 
       {/* The two clocks, kept apart. A vendor snapshot and a pinned block are
           different moments, and a difference between them is not an error. */}
@@ -421,54 +491,75 @@ export function AssetCoveragePanel({ coverage, stalled = false }: { coverage: As
                 const m = mobulaLabel(row.mobula);
                 const b = balanceLabel(row.balance);
                 const isOpen = open === row.identity.key;
+                const progress = assetRowProgress(row, p);
                 return (
-                  <tr key={row.identity.key}>
-                    <td>
-                      <div>
-                        {/* Symbol is a hint; the mono line under it is identity. */}
-                        <span>{row.identity.unverifiedSymbol || "(unnamed)"}</span>{" "}
-                        <span className="muted small">unverified</span>
-                      </div>
-                      <div className="addr">
-                        {row.identity.chainRef ?? "chain unknown"} · {short(row.identity.address, row.identity.isNative)}
-                      </div>
-                    </td>
-                    <td>
-                      <span className={`chip ${m.tone}`}>{m.text}</span>
-                    </td>
-                    <td>
-                      <span className={`chip ${b.tone}`}>{b.text}</span>
-                    </td>
-                    <td>
-                      {row.experiments.length === 0 ? (
-                        <span className="chip warn">
-                          {row.forkGap?.state === "unlinkable" ? "Coverage not establishable" : "No test run"}
-                        </span>
-                      ) : (
-                        row.experiments.map((e, i) => (
+                  <Fragment key={row.identity.key}>
+                    <tr className={isOpen ? "coverage-summary-row open" : "coverage-summary-row"}>
+                      <td>
+                        <div>
+                          {/* Symbol is a hint; the mono line under it is identity. */}
+                          <span>{row.identity.unverifiedSymbol || "(unnamed)"}</span>{" "}
+                          <span className="muted small">unverified</span>
+                        </div>
+                        <div className="addr">
+                          {row.identity.chainRef ?? "chain unknown"} · {short(row.identity.address, row.identity.isNative)}
+                        </div>
+                      </td>
+                      <td>
+                        <span className={`chip ${m.tone}`}>{m.text}</span>
+                      </td>
+                      <td>
+                        {progress === "candidate_pending" && row.balance.state === "no_recorded_evidence" ? (
+                          <span className="chip processing"><span className="processing-dot" aria-hidden="true" />Awaiting candidate check</span>
+                        ) : (
+                          <span className={`chip ${b.tone}`}>{b.text}</span>
+                        )}
+                      </td>
+                      <td>
+                        {row.experiments.map((e, i) => (
                           <div key={i} style={{ marginBottom: 3 }}>
                             <span className={`chip ${e.execution === "completed" ? "" : "warn"}`}>
                               {e.label}: {e.execution.replace(/_/g, " ")}
                             </span>
                           </div>
-                        ))
-                      )}
-                    </td>
-                    {/* Subordinate: muted, right-aligned, never a sort key above evidence. */}
-                    <td className="mono muted" style={{ textAlign: "right" }}>
-                      {row.mobula.state === "observed" ? usd(row.mobula.valuationUsd) : "—"}
-                    </td>
-                    <td>
-                      <button className="link small" type="button" onClick={() => setOpen(isOpen ? null : row.identity.key)}>
-                        {isOpen ? "Hide" : "View evidence"}
-                      </button>
-                      {isOpen && (
-                        <div className="coverage-detail-wrap">
-                          <RowDetail row={row} />
-                        </div>
-                      )}
-                    </td>
-                  </tr>
+                        ))}
+                        {progress === "candidate_pending" && (
+                          <span className="chip processing"><span className="processing-dot" aria-hidden="true" />Selection pending</span>
+                        )}
+                        {progress === "fork_pending" && (
+                          <span className="chip processing"><span className="processing-dot" aria-hidden="true" />Fork test queued / running</span>
+                        )}
+                        {row.experiments.length === 0 && progress === null && (
+                          <span className="chip warn">
+                            {row.forkGap?.state === "unlinkable" ? "Coverage not establishable" : "No test run"}
+                          </span>
+                        )}
+                      </td>
+                      {/* Subordinate: muted, right-aligned, never a sort key above evidence. */}
+                      <td className="mono muted" style={{ textAlign: "right" }}>
+                        {row.mobula.state === "observed" ? usd(row.mobula.valuationUsd) : "—"}
+                      </td>
+                      <td className="coverage-action-cell">
+                        <button
+                          className="link small"
+                          type="button"
+                          aria-expanded={isOpen}
+                          onClick={() => setOpen(isOpen ? null : row.identity.key)}
+                        >
+                          {isOpen ? "Hide evidence" : "View evidence"}
+                        </button>
+                      </td>
+                    </tr>
+                    {isOpen && (
+                      <tr className="coverage-detail-row">
+                        <td colSpan={6}>
+                          <div className="coverage-detail-wrap">
+                            <RowDetail row={row} />
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })}
             </tbody>

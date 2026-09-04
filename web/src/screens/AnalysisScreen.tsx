@@ -33,7 +33,6 @@ import { navigate } from "../router.js";
 import { isTerminal } from "@shared/dto";
 import { preferLiveBlocks } from "../fork-blocks.js";
 import { AssetCoveragePanel } from "../components/AssetCoverage.js";
-import { EnrichedAssessmentPanel } from "../components/EnrichedAssessment.js";
 import { useAssetCoverage } from "../useAssetCoverage.js";
 import type { ReactElement } from "react";
 
@@ -230,9 +229,15 @@ export function AnalysisScreen({ jobId }: { jobId: string }): ReactElement {
         )}
 
         {reportError && <div className="banner warn">{reportError}</div>}
-        {report && <ReportView report={report} reportId={job.reportId} />}
-        {enriched && <EnrichedAssessmentPanel assessment={enriched} />}
-      {coverage && <AssetCoveragePanel coverage={coverage} stalled={coverageStalled} />}
+        {report && (
+          <ReportView
+            report={report}
+            reportId={job.reportId}
+            assetEvidence={
+              coverage ? <AssetCoveragePanel coverage={coverage} enriched={enriched} stalled={coverageStalled} /> : null
+            }
+          />
+        )}
 
         {running && !report && (
           <section className="card">
