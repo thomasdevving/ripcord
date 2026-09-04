@@ -94,7 +94,17 @@ export function tokenKey(chainId: string | null | undefined, address: string | n
   return `${(chainId ?? "?").toLowerCase()}|${(address ?? "?").toLowerCase()}`;
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve) => {
+    if (signal?.aborted) return resolve();
+    const timer = setTimeout(finish, ms);
+    function finish() {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", finish);
+      resolve();
+    }
+    signal?.addEventListener("abort", finish, { once: true });
+  });
 
 /**
  * One HTTP call with a hard timeout and bounded backoff.
@@ -113,16 +123,26 @@ async function request<T>(
   init: RequestInit,
   what: string,
   timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  callerSignal?: AbortSignal,
 ): Promise<MobulaResult<T>> {
   let lastReason = "";
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    if (attempt > 0) await sleep(retryBaseMs() * 2 ** (attempt - 1));
+    // Checked before the backoff AND before the request, because four attempts
+    // with exponential backoff is up to ~14 seconds during which the caller's
+    // deadline can pass. A cancelled call must stop cancelled, not come back
+    // later with a result nobody is waiting for any more.
+    if (callerSignal?.aborted) return { ok: false, reason: `${what}: cancelled before completing` };
+    if (attempt > 0) await sleep(retryBaseMs() * 2 ** (attempt - 1), callerSignal);
+    if (callerSignal?.aborted) return { ok: false, reason: `${what}: cancelled before completing` };
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
+    // The per-attempt timeout and the caller's cancellation are both reasons to
+    // stop; whichever fires first aborts the fetch.
+    const signal = callerSignal ? AbortSignal.any([callerSignal, controller.signal]) : controller.signal;
     try {
       const res = await fetch(url, {
         ...init,
-        signal: controller.signal,
+        signal,
         headers: { ...authHeaders(), ...(init.headers ?? {}) },
       });
       if (!res.ok) {
@@ -139,6 +159,7 @@ async function request<T>(
         return { ok: false, reason: `${what}: response was not JSON (${text.slice(0, 80)})` };
       }
     } catch (err) {
+      if (callerSignal?.aborted) return { ok: false, reason: `${what}: cancelled before completing` };
       lastReason =
         err instanceof Error && err.name === "AbortError"
           ? `${what}: timed out after ${timeoutMs}ms`
@@ -201,7 +222,7 @@ export interface MobulaHoldingsResponse {
  */
 export async function fetchHoldings(
   wallet: string,
-  opts: { minLiquidityUSD?: number } = {},
+  opts: { minLiquidityUSD?: number; signal?: AbortSignal } = {},
 ): Promise<MobulaResult<MobulaHoldingsResponse>> {
   const q = new URLSearchParams({
     wallet,
@@ -214,6 +235,7 @@ export async function fetchHoldings(
     { method: "GET" },
     "holdings",
     HOLDINGS_TIMEOUT_MS,
+    opts.signal,
   );
 }
 
@@ -248,6 +270,7 @@ export interface MobulaPriceResponse {
  */
 export async function fetchPrices(
   items: { address: string; blockchain: string }[],
+  opts: { signal?: AbortSignal } = {},
 ): Promise<MobulaResult<MobulaPriceResponse>> {
   if (items.length === 0) return { ok: true, data: { payload: [] } };
   return request<MobulaPriceResponse>(
@@ -258,6 +281,8 @@ export async function fetchPrices(
       body: JSON.stringify({ items: items.slice(0, 500) }),
     },
     "price",
+    DEFAULT_TIMEOUT_MS,
+    opts.signal,
   );
 }
 
@@ -289,6 +314,7 @@ export interface MobulaMetadataResponse {
  */
 export async function fetchMetadata(
   assets: { address: string; blockchain: string }[],
+  opts: { signal?: AbortSignal } = {},
 ): Promise<MobulaResult<MobulaMetadataResponse>> {
   if (assets.length === 0) return { ok: true, data: { data: [] } };
   const q = new URLSearchParams({
@@ -299,6 +325,8 @@ export async function fetchMetadata(
     `${V1_HOST}/api/1/multi-metadata?${q}`,
     { method: "GET" },
     "metadata",
+    DEFAULT_TIMEOUT_MS,
+    opts.signal,
   );
 }
 

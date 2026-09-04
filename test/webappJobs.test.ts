@@ -112,6 +112,39 @@ const create = (address: string, extra: Record<string, unknown> = {}) =>
   manager.createJob({ address, chainId: 1, block: "100", mode: "scan", ...extra } as never, 100n, "explicit");
 
 describe("job lifecycle", () => {
+  it("runs post-analysis enrichment only for an opted-in, publishable report", async () => {
+    const calls: string[] = [];
+    const enriched = new JobManager(config(dir), store, WORKER, async ({ reportId, meta }) => {
+      calls.push(reportId);
+      expect(meta.refreshAssetContext).toBe(true);
+    });
+    await enriched.init();
+
+    const ordinary = await enriched.createJob(
+      { address: OK, chainId: 1, block: "100", mode: "scan", refreshAssetContext: false } as never,
+      100n,
+      "explicit",
+    );
+    await untilState(ordinary.record, "completed");
+
+    const optedIn = await enriched.createJob(
+      { address: OK, chainId: 1, block: "100", mode: "scan", refreshAssetContext: true } as never,
+      100n,
+      "explicit",
+    );
+    await untilState(optedIn.record, "completed");
+    await until(() => calls.length === 1);
+
+    const blocked = await enriched.createJob(
+      { address: BLOCKED, chainId: 1, block: "100", mode: "scan", refreshAssetContext: true } as never,
+      100n,
+      "explicit",
+    );
+    await untilState(blocked.record, "completed");
+    expect(calls).toEqual([optedIn.record.reportId]);
+    await enriched.shutdown();
+  });
+
   it("runs a job to completion and stores a publishable report", async () => {
     const { record, controlToken } = await create(OK);
     expect(controlToken).toMatch(/^[A-Za-z0-9_-]{20,}$/);
@@ -373,6 +406,37 @@ describe("storage safety", () => {
     expect(files.some((f) => f.endsWith(".json") && !f.endsWith(".meta.json"))).toBe(true);
     // No temp files left behind by the atomic-write dance.
     expect(files.some((f) => f.endsWith(".tmp"))).toBe(false);
+  });
+
+  it("stores post-analysis asset context separately from the report", async () => {
+    await store.saveAssetContext("rep_assetcontext", { status: "complete", candidates: [] });
+    expect(await store.loadAssetContext("rep_assetcontext")).toEqual({ status: "complete", candidates: [] });
+    expect(await store.loadReport("rep_assetcontext")).toBeNull();
+  });
+
+  it("marks a pending asset sidecar unavailable after restart", async () => {
+    await store.saveAssetContext("rep_pending", { status: "pending", completedAt: null, notes: [] });
+    expect(await store.recoverPendingAssetContexts()).toBe(1);
+    expect(await store.loadAssetContext("rep_pending")).toMatchObject({
+      status: "unavailable",
+      completedAt: expect.any(String),
+    });
+  });
+
+  it("preserves completed balances but marks an interrupted candidate fork unavailable", async () => {
+    await store.saveAssetContext("rep_fork_pending", {
+      status: "complete",
+      completedAt: "2026-09-04T00:00:00.000Z",
+      candidates: [{ state: "verified_nonzero" }],
+      forkScenarios: { requested: true, status: "pending", batch: null, note: "running" },
+      notes: [],
+    });
+    expect(await store.recoverPendingAssetContexts()).toBe(1);
+    expect(await store.loadAssetContext("rep_fork_pending")).toMatchObject({
+      status: "complete",
+      candidates: [{ state: "verified_nonzero" }],
+      forkScenarios: { status: "unavailable" },
+    });
   });
 });
 

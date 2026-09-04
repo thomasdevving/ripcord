@@ -44,6 +44,7 @@ import type { CreateJobRequest, JobEvent, JobEventPayload, JobState, JobSummary,
 import { isTerminal, phasesForMode } from "../shared/dto.js";
 import { JobStore, type JobRecord, type StoredReportMeta } from "./store.js";
 import { isWorkerMessage, type StartMessage, type WorkerMessage } from "./protocol.js";
+import type { Report } from "../../src/report/schema.js";
 
 /** How many events per job stay in memory for reconnect replay. Beyond this a client is given a fresh snapshot. */
 const EVENT_HISTORY_LIMIT = 2000;
@@ -55,6 +56,12 @@ export interface CreateJobOutcome {
   record: JobRecord;
   controlToken: string;
   deduplicated: boolean;
+}
+
+export interface StoredReportHookInput {
+  reportId: string;
+  report: Report;
+  meta: StoredReportMeta;
 }
 
 export class IdempotencyConflictError extends Error {}
@@ -108,7 +115,13 @@ export class JobManager {
   async admit(raw: unknown, create: () => Promise<CreateJobOutcome>): Promise<CreateJobOutcome> {
     const req = raw as CreateJobRequest | null;
     const key = typeof req?.idempotencyKey === "string" && /^[A-Za-z0-9_-]{8,64}$/.test(req.idempotencyKey) ? req.idempotencyKey : null;
-    const fingerprint = JSON.stringify([req?.address?.toLowerCase?.(), Number(req?.chainId), canonicalBlock(req?.block), req?.mode]);
+    const fingerprint = JSON.stringify([
+      req?.address?.toLowerCase?.(),
+      Number(req?.chainId),
+      canonicalBlock(req?.block),
+      req?.mode,
+      req?.refreshAssetContext === true,
+    ]);
     if (key) {
       const pending = this.submitting.get(key);
       if (pending) {
@@ -174,6 +187,8 @@ export class JobManager {
     private readonly store: JobStore,
     /** Absolute path to the compiled worker module. Resolved by the entrypoint, never from a request. */
     private readonly workerPath: string,
+    /** Optional hook that durably schedules post-report sidecar work. */
+    private readonly onReportStored: ((input: StoredReportHookInput) => Promise<void>) | null = null,
   ) {
     // One SSE consumer per browser tab, plus a poller each — the default of 10
     // is reached by a handful of viewers and would otherwise print a spurious
@@ -233,6 +248,7 @@ export class JobManager {
       controlTokenHash: hashToken(controlToken),
       state: "queued",
       mode: req.mode,
+      refreshAssetContext: req.refreshAssetContext === true,
       address: req.address,
       chainId: req.chainId,
       block: resolvedBlock.toString(),
@@ -265,7 +281,13 @@ export class JobManager {
     for (const r of [...[...this.jobs.values()].map(live => live.record), ...await this.store.listJobs()]) {
       if (r.idempotencyKey !== key) continue;
       const sameBlock = req.block === "latest" ? r.blockSource === "resolved_latest" : r.block === canonicalBlock(req.block);
-      if (r.address.toLowerCase() !== req.address.toLowerCase() || r.chainId !== Number(req.chainId) || r.mode !== req.mode || !sameBlock) {
+      if (
+        r.address.toLowerCase() !== req.address.toLowerCase() ||
+        r.chainId !== Number(req.chainId) ||
+        r.mode !== req.mode ||
+        (r.refreshAssetContext === true) !== (req.refreshAssetContext === true) ||
+        !sameBlock
+      ) {
         throw new IdempotencyConflictError("Idempotency key already used for different parameters");
       }
       return r;
@@ -451,11 +473,26 @@ export class JobManager {
       publishable: msg.publishable,
       hasExitRestriction: msg.hasExitRestriction,
       mode: live.record.mode,
+      refreshAssetContext: live.record.refreshAssetContext,
     };
     // Stored regardless of publishability — a blocked report is still evidence
     // and its author may need it. What changes is who may READ it, and that is
     // enforced once, in the report route.
-    await this.store.saveReport(reportId, JSON.parse(msg.report), meta);
+    const parsedReport = JSON.parse(msg.report) as Report;
+    await this.store.saveReport(reportId, parsedReport, meta);
+
+    // Starts after the immutable report has landed and only on explicit user
+    // opt-in. The hook is not awaited on the publication path. Its contract is
+    // to return after scheduling durable work, not after third-party I/O.
+    if (msg.publishable && live.record.refreshAssetContext && this.onReportStored) {
+      const enrichment = Promise.resolve()
+        .then(() => this.onReportStored?.({ reportId, report: parsedReport, meta }))
+        .catch((err: unknown) => {
+          console.error(`[ripcord] asset context for ${reportId} failed: ${classify(err).message}`);
+        })
+        .finally(() => this.pendingWrites.delete(enrichment));
+      this.pendingWrites.add(enrichment);
+    }
 
     if (isTerminal(live.record.state)) return;
     live.record.blockHash = msg.blockHash;
@@ -687,6 +724,7 @@ export class JobManager {
       jobId: record.jobId,
       state: record.state,
       mode: record.mode,
+      refreshAssetContext: record.refreshAssetContext === true,
       address: record.address,
       chainId: record.chainId,
       block: record.block,

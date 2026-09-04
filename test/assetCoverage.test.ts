@@ -23,6 +23,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { buildAssetCoverage, normaliseChainRef, assetKey, withdrawalBaseToken } from "../server/coverage.js";
 import type { Report } from "../src/report/schema.js";
 import type { LiveExposure, LiveHolding } from "../src/live/exposure.js";
+import type { AssetContextArtifact } from "../server/asset-context.js";
 
 const TARGET = "0xc3d688B66703497DAA19211EEdff47f25384cdc3";
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
@@ -94,6 +95,35 @@ function exposure(over: Partial<LiveExposure> = {}): LiveExposure {
 
 const rowFor = (coverage: ReturnType<typeof buildAssetCoverage>, key: string) =>
   coverage.rows.find((r) => r.identity.key === key);
+
+function context(state: CandidateVerification["state"] = "verified_nonzero"): AssetContextArtifact {
+  return {
+    assetContextVersion: "0.1.0",
+    reportId: "rep_test",
+    target: TARGET,
+    chainId: 1,
+    block: { number: "25800000", hash: "0xblockhash" },
+    requestedAt: "2026-09-04T10:00:00.000Z",
+    completedAt: "2026-09-04T10:00:01.000Z",
+    status: "complete",
+    exposure: exposure({ holdings: [holding({ address: LINK })] }),
+    candidates: [{
+      chainRef: "evm:1",
+      address: LINK,
+      account: TARGET,
+      block: "25800000",
+      state,
+      balanceRaw: state === "verified_zero" ? "0" : state === "verified_nonzero" ? "99" : null,
+      codeBytes: 2,
+      codeHash: "0xcode",
+      evidence: [{ kind: "call", params: {}, rawValue: "0x", block: "25800000" }],
+      reason: state === "verified_zero" ? "explicit zero" : "explicit non-zero",
+    }],
+    counts: { displayed: 1, eligible: 1, verified: 1, failed: 0 },
+    forkScenarios: { requested: false, status: "not_requested", batch: null, note: "not requested" },
+    notes: ["outside verdict path"],
+  };
+}
 
 describe("asset identity", () => {
   it("normalises both chain notations to one canonical form", () => {
@@ -190,6 +220,72 @@ describe("Mobula observation", () => {
 });
 
 describe("balance evidence", () => {
+  it("uses a Mobula-proposed candidate only after a separate pinned balance read", () => {
+    const artifact = context("verified_nonzero");
+    const coverage = buildAssetCoverage(report(), artifact.exposure, artifact, true);
+    const row = rowFor(coverage, `evm:1|${LINK.toLowerCase()}`);
+    expect(row?.balance.state).toBe("verified");
+    if (row?.balance.state === "verified") {
+      expect(row.balance.balanceRaw).toBe("99");
+      expect(row.balance.source).toBe("post_analysis_candidate_verification");
+    }
+    expect(row?.experiments).toEqual([]);
+    expect(coverage.provenance.candidateVerification.status).toBe("complete");
+    expect(coverage.counts.mobulaCandidatesVerified).toBe(1);
+  });
+
+  it("distinguishes a verified zero from missing evidence", () => {
+    const artifact = context("verified_zero");
+    const coverage = buildAssetCoverage(report(), artifact.exposure, artifact, true);
+    const row = rowFor(coverage, `evm:1|${LINK.toLowerCase()}`);
+    expect(row?.balance.state).toBe("verified_zero");
+    expect(row?.experiments).toEqual([]);
+  });
+
+  it("attributes a completed candidate fork differential only to its exact asset", () => {
+    const artifact = context("verified_nonzero");
+    artifact.forkScenarios = {
+      requested: true,
+      status: "complete",
+      note: "one scenario",
+      batch: {
+        assetScenarioVersion: "0.1.0",
+        status: "complete",
+        target: TARGET,
+        chainId: 1,
+        forkBlock: "25800000",
+        startedAt: "2026-09-04T10:00:02.000Z",
+        completedAt: "2026-09-04T10:00:03.000Z",
+        candidatesConsidered: 1,
+        supported: 1,
+        evaluated: 1,
+        restrictorsConfirmed: 1,
+        unresolved: 0,
+        notes: [],
+        scenarios: [{
+          address: LINK,
+          assetRole: "collateral",
+          state: "restrictor_confirmed",
+          holder: "0x000000000000000000000000000000000000d100",
+          suppliedRaw: "99",
+          recoveredRaw: "99",
+          guardian: "0x000000000000000000000000000000000000dead",
+          guardianType: "eoa",
+          noticeSeconds: "0",
+          detail: "DIFFERENTIAL CONFIRMED",
+          evidence: [],
+          caveats: ["bounded scenario"],
+        }],
+      },
+    };
+    const coverage = buildAssetCoverage(report(), artifact.exposure, artifact, true);
+    const row = rowFor(coverage, `evm:1|${LINK.toLowerCase()}`);
+    expect(row?.experiments.map((experiment) => experiment.kind)).toEqual(["candidate_withdrawal"]);
+    expect(row?.experiments[0]?.outcome).toContain("DIFFERENTIAL CONFIRMED");
+    expect(coverage.counts.assetsInCandidateFork).toBe(1);
+    expect(coverage.provenance.candidateFork.restrictorsConfirmed).toBe(1);
+  });
+
   it("verifies a balance only from a recorded dependency entry", () => {
     const coverage = buildAssetCoverage(
       report({ dependencies: { tokens: [{ token: USDC, balance: "39744687928433", balanceEvidence: [{}] }], oracles: [] } } as never),
@@ -446,10 +542,10 @@ describe("counts and scope", () => {
     expect(serialised).not.toMatch(/coveragePercent|safetyScore|percentTested|valueAtRisk|drainableValue/i);
   });
 
-  it("keeps the roadmap explicitly future-tense", () => {
+  it("states the exact boundary of current per-asset fork coverage", () => {
     const coverage = buildAssetCoverage(report(), exposure());
-    expect(coverage.roadmapNote).toMatch(/^Planned after the hackathon/);
-    expect(coverage.roadmapNote).toMatch(/Not available yet/);
+    expect(coverage.roadmapNote).toMatch(/on Compound III/);
+    expect(coverage.roadmapNote).toMatch(/other protocols.*remain explicitly outside fork coverage/i);
   });
 
   it("does not mutate the report or the exposure it was given", () => {
@@ -531,5 +627,61 @@ describe("against the committed calibration set", () => {
         expect(coverage.provenance.mobulaLimits.withheld.length).toBeGreaterThan(0);
       }
     }
+  });
+});
+
+describe("candidate verification states are not interchangeable", () => {
+  // The composer used to map everything that was not a verified balance onto
+  // `read_failed`. Three of these four are observations the CHAIN made; only
+  // one is about our own infrastructure, and a reader has to be able to tell
+  // them apart — the same distinction KNOWN EDGE #31 enforces one layer down.
+  const cases = [
+    ["not_contract_at_block", "no_contract_at_block"],
+    ["balance_call_reverted", "not_an_erc20_balance"],
+    ["balance_returned_no_data", "not_an_erc20_balance"],
+    ["balance_decode_failed", "not_an_erc20_balance"],
+    ["read_failed", "read_failed"],
+  ] as const;
+
+  for (const [candidateState, expected] of cases) {
+    it(`maps ${candidateState} to ${expected}`, () => {
+      const artifact = context(candidateState);
+      const coverage = buildAssetCoverage(report(), artifact.exposure, artifact, true);
+      expect(rowFor(coverage, `evm:1|${LINK.toLowerCase()}`)?.balance.state).toBe(expected);
+    });
+  }
+
+  it("never reports any of them as a zero balance", () => {
+    for (const [candidateState] of cases) {
+      const artifact = context(candidateState);
+      const coverage = buildAssetCoverage(report(), artifact.exposure, artifact, true);
+      const row = rowFor(coverage, `evm:1|${LINK.toLowerCase()}`);
+      expect(row?.balance.state).not.toBe("verified_zero");
+      expect(row?.balance.state).not.toBe("verified");
+      // Every one of them contributes a stated gap rather than an empty cell.
+      expect(row?.gaps.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("counts only explicit balances as balance evidence", () => {
+    const artifact = context("balance_returned_no_data");
+    const coverage = buildAssetCoverage(report(), artifact.exposure, artifact, true);
+    expect(coverage.counts.assetsWithBalanceEvidence).toBe(0);
+  });
+
+  it("marks the candidate fork experimental, including on a sidecar predating the flag", () => {
+    const artifact = context();
+    const coverage = buildAssetCoverage(report(), artifact.exposure, artifact, true);
+    expect(coverage.provenance.candidateFork.experimental).toBe(true);
+
+    const withBatch = {
+      ...artifact,
+      forkScenarios: {
+        requested: true, status: "complete" as const, note: "",
+        // An older batch carries no `experimental` field at all.
+        batch: { scenarios: [], candidatesConsidered: 0, supported: 0, evaluated: 0, restrictorsConfirmed: 0, unresolved: 0 } as never,
+      },
+    };
+    expect(buildAssetCoverage(report(), artifact.exposure, withBatch, true).provenance.candidateFork.experimental).toBe(true);
   });
 });

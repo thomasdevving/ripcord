@@ -39,7 +39,7 @@
  */
 
 /** Bump when the composition rules or this shape change. */
-export const assetCoverageVersion = "0.1.0";
+export const assetCoverageVersion = "0.4.0";
 
 // --- identity ---------------------------------------------------------------
 
@@ -102,9 +102,44 @@ export type MobulaObservation =
 
 export type BalanceEvidence =
   /** A recorded, non-zero balance read for THIS target, asset and chain, at the pinned block. */
-  | { state: "verified"; account: string; balanceRaw: string; block: string; evidenceCount: number }
-  /** The read was attempted and did not return a usable value. Recorded as an explicit unknown. */
+  | {
+      state: "verified";
+      account: string;
+      balanceRaw: string;
+      block: string;
+      evidenceCount: number;
+      source: "report_dependency_scan" | "post_analysis_candidate_verification";
+    }
+  /** An explicit balanceOf read returned zero. Unlike a missing dependency entry, this is positive evidence. */
+  | {
+      state: "verified_zero";
+      account: string;
+      balanceRaw: "0";
+      block: string;
+      evidenceCount: number;
+      source: "post_analysis_candidate_verification";
+      reason: string;
+    }
+  /**
+   * The READ did not complete — infrastructure, not the contract.
+   *
+   * Kept strictly separate from the two states below. A candidate whose
+   * `balanceOf` reverted, returned nothing, or returned something undecodable
+   * told us something about ITSELF; a candidate whose read timed out told us
+   * only about our own connection. Filing the first group here would repeat, in
+   * the presentation layer, the absence-from-failure defect KNOWN EDGE #31
+   * closed in the read layer.
+   */
   | { state: "read_failed"; account: string; reason: string }
+  /** Positively established: there was no contract code at that address at the analysis block. */
+  | { state: "no_contract_at_block"; account: string; block: string; evidenceCount: number; reason: string }
+  /**
+   * There was code, and it did not answer `balanceOf(address)` as an ERC20 —
+   * it reverted, returned no data, or returned something that is not a uint256.
+   * A fact about the contract at that block. NOT a zero balance, and NOT a
+   * failed read.
+   */
+  | { state: "not_an_erc20_balance"; account: string; block: string; evidenceCount: number; reason: string }
   /**
    * Nothing in the report records a balance for this asset.
    *
@@ -119,7 +154,7 @@ export type BalanceEvidence =
 
 // --- characteristic C: fork experiments --------------------------------------
 
-export type ForkExperimentKind = "withdrawal_restriction" | "upgrade_fund_movement";
+export type ForkExperimentKind = "withdrawal_restriction" | "candidate_withdrawal" | "upgrade_fund_movement";
 
 export interface ForkExperiment {
   kind: ForkExperimentKind;
@@ -158,7 +193,11 @@ export type ForkCoverageGap =
 // --- the row and the envelope ------------------------------------------------
 
 /** Where a row came from. A row can have several — the model is a UNION of sources. */
-export type RowSource = "mobula_snapshot" | "report_balance_evidence" | "fork_experiment";
+export type RowSource =
+  | "mobula_snapshot"
+  | "report_balance_evidence"
+  | "mobula_candidate_verification"
+  | "fork_experiment";
 
 export interface AssetCoverageRow {
   identity: AssetIdentity;
@@ -183,7 +222,10 @@ export interface CoverageCounts {
   mobulaEntriesAvailable: number | null;
   mobulaEntriesShown: number;
   assetsWithBalanceEvidence: number;
+  /** Mobula-proposed same-chain ERC20 candidates with an explicit pinned balanceOf result, including zero. */
+  mobulaCandidatesVerified: number;
   assetsInWithdrawalExperiment: number;
+  assetsInCandidateFork: number;
   assetsInUpgradeProof: number;
   rowsTotal: number;
 }
@@ -202,6 +244,35 @@ export interface CoverageProvenance {
   mobulaReason: string | null;
   /** How the vendor inventory was limited, so the shown subset is never read as the whole. */
   mobulaLimits: { floorUsd: number | null; displayCap: number | null; withheld: { reason: string; count: number }[] };
+  /** State of the opt-in, post-analysis layer. It is deliberately outside the verdict artifact. */
+  candidateVerification: {
+    status: "not_requested" | "pending" | "complete" | "partial" | "unavailable";
+    requestedAt: string | null;
+    completedAt: string | null;
+    candidatesProposed: number;
+    candidatesEligible: number;
+    candidatesVerified: number;
+    candidatesFailed: number;
+    discoveryCap: number | null;
+    withheld: { reason: string; count: number }[];
+    note: string;
+  };
+  candidateFork: {
+    status: "not_requested" | "pending" | "complete" | "partial" | "unavailable";
+    /**
+     * True while the per-asset adapter remains narrower than a complete exit
+     * analysis. Discovery, non-draining funding and isolation are implemented;
+     * other privileged calls, sequences and economic states are not. Carried
+     * here so removing the label is a code change rather than an editorial one.
+     */
+    experimental: boolean;
+    candidatesConsidered: number;
+    supported: number;
+    evaluated: number;
+    restrictorsConfirmed: number;
+    unresolved: number;
+    note: string;
+  };
 }
 
 export interface AssetCoverage {

@@ -17,11 +17,12 @@ import { useEffect, useState } from "react";
 import { ReportView } from "../components/ReportView.js";
 import { ForkEvidence } from "../components/ForkEvidence.js";
 import { asReport, type Report } from "../report-types.js";
-import { getReport, getCoverage, ApiRequestError } from "../api.js";
+import { getReport, ApiRequestError } from "../api.js";
 import { navigate } from "../router.js";
 import { forkBlocksFromReport } from "../fork-blocks.js";
 import { AssetCoveragePanel } from "../components/AssetCoverage.js";
-import type { AssetCoverage } from "@shared/coverage";
+import { EnrichedAssessmentPanel } from "../components/EnrichedAssessment.js";
+import { useAssetCoverage } from "../useAssetCoverage.js";
 import type { ReactElement } from "react";
 
 export function ReportScreen({ reportId }: { reportId: string }): ReactElement {
@@ -31,7 +32,7 @@ export function ReportScreen({ reportId }: { reportId: string }): ReactElement {
   const [error, setError] = useState<{ message: string; blocked: boolean } | null>(null);
   // Fetched separately and allowed to fail on its own: a missing Mobula
   // snapshot or a coverage error must never take the report page down.
-  const [coverage, setCoverage] = useState<AssetCoverage | null>(null);
+  const { coverage, enriched, gaveUp: coverageStalled } = useAssetCoverage(reportId);
 
   useEffect(() => {
     getReport(reportId)
@@ -53,9 +54,6 @@ export function ReportScreen({ reportId }: { reportId: string }): ReactElement {
           setError({ message: "That report could not be loaded.", blocked: false });
         }
       });
-    getCoverage(reportId)
-      .then((res) => setCoverage(res.coverage))
-      .catch(() => setCoverage(null));
   }, [reportId]);
 
   if (error) {
@@ -120,7 +118,8 @@ export function ReportScreen({ reportId }: { reportId: string }): ReactElement {
           Mobula snapshot still yields one (with Mobula marked unavailable), so
           a null here means the coverage request itself failed — and the report
           above must stand on its own regardless. */}
-      {coverage && <AssetCoveragePanel coverage={coverage} />}
+      {enriched && <EnrichedAssessmentPanel assessment={enriched} />}
+      {coverage && <AssetCoveragePanel coverage={coverage} stalled={coverageStalled} />}
     </main>
   );
 }

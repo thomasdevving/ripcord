@@ -379,6 +379,100 @@ src/live/          (Mobula bounty) THE LIVE LAYER — deliberately OUTSIDE the
                    forbids a remote src, and hotlinking would leak every page
                    view to the vendor.
 
+server/asset-context.ts
+                   (Mobula second layer) Optional and explicit-consent only.
+                   BOUNDED IN THREE DIMENSIONS (`maxActiveAssetContexts`,
+                   `maxQueuedAssetContexts`, `assetContextTimeoutMs`), because
+                   these start AFTER a worker exits and are therefore invisible
+                   to `maxActiveJobs` — the limiter that exists to stop N anvil
+                   forks at once. Each limit writes an explicit `unavailable`
+                   sidecar with a reason; none of them produces silence, and a
+                   refresh can no longer leave a `pending` sidecar that browsers
+                   poll forever. Candidate states distinguish a REVERT from an
+                   executed-but-empty return (`balance_returned_no_data`, KNOWN
+                   EDGE #35's conflation) and both from `read_failed`.
+                   THE DEADLINE IS REAL CANCELLATION, NOT A RACE. The first
+                   version used `Promise.race([complete(), expiry])`, which
+                   LOOKS like a timeout and is not one: a race does not cancel
+                   its loser. Reproduced live — the deadline fired, the slot was
+                   released, `unavailable` was stored, and the vendor's late
+                   HTTP 400 then OVERWROTE that terminal record. So a run now
+                   carries a `runId` and an AbortController; the signal reaches
+                   the Mobula client (which checks it before every attempt and
+                   before every backoff sleep) and the fork batch (which refuses
+                   to spawn anvil on an aborted signal); `abandoned()` gates
+                   every phase; every in-run write goes through `saveFrom`,
+                   which refuses a SEALED run or one that is no longer the
+                   registered run for its report id; and the slot is released
+                   only after the work has actually settled, bounded by a
+                   logged grace. Sealing happens BEFORE the terminal write, so
+                   the loser is mute by the time the record lands. Shutdown
+                   seals every run for the same reason.
+                   Runs AFTER a publishable deterministic report is stored:
+                   fetches a fresh Mobula snapshot, selects at most 64 unique
+                   valid same-chain ERC20 identities from the complete response
+                   independently of the top-12 UI subset, itemises every
+                   exclusion, then uses PinnedChain to
+                   verify code + balanceOf(target) at the report block and
+                   rechecks the block hash. Stored by report id under
+                   asset-contexts/, never inside the report. In selected fork
+                   modes a recognised Comet report additionally sends explicit
+                   zero and non-zero balance candidates to src/fork/assetScenarios.ts. A verified
+                   balance alone is not a fork test, and neither layer can change
+                   the verdict. Interrupted snapshot and scenario work degrade
+                   independently so completed balance evidence is not discarded.
+
+src/fork/assetScenarios.ts
+                   Sidecar-only Compound III collateral differential, shipped
+                   EXPERIMENTAL (`assetScenarioExperimental`, carried on every
+                   batch as `experimental: true` and rendered as a label, so
+                   removing it is a code change and not an editorial one). One
+                   Anvil fork, debt-free sandbox holders seeded without draining
+                   Comet, and one pre-candidate snapshot per asset:
+                   exact control withdrawals, revert, the real guardian pause,
+                   then the identical withdrawals. A direct restrictor requires
+                   an exact successful baseline, the false->true pause transition,
+                   ONLY the withdraw flag moving (all five are read on both sides
+                   — re-sending the observed values is not a substitute for
+                   checking them), Compound's exact Paused() error and an
+                   unchanged position. Base token coverage is linked to the
+                   primary report rather than repeated.
+                   THE STATES ARE NOT INTERCHANGEABLE, and the split is the point:
+                   `unsupported_asset` requires a POSITIVELY identified contract
+                   revert from getAssetInfoByAddress (viem's typed revert errors,
+                   then client.ts's `looksLikeContractRevert`), `role_unresolved`
+                   is a failed role read that claims NOTHING about Compound, and
+                   `token_interface_rejected` is the TOKEN's own contract
+                   reverting a setup call after the role was established, and
+                   `read_failed` is that same step failing as INFRASTRUCTURE —
+                   split because `read_failed`'s own documentation says
+                   infrastructure, and a state that quietly means two things is
+                   the shape of every conflation this project has had to fix. The first version derived all of these from one
+                   boolean, so an RPC timeout came out as "Compound does not
+                   recognise this token" — KNOWN EDGE #31's defect reintroduced
+                   in a module that does not go through PinnedChain. Setup sends
+                   and position reads are individually guarded, so a transient
+                   failure costs one candidate instead of the whole batch, and a
+                   rejected supply records `supplyCap` and
+                   `totalsCollateral(asset)`: cap exhaustion is named only from
+                   those reads; another revert cause is never guessed.
+                   Bounded by `deadlineAt`: candidates it ran out of time for are
+                   recorded `inconclusive`, never dropped.
+                   The original discovery, funding and shared-branch gaps are
+                   closed. Discovery consumes the WHOLE holdings response rather
+                   than the $1-floored, value-ranked top 12 — an unpriced new
+                   collateral was exactly what the old path could not see — and
+                   when the shared cap (64) bites, ordering is explicit and
+                   VALUE-BLIND: curated majors first, then by address. Vendor
+                   order would let airdrop spam displace a real collateral and
+                   would pick a different set on the next fetch; a value ranking
+                   would rebuild the exclusion this change removes. `beyond_cap`
+                   counts and renders whatever is dropped.
+                   The layer remains EXPERIMENTAL and offers no clean
+                   tier because it still covers only one protocol adapter, one
+                   exit action and one guardian mutation; other functions,
+                   sequences and economic states remain outside the experiment.
+
 server/         (webapp) THE WEB ORCHESTRATION. Imports the engine functions
                    DIRECTLY — never src/cli.ts, which parses argv — and never
                    parses CLI text as a progress protocol.
@@ -433,14 +527,43 @@ server/         (webapp) THE WEB ORCHESTRATION. Imports the engine functions
                    once a browser holds it no later decision takes it back.
                    Also assembles the power map from FOUND FACTS ONLY.
 
+server/enriched.ts + server/shared/enriched.ts
+                   (point 10) THE ENRICHED ASSESSMENT — the ONLY place sidecar
+                   evidence is allowed to reach a conclusion, and a separate
+                   artifact rather than an edit. A pure function of (report,
+                   assetContext): no chain read, no fork, no vendor fetch. It
+                   exists because refusing to join them forever has its own cost
+                   — a run could hold a fork-confirmed zero-notice restriction on
+                   several collateral assets while the report beside it reported
+                   only the base asset, two artifacts disagreeing about how much
+                   was tested with nothing reconciling them.
+                   FOUR RULES, IN THE TYPES: (1) the report is never modified and
+                   `changesVerdict` is a literal `false`; (2) CAUTION-ONLY — the
+                   union has no variant that softens, and the "nothing was
+                   demonstrated" gate is reached BEFORE any speaking outcome, so
+                   no route exists from a clean sidecar to a softer conclusion
+                   (`no_effect` can only ever produce `no_change`); (3) the LINK
+                   MUST BE EARNED — target, chain, block number, block hash and
+                   the batch's fork block must all agree, two MISSING hashes are
+                   not agreement, and any mismatch is `unusable` with the reason
+                   named; (4) scope travels with the claim — every outcome names
+                   the assets it rests on and lists the ones it does not, so a
+                   total is always reconcilable. `scope_broadened` when the
+                   report already reports the finding, `stricter_than_report`
+                   when it did not reach it; an unrecognised verdict routes to
+                   the stricter variant, never to "already covered". The panel
+                   quotes the report's verdict in the same block so a broader
+                   statement can never read as a replacement for it.
+
 server/coverage.ts + server/shared/coverage.ts
-                   (asset coverage) buildAssetCoverage(report, liveExposure) —
-                   a PURE function of two existing artifacts that makes the SCOPE
+                   (asset coverage) buildAssetCoverage(report, liveExposure,
+                   assetContext) — a PURE function of existing artifacts that makes the SCOPE
                    OF THE EVIDENCE legible per asset. No chain read, no RPC, no
                    fork, no Mobula fetch: a composer that could fetch the missing
                    piece would erase the gaps it exists to show. Three INDEPENDENT
                    characteristics, never a ladder from "found" to "safe": Mobula
-                   observation, balance at the analysis block, and zero-or-more
+                   observation, balance at the analysis block (including an
+                   explicit verified-zero state), and zero-or-more
                    fork experiment records. The judgements, all conservative:
                    identity is (chain, address) with natives keyed per chain (the
                    0xeeee sentinel is the same string on every chain); a null

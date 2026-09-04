@@ -32,6 +32,7 @@ import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { SavedReportListItem } from "./shared/dto.js";
 import { JobStore, isSafeId } from "./jobs/store.js";
+import type { AssetContextArtifact } from "./asset-context.js";
 
 export interface ReportSource {
   id: string;
@@ -113,6 +114,18 @@ export class ReportService {
     } catch {
       return null;
     }
+  }
+
+  /** The optional, post-analysis asset sidecar for a live report. */
+  async loadAssetContext(id: string): Promise<AssetContextArtifact | null> {
+    if (!isSafeId(id) || this.calibration.has(id)) return null;
+    return (await this.store.loadAssetContext(id)) as AssetContextArtifact | null;
+  }
+
+  /** Whether the submitter explicitly allowed a per-analysis Mobula request. */
+  async assetContextRequested(id: string): Promise<boolean> {
+    if (!isSafeId(id) || this.calibration.has(id)) return false;
+    return (await this.store.loadReportMeta(id))?.refreshAssetContext === true;
   }
 
   /**

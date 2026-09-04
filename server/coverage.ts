@@ -1,7 +1,7 @@
 /**
  * THE ASSET-COVERAGE COMPOSER.
  *
- * `buildAssetCoverage(report, liveExposure)` is a PURE function of two artifacts
+ * `buildAssetCoverage(report, liveExposure, assetContext)` is a PURE function of artifacts
  * that already exist. It performs no chain read, no RPC call, no fork and no
  * Mobula fetch. That is a scope decision, not a convenience: the point of this
  * panel is to show what the existing evidence does and does not cover, and a
@@ -49,6 +49,7 @@
  */
 import type { Report } from "../src/report/schema.js";
 import type { LiveExposure, LiveHolding } from "../src/live/exposure.js";
+import type { AssetContextArtifact, CandidateVerification } from "./asset-context.js";
 import { MAJOR_TOKENS } from "../src/chain/majorTokens.js";
 import {
   assetCoverageVersion,
@@ -75,7 +76,7 @@ const SCOPE_NOTES = [
 ];
 
 const ROADMAP_NOTE =
-  "Planned after the hackathon: use observed assets to propose additional analysis candidates, verify them on-chain, and run supported tests. Not available yet — nothing in this panel triggers new analysis.";
+  "Current boundary: on Compound III, pinned-verified same-chain ERC20 candidates — including an explicit zero target balance — can enter the supported collateral-withdrawal differential. Assets Compound does not recognise, other protocols, native assets and economic or multi-step scenarios remain explicitly outside fork coverage.";
 
 // --- identity ---------------------------------------------------------------
 
@@ -260,6 +261,36 @@ function upgradeProofExperiment(report: Report, tokenAddress: string): ForkExper
   };
 }
 
+function candidateForkExperiment(
+  context: AssetContextArtifact | null,
+  tokenAddress: string,
+): ForkExperiment | null {
+  const batch = context?.forkScenarios?.batch;
+  const scenario = batch?.scenarios.find((item) =>
+    item.address.toLowerCase() === tokenAddress.toLowerCase() && item.assetRole === "collateral",
+  );
+  if (!scenario) return null;
+  return {
+    kind: "candidate_withdrawal",
+    label: "Candidate collateral-withdrawal differential",
+    account: {
+      address: scenario.holder,
+      scope: "sandbox_holder",
+      note: "A deterministic sandbox holder seeded directly on the fork without taking tokens from the target. The token's and Compound's real approve, supply and withdraw paths were then executed. This is not a mainnet account or transaction.",
+    },
+    execution:
+      scenario.state === "restrictor_confirmed" || scenario.state === "no_effect"
+        ? "completed"
+        : scenario.state === "baseline_unestablished"
+          ? "not_established"
+          : "inconclusive",
+    outcome: scenario.detail,
+    forkBlock: batch?.forkBlock ?? null,
+    caveats: scenario.caveats,
+    evidenceRefs: [`asset-context.forkScenarios.batch.scenarios[${scenario.address}].evidence`],
+  };
+}
+
 // --- balance evidence --------------------------------------------------------
 
 /**
@@ -272,6 +303,7 @@ function balanceFor(
   report: Report,
   identity: AssetIdentity,
   analysedChain: ChainRef | null,
+  candidate: CandidateVerification | undefined,
 ): BalanceEvidence {
   const target = report.target?.address ?? "";
 
@@ -303,7 +335,62 @@ function balanceFor(
       balanceRaw: tokenEntry.balance,
       block: report.block?.number ?? "",
       evidenceCount: tokenEntry.balanceEvidence?.length ?? 0,
+      source: "report_dependency_scan",
     };
+  }
+
+  // The optional Mobula layer runs after the deterministic report is already
+  // stored. A successful explicit retry may resolve a report-side read gap,
+  // but can never replace stronger report evidence or change a verdict.
+  if (candidate) {
+    if (candidate.state === "verified_nonzero") {
+      return {
+        state: "verified",
+        account: candidate.account,
+        balanceRaw: candidate.balanceRaw ?? "",
+        block: candidate.block,
+        evidenceCount: candidate.evidence.length,
+        source: "post_analysis_candidate_verification",
+      };
+    }
+    if (candidate.state === "verified_zero") {
+      return {
+        state: "verified_zero",
+        account: candidate.account,
+        balanceRaw: "0",
+        block: candidate.block,
+        evidenceCount: candidate.evidence.length,
+        source: "post_analysis_candidate_verification",
+        reason: candidate.reason,
+      };
+    }
+    // The remaining states are NOT interchangeable, and mapping them all onto
+    // `read_failed` (as this did) hid the difference that matters: only the
+    // last of them is about our infrastructure. The other three are things the
+    // chain positively told us at the pinned block.
+    if (candidate.state === "not_contract_at_block") {
+      return {
+        state: "no_contract_at_block",
+        account: candidate.account,
+        block: candidate.block,
+        evidenceCount: candidate.evidence.length,
+        reason: candidate.reason,
+      };
+    }
+    if (
+      candidate.state === "balance_call_reverted" ||
+      candidate.state === "balance_returned_no_data" ||
+      candidate.state === "balance_decode_failed"
+    ) {
+      return {
+        state: "not_an_erc20_balance",
+        account: candidate.account,
+        block: candidate.block,
+        evidenceCount: candidate.evidence.length,
+        reason: candidate.reason,
+      };
+    }
+    return { state: "read_failed", account: candidate.account, reason: candidate.reason };
   }
 
   // A failed read IS recorded, as an explicit unknown. Finding one here is what
@@ -366,7 +453,12 @@ function mobulaFor(holding: LiveHolding | undefined, exposure: LiveExposure | nu
 
 // --- the composer ------------------------------------------------------------
 
-export function buildAssetCoverage(report: Report, exposure: LiveExposure | null): AssetCoverage {
+export function buildAssetCoverage(
+  report: Report,
+  exposure: LiveExposure | null,
+  assetContext: AssetContextArtifact | null = null,
+  assetContextRequested = false,
+): AssetCoverage {
   const analysedChain = normaliseChainRef(report.chainId);
   const target = report.target?.address ?? "";
 
@@ -414,7 +506,20 @@ export function buildAssetCoverage(report: Report, exposure: LiveExposure | null
     }
   }
 
-  // --- source 3: assets demonstrably in an experiment ------------------------
+  // --- source 3: post-analysis verification of Mobula-proposed candidates ---
+  const candidateByKey = new Map<string, CandidateVerification>();
+  for (const candidate of assetContext?.candidates ?? []) {
+    const chainRef = normaliseChainRef(candidate.chainRef);
+    const identity = makeIdentity(chainRef, candidate.address, false);
+    candidateByKey.set(identity.key, candidate);
+    touch(identity, "mobula_candidate_verification");
+  }
+  for (const scenario of assetContext?.forkScenarios?.batch?.scenarios ?? []) {
+    const identity = makeIdentity(analysedChain, scenario.address, false);
+    touch(identity, scenario.assetRole === "collateral" ? "fork_experiment" : "mobula_candidate_verification");
+  }
+
+  // --- source 4: assets demonstrably in an experiment ------------------------
   const baseToken = withdrawalBaseToken(report);
   if (baseToken) {
     touch(makeIdentity(baseToken.chainRef, baseToken.address, false), "fork_experiment");
@@ -426,7 +531,7 @@ export function buildAssetCoverage(report: Report, exposure: LiveExposure | null
   // --- assemble ---------------------------------------------------------------
   const withdrawal = withdrawalExperiment(report);
   const assembled: AssetCoverageRow[] = [...rows.values()].map(({ identity, sources, holding }) => {
-    const balance = balanceFor(report, identity, analysedChain);
+    const balance = balanceFor(report, identity, analysedChain, candidateByKey.get(identity.key));
     const experiments: ForkExperiment[] = [];
 
     if (withdrawal && baseToken && identity.address === baseToken.address && identity.chainRef === baseToken.chainRef) {
@@ -435,11 +540,20 @@ export function buildAssetCoverage(report: Report, exposure: LiveExposure | null
     if (identity.address) {
       const proofExperiment = upgradeProofExperiment(report, identity.address);
       if (proofExperiment) experiments.push(proofExperiment);
+      const candidateExperiment = candidateForkExperiment(assetContext, identity.address);
+      if (candidateExperiment) experiments.push(candidateExperiment);
     }
 
     let forkGap: ForkCoverageGap | null = null;
     if (experiments.length === 0) {
-      if (report.exitRestriction && !baseToken) {
+      const scenario = identity.address
+        ? assetContext?.forkScenarios?.batch?.scenarios.find((item) => item.address.toLowerCase() === identity.address)
+        : undefined;
+      if (scenario?.state === "unsupported_asset") {
+        forkGap = { state: "none_run", reason: scenario.detail };
+      } else if (balance.state === "verified_zero" && assetContext?.forkScenarios?.requested) {
+        forkGap = { state: "none_run", reason: "The pinned target balance was explicitly zero. The current Compound adapter can still seed an isolated holder, but no supported collateral experiment was attributed to this asset; consult its sidecar outcome." };
+      } else if (report.exitRestriction && !baseToken) {
         // The report HAS an experiment but its evidence cannot tie it to any
         // asset. Worded as a limitation OF THE REPORT rather than as a failed
         // attempt on this particular asset, because no per-asset attempt was
@@ -468,7 +582,9 @@ export function buildAssetCoverage(report: Report, exposure: LiveExposure | null
       );
     }
     if (balance.state === "no_recorded_evidence") gaps.push(balance.reason);
-    if (balance.state === "read_failed") gaps.push("Balance read failed at the analysis block.");
+    if (balance.state === "read_failed") gaps.push("Balance read failed at the analysis block — an infrastructure failure, which establishes nothing about this asset.");
+    if (balance.state === "no_contract_at_block") gaps.push("No contract existed at this address at the analysis block, so no balance could be held there.");
+    if (balance.state === "not_an_erc20_balance") gaps.push("The contract did not answer balanceOf(address) as an ERC20 at the analysis block. This is not a zero balance.");
     if (balance.state === "different_chain") gaps.push(`Observed on a different chain (${balance.observedOn}).`);
     if (forkGap) gaps.push(forkGap.reason);
     if (!sources.has("mobula_snapshot") && exposure?.status === "ok") {
@@ -490,7 +606,8 @@ export function buildAssetCoverage(report: Report, exposure: LiveExposure | null
   // more useful to a reader than a larger row with none, so value never sorts
   // above evidence.
   const evidenceRank = (row: AssetCoverageRow) =>
-    (row.experiments.length > 0 ? 2 : 0) + (row.balance.state === "verified" ? 1 : 0);
+    (row.experiments.length > 0 ? 2 : 0) +
+    (row.balance.state === "verified" || row.balance.state === "verified_zero" ? 1 : 0);
   assembled.sort((a, b) => {
     const rank = evidenceRank(b) - evidenceRank(a);
     if (rank !== 0) return rank;
@@ -503,8 +620,12 @@ export function buildAssetCoverage(report: Report, exposure: LiveExposure | null
   const counts: CoverageCounts = {
     mobulaEntriesAvailable: exposure?.status === "ok" ? exposure.holdingsCount : null,
     mobulaEntriesShown: exposure?.status === "ok" ? exposure.holdings.length : 0,
-    assetsWithBalanceEvidence: assembled.filter((r) => r.balance.state === "verified").length,
+    assetsWithBalanceEvidence: assembled.filter(
+      (r) => r.balance.state === "verified" || r.balance.state === "verified_zero",
+    ).length,
+    mobulaCandidatesVerified: assetContext?.counts.verified ?? 0,
     assetsInWithdrawalExperiment: assembled.filter((r) => r.experiments.some((e) => e.kind === "withdrawal_restriction")).length,
+    assetsInCandidateFork: assembled.filter((r) => r.experiments.some((e) => e.kind === "candidate_withdrawal")).length,
     assetsInUpgradeProof: assembled.filter((r) => r.experiments.some((e) => e.kind === "upgrade_fund_movement")).length,
     rowsTotal: assembled.length,
   };
@@ -526,6 +647,56 @@ export function buildAssetCoverage(report: Report, exposure: LiveExposure | null
         displayCap: exposure?.cap ?? null,
         withheld: (exposure?.withheld ?? []).map((w) => ({ reason: w.reason, count: w.count })),
       },
+      candidateVerification: assetContext
+        ? {
+            status: assetContext.status,
+            requestedAt: assetContext.requestedAt,
+            completedAt: assetContext.completedAt,
+            candidatesProposed: assetContext.candidateSelection?.proposed ?? assetContext.counts.displayed,
+            candidatesEligible: assetContext.counts.eligible,
+            candidatesVerified: assetContext.counts.verified,
+            candidatesFailed: assetContext.counts.failed,
+            discoveryCap: assetContext.candidateSelection?.cap ?? null,
+            withheld: assetContext.candidateSelection?.withheld ?? [],
+            note: assetContext.notes.join(" "),
+          }
+        : {
+            status: assetContextRequested ? "pending" : "not_requested",
+            requestedAt: null,
+            completedAt: null,
+            candidatesProposed: 0,
+            candidatesEligible: 0,
+            candidatesVerified: 0,
+            candidatesFailed: 0,
+            discoveryCap: null,
+            withheld: [],
+            note: assetContextRequested
+              ? "The optional Mobula refresh was requested and its sidecar is not available yet."
+              : "No per-analysis Mobula refresh was requested for this report.",
+          },
+      candidateFork: assetContext?.forkScenarios
+        ? {
+            status: assetContext.forkScenarios.status,
+            // Read from the batch itself, defaulting to TRUE when absent: an
+            // older sidecar that predates the flag is not thereby calibrated.
+            experimental: assetContext.forkScenarios.batch?.experimental ?? true,
+            candidatesConsidered: assetContext.forkScenarios.batch?.candidatesConsidered ?? 0,
+            supported: assetContext.forkScenarios.batch?.supported ?? 0,
+            evaluated: assetContext.forkScenarios.batch?.evaluated ?? 0,
+            restrictorsConfirmed: assetContext.forkScenarios.batch?.restrictorsConfirmed ?? 0,
+            unresolved: assetContext.forkScenarios.batch?.unresolved ?? 0,
+            note: assetContext.forkScenarios.note,
+          }
+        : {
+            status: "not_requested",
+            experimental: true,
+            candidatesConsidered: 0,
+            supported: 0,
+            evaluated: 0,
+            restrictorsConfirmed: 0,
+            unresolved: 0,
+            note: "No additional candidate fork scenarios were requested for this report.",
+          },
     },
     counts,
     rows: assembled,

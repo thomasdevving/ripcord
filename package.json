@@ -14,6 +14,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit && tsc -p web/tsconfig.json --noEmit",
     "test": "vitest run",
+    "test:live:assets": "RIPCORD_RUN_LIVE_FORK_TESTS=true vitest run test/assetScenariosLive.test.ts",
     "test:watch": "vitest",
     "ripcord": "tsx src/cli.ts",
     "render": "tsx scripts/render.ts calibration/reports site",

@@ -29,7 +29,9 @@ import { loadConfig, liveRunsBlockedReason, providerHostFor, ConfigError } from 
 import { JobStore } from "./jobs/store.js";
 import { JobManager } from "./jobs/manager.js";
 import { ReportService } from "./reports.js";
+import { AssetContextService } from "./asset-context.js";
 import { registerRoutes } from "./routes.js";
+import { modeRunsFork } from "./shared/dto.js";
 import { checkAnvilAvailable } from "../src/fork/preflight.js";
 import { safeLogValue, rpcSecrets } from "./sanitize.js";
 
@@ -86,6 +88,7 @@ async function main(): Promise<void> {
 
   const store = new JobStore(config.dataDir);
   await store.init();
+  const recoveredAssetContexts = await store.recoverPendingAssetContexts();
 
   const reports = new ReportService(store, config.calibrationDir, rpcSecrets(config.rpcUrls.values()), config.liveSidecarDir);
   const indexed = await reports.init();
@@ -93,7 +96,10 @@ async function main(): Promise<void> {
   // snapshots is a supported state, not a startup failure.
   const sidecars = await reports.indexLiveSidecars();
 
-  const manager = new JobManager(config, store, resolveWorkerPath());
+  const assetContext = new AssetContextService(config, store);
+  const manager = new JobManager(config, store, resolveWorkerPath(), ({ reportId, report, meta }) =>
+    assetContext.start(reportId, report, modeRunsFork(meta.mode)),
+  );
   const { recovered } = await manager.init();
 
   // anvil's absence is reported, not fatal. Fork modes disappear from
@@ -147,6 +153,7 @@ async function main(): Promise<void> {
       `  saved reports: ${indexed.indexed} calibration report(s) indexed, ${indexed.blocked} withheld by the disclosure gate`,
       `  asset coverage: ${sidecars} Mobula snapshot(s) indexed by (chain, target)`,
       `  recovered    : ${recovered} interrupted job(s) from a previous run`,
+      `  asset recovery: ${recoveredAssetContexts} interrupted asset-context refresh(es) marked unavailable`,
     ].join("\n"),
   );
 
@@ -157,7 +164,7 @@ async function main(): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
     console.log(`[ripcord] ${signal} received — stopping workers and closing the server`);
-    try { await manager.shutdown(); }
+    try { await Promise.all([manager.shutdown(), assetContext.shutdown()]); }
     catch (err) { console.error(`[ripcord] shutdown incomplete: ${safeLogValue(err)}`); process.exitCode = 1; return; }
     await app.close();
     process.exit(0);

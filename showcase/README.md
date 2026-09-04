@@ -22,8 +22,9 @@ Open `index.html` in Chrome or Safari, then use:
 to the audience too; close them before going fullscreen on stage.
 
 The normal sequence contains seven slides. At slide 3, switch to the real
-Ripcord site and spend roughly three minutes on the Compound report. Return to
-slide 4 for the technical process.
+Ripcord site, select the opt-in Mobula second layer for Compound III, start the
+analysis and then use the completed Compound report for the explanation. Spend
+roughly 2:50 on the product. Return to slide 4 for the technical process.
 
 If the live product fails, return to slide 3 and press `B`. The backup sequence
 shows the authority map, fork differential and zero-second verdict at projector
@@ -51,10 +52,10 @@ For the actual showcase, keep these browser tabs open before going on stage:
 | Segment | Target |
 | --- | ---: |
 | Hook + product | 1:00 |
-| Live product demo | 3:05 |
+| Live product demo | 2:50 |
 | Process | 0:35 |
-| Mobula | 0:25 |
-| Roadmap + close | 0:40 |
+| Mobula implementation | 0:45 |
+| Roadmap + close | 0:35 |
 | **Total** | **5:45** |
 
 Rehearse toward 5:20–5:30; the remaining time is stage/AV buffer.

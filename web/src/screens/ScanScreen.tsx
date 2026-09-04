@@ -30,7 +30,7 @@
  * the page; it should be readable without opening anything.
  */
 import { useEffect, useRef, useState } from "react";
-import type { ConfigResponse, RunMode } from "@shared/dto";
+import { MOBULA_SECOND_LAYER_TARGET, type ConfigResponse, type RunMode } from "@shared/dto";
 import { createJob, ApiRequestError } from "../api.js";
 import { navigate } from "../router.js";
 import { rememberControlToken } from "../control.js";
@@ -61,6 +61,7 @@ export function ScanScreen({ config }: { config: ConfigResponse | null }): React
   const [blockMode, setBlockMode] = useState<"pinned" | "latest">("pinned");
   const [block, setBlock] = useState("");
   const [advanced, setAdvanced] = useState(false);
+  const [refreshAssetContext, setRefreshAssetContext] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<{ message: string; hint: string | null } | null>(null);
   const addressInputRef = useRef<HTMLInputElement | null>(null);
@@ -73,6 +74,9 @@ export function ScanScreen({ config }: { config: ConfigResponse | null }): React
   const addressValid = ADDRESS_RE.test(address.trim());
   const blockValid = blockMode === "latest" || /^\d+$/.test(block.trim());
   const canSubmit = !submitting && !liveDisabled && addressValid && blockValid;
+  const isMobulaTarget =
+    address.trim().toLowerCase() === MOBULA_SECOND_LAYER_TARGET.address.toLowerCase();
+  const mobulaSecondLayerAvailable = isMobulaTarget && mode !== "scan" && !liveDisabled;
 
   const availableModes = config?.availableModes ?? [];
   useEffect(() => {
@@ -81,11 +85,20 @@ export function ScanScreen({ config }: { config: ConfigResponse | null }): React
     if (availableModes.length > 0 && !availableModes.includes(mode)) setMode(availableModes[0] as RunMode);
   }, [availableModes, mode]);
 
+  useEffect(() => {
+    // The server enforces the same restriction. Resetting here prevents a user
+    // from selecting the second layer and then silently changing the request
+    // into an unsupported address or a scan-only run.
+    if (refreshAssetContext && !mobulaSecondLayerAvailable) setRefreshAssetContext(false);
+  }, [refreshAssetContext, mobulaSecondLayerAvailable]);
+
   const submit = async () => {
     setSubmitting(true);
     setError(null);
     try {
-      const fingerprint = JSON.stringify([address.trim().toLowerCase(), blockMode, block.trim(), mode]);
+      const fingerprint = JSON.stringify([
+        address.trim().toLowerCase(), blockMode, block.trim(), mode, refreshAssetContext,
+      ]);
       let intent: { fingerprint: string; idempotencyKey: string; controlToken: string } | null = null;
       try { intent = JSON.parse(sessionStorage.getItem("ripcord-submit-intent") ?? "null"); } catch { /* no valid saved intent */ }
       if (intent?.fingerprint !== fingerprint) {
@@ -99,6 +112,7 @@ export function ScanScreen({ config }: { config: ConfigResponse | null }): React
         chainId: 1,
         block: blockMode === "latest" ? "latest" : block.trim(),
         mode,
+        refreshAssetContext,
       });
       // Held in this tab only. It is the capability to cancel, and a job id
       // alone must not confer that — see docs/WEBAPP.md.
@@ -245,6 +259,67 @@ export function ScanScreen({ config }: { config: ConfigResponse | null }): React
             </p>
           </div>
         )}
+
+        <div className="field asset-analysis-choice">
+          <span className="label-text" id="asset-analysis-label">
+            Analysis layer
+          </span>
+          <div className="options analysis-layer-options" role="radiogroup" aria-labelledby="asset-analysis-label">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={!refreshAssetContext}
+              className="option"
+              disabled={liveDisabled || submitting}
+              onClick={() => setRefreshAssetContext(false)}
+            >
+              <span className="option-mark" aria-hidden="true" />
+              <span className="option-body">
+                <span className="option-title">Ripcord analysis</span>
+                <span className="option-detail">
+                  Runs the selected pinned analysis and fork test. Nothing is sent to Mobula.
+                </span>
+              </span>
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={refreshAssetContext}
+              className="option"
+              disabled={!mobulaSecondLayerAvailable || submitting}
+              onClick={() => setRefreshAssetContext(true)}
+            >
+              <span className="option-mark" aria-hidden="true" />
+              <span className="option-body">
+                <span className="option-title">
+                  Ripcord + Mobula 2nd layer <span className="chip warn">experimental</span>
+                </span>
+                <span className="option-detail">
+                  After the core report, Mobula proposes asset candidates. Ripcord verifies them at the pinned block and
+                  runs supported Compound III collateral withdrawals against the real pause function on a sandbox fork.
+                </span>
+              </span>
+            </button>
+          </div>
+          {!isMobulaTarget && (
+            <p className="note small analysis-layer-note">
+              The second layer is currently available only for {MOBULA_SECOND_LAYER_TARGET.label}. Select its example
+              below to enable it.
+            </p>
+          )}
+          {isMobulaTarget && mode === "scan" && (
+            <p className="note small analysis-layer-note">
+              Choose a withdrawal-test mode above to enable the Mobula second-layer fork analysis.
+            </p>
+          )}
+          {refreshAssetContext && (
+            <p className="note small analysis-layer-consent">
+              This explicitly shares the analysed contract address with Mobula after the core report completes. Mobula
+              supplies context only and cannot change Ripcord's verdict. A confirmed restriction is demonstrated; an
+              unconfirmed candidate is not evidence of safety.
+            </p>
+          )}
+        </div>
 
         {error && (
           <div className="banner danger">

@@ -375,6 +375,23 @@ label {
 .option-title { font-size: 13px; font-weight: 600; }
 .option-detail { font-size: 12px; line-height: 1.5; color: var(--text-secondary); }
 
+.asset-analysis-choice { margin-top: 18px; }
+.analysis-layer-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.analysis-layer-options .option { height: 100%; }
+.analysis-layer-options .option-title .chip { margin-left: 5px; vertical-align: 1px; }
+.analysis-layer-note,
+.analysis-layer-consent { margin: 8px 0 0; }
+.analysis-layer-consent {
+  padding: 10px 12px;
+  border-left: 2px solid var(--warning);
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+}
+
+@media (max-width: 680px) {
+  .analysis-layer-options { grid-template-columns: minmax(0, 1fr); }
+}
+
 .crumb { margin: 0 0 14px; font-size: 12px; }
 
 /* --- banners and chips ---------------------------------------------------- */

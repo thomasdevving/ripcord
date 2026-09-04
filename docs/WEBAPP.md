@@ -335,8 +335,8 @@ need a denominator, and nothing here establishes a complete asset inventory.
 
 ### Where it lives
 
-`server/coverage.ts` exposes `buildAssetCoverage(report, liveExposure)` — a pure
-function of two artifacts that already exist. It performs **no** chain read, RPC
+`server/coverage.ts` exposes `buildAssetCoverage(report, liveExposure, assetContext)` — a pure
+function of artifacts that already exist. It performs **no** chain read, RPC
 call, fork or Mobula fetch. That is deliberate: a composer that could fetch the
 missing piece would erase the gaps this panel exists to display.
 
@@ -351,7 +351,7 @@ every other report transport, so a blocked report returns **451** here too.
 | Characteristic | States |
 | --- | --- |
 | **Mobula observation** | `observed` · `not_listed` · `chain_unclear` · `unavailable` |
-| **Balance at the analysis block** | `verified` · `read_failed` · `no_recorded_evidence` · `different_chain` |
+| **Balance at the analysis block** | `verified` · `verified_zero` · `no_contract_at_block` · `not_an_erc20_balance` · `read_failed` · `no_recorded_evidence` · `different_chain` |
 | **Fork experiments** | zero or more records, each with its own kind, account, execution status and caveats |
 
 They are independent. An asset can be observed with no on-chain evidence, have a
@@ -416,3 +416,37 @@ reuses the snapshot for that same address with its original fetch time intact. A
 missing or unreadable snapshot makes the panel **partial**: Mobula reads
 `unavailable` and every pinned balance and fork observation is still shown. It
 can never fail a scan, a fork, or the report page.
+
+For a new live analysis the scan form presents two explicit choices: the normal
+Ripcord analysis and a default-off **Ripcord + Mobula 2nd layer**. The second is
+currently enabled only for the Compound III cUSDCv3 target in a withdrawal-test
+mode, and the API enforces the same address/mode restriction. Opting in discloses
+that target contract address to Mobula after the core report has passed the
+publication gate. `server/asset-context.ts` then selects up to 64 unique
+same-chain ERC20 identities from the complete response — independent of the
+UI's $1 floor and top-12 cap — and verifies them with `getCode` and `balanceOf(target)` at the
+already-pinned block, checks the report's block hash around the pass, and stores
+a separate report-keyed artifact. Native, other/unclear-chain, malformed,
+duplicate and beyond-cap entries are itemised rather than silently dropped. The coverage endpoint polls this artifact
+while pending and retries transient transport/5xx failures within a finite
+ceiling. It may add explicit non-zero or zero balance evidence; it cannot change
+the report or verdict.
+
+If the user selected a fork mode and the deterministic report identifies the
+Compound III / Comet interface, candidates with an explicit pinned balance —
+including zero — are also passed to
+the narrow scenario engine in `src/fork/assetScenarios.ts`. It asks Comet which
+tokens are registered collateral, seeds one whole token into an isolated holder
+inside Anvil without draining Comet, constructs debt-free sandbox positions and
+compares exact withdrawals before and after the real guardian withdrawal pause
+with a separate pre-candidate snapshot for every asset. The base token remains linked to the primary
+report experiment. Every other asset gets an address-exact sidecar state:
+`restrictor_confirmed`, `no_effect`, `baseline_unestablished`, `inconclusive`,
+`unsupported_asset`, `role_unresolved`, `token_interface_rejected` or
+`read_failed`. A protocol rejection, a token-interface rejection and an
+infrastructure failure are therefore never rendered as the same fact.
+
+Balance verification and fork coverage remain separate columns. A non-zero
+balance does not imply a successful scenario, and a setup failure is rendered as
+unresolved rather than safe. Other protocol families, native assets and
+multi-step or economic scenarios remain outside this implementation.

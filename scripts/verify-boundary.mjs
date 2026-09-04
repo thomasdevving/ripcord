@@ -119,7 +119,24 @@ if (refs === 0) pass(`no Mobula hostname, module or env var referenced in the pi
 // --- 3. no live data inside a pinned report ---------------------------------
 
 const REPORTS = process.argv[2] ?? "calibration/reports";
-const LIVE_FIELDS = ["liveLayerVersion", "fetchedAt", "vendorReportedTotalUsd", "exposureUsd", "unverifiedSymbol"];
+const LIVE_FIELDS = [
+  "liveLayerVersion",
+  "fetchedAt",
+  "vendorReportedTotalUsd",
+  "exposureUsd",
+  "unverifiedSymbol",
+  "assetContextVersion",
+  "candidateVerification",
+  "verified_nonzero",
+  "verified_zero",
+  "assetScenarioVersion",
+  "candidate_withdrawal",
+  "restrictorsConfirmed",
+  "balance_returned_no_data",
+  "role_unresolved",
+  "assetContextVersion",
+  "token_interface_rejected",
+];
 let dirty = 0;
 const reportFiles = existsSync(REPORTS) ? readdirSync(REPORTS).filter((f) => f.endsWith(".json")) : [];
 for (const f of reportFiles) {

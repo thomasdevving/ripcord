@@ -25,13 +25,27 @@ const reportsDir = process.argv[3] ?? "calibration/reports";
 // test/fixtures/targets.json is included deliberately: it is the manual
 // verification LOG, i.e. prose asserting what was observed, and prose is exactly
 // what drifts. Its claims are as checkable as the README's and no more trusted.
-// docs/MOBULA.md is DELIBERATELY absent from this list. Every figure in it is a
-// LIVE market observation stamped with the instant it was read, not a claim about
-// a pinned report — Lido's native-ETH balance and cbETH's vendor total change
-// whenever anyone fetches them. Checking them against calibration/reports/ would
-// fail by construction, and checking them against the sidecars would fail on the
-// next fetch. That document states its own observation instant instead, and says
-// so where the figures appear. The exclusion is a decision, not an oversight.
+// docs/MOBULA.md is DELIBERATELY absent from this list, but the exclusion is
+// NARROWER than it looks and is enforced below rather than trusted.
+//
+// The reason for excluding it: every figure in it is a LIVE market observation
+// stamped with the instant it was read, not a claim about a pinned report —
+// Lido's native-ETH balance and cbETH's vendor total change whenever anyone
+// fetches them. Checking them against calibration/reports/ would fail by
+// construction, and checking them against the sidecars would fail on the next
+// fetch. That document states its own observation instant instead.
+//
+// THAT RATIONALE HAS AN EXPIRY DATE, and it reached it once already. When the
+// per-asset candidate scenarios were added, MOBULA.md grew per-asset FORK
+// RESULT counts ("N established differentials, all N confirmed …"). Those are
+// not market observations; they are security claims about a pinned block and a
+// real protocol, i.e. exactly the class this script exists for — and the
+// exclusion above silently covered them, with no artifact in the repository
+// behind them. The escape hatch had outlived its argument and nothing noticed.
+//
+// So the exclusion is now conditional and checked: MOBULA.md may hold live
+// market figures, and may NOT hold per-asset scenario counts. See the
+// sidecar-figure guard below.
 const docs = ["README.md", "CLAUDE.md", "docs/TECHNICAL.md", "docs/CALIBRATION.md", "docs/QUESTIONNAIRES.md", "docs/WEBAPP.md", "docs/RAILWAY.md", "test/fixtures/targets.json"].filter(existsSync);
 
 const reports = {};
@@ -329,6 +343,35 @@ for (const [label, r] of Object.entries(reports)) {
       }
     }
   }
+}
+
+// --- the docs/MOBULA.md sidecar-figure guard --------------------------------
+//
+// MOBULA.md is exempt from the claim audit because its figures are live market
+// observations. That exemption must not be allowed to shelter a per-asset fork
+// RESULT count, which is a claim about a pinned block with no committed
+// artifact behind it. Narrow on purpose: it matches a scenario-state word or a
+// scenario noun standing next to a number, and prints the offending line rather
+// than guessing what was meant.
+const SIDECAR_FIGURE = new RegExp(
+  String.raw`(?:\b\d+\b[^.\n]{0,60}?\b(?:restrictor_confirmed|baseline_unestablished|no_effect|unsupported_asset|role_unresolved|differentials?|collateral scenarios?|candidates? (?:were |was )?(?:eligible|verified|recognised|recognized))` +
+  String.raw`|\b(?:restrictor_confirmed|baseline_unestablished|no_effect|unsupported_asset|role_unresolved|differentials?|collateral scenarios?)\b[^.\n]{0,60}?\b\d+\b)`,
+  "i",
+);
+const MOBULA_DOC = "docs/MOBULA.md";
+if (existsSync(MOBULA_DOC)) {
+  const lines = readFileSync(MOBULA_DOC, "utf8").split("\n");
+  let hits = 0;
+  lines.forEach((line, i) => {
+    // A fenced state list or a schema/type line is naming the vocabulary, not
+    // quoting a result. Only prose counts.
+    if (/^\s*(?:[-*]\s*)?[`|]/.test(line) || /^\s{4,}/.test(line)) return;
+    if (SIDECAR_FIGURE.test(line)) {
+      fail(MOBULA_DOC, `line ${i + 1} quotes a per-asset scenario figure, which has no committed artifact behind it: ${line.trim().slice(0, 120)}`);
+      hits++;
+    }
+  });
+  if (hits === 0) ok(MOBULA_DOC, "quotes no per-asset scenario figure (its live-market exemption still holds)");
 }
 
 console.log(`--- narrative claim audit over ${docs.length} document(s) against ${Object.keys(reports).length} reports ---\n`);

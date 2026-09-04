@@ -34,6 +34,44 @@ function ctx(overrides: Partial<ValidationContext> = {}): ValidationContext {
 const base = { address: COMET, chainId: 1, block: "25800000", mode: "scan" as const };
 
 describe("job request validation", () => {
+  it("defaults the optional Mobula second layer to false and accepts it for a Compound withdrawal test", async () => {
+    const without = await validateCreateJob(base, ctx());
+    const withConsent = await validateCreateJob(
+      { ...base, mode: "scan_withdrawal_test", refreshAssetContext: true },
+      ctx(),
+    );
+    expect(without.ok && without.value.refreshAssetContext).toBe(false);
+    expect(withConsent.ok && withConsent.value.refreshAssetContext).toBe(true);
+  });
+
+  it("rejects a non-boolean Mobula consent value", async () => {
+    const result = await validateCreateJob({ ...base, refreshAssetContext: "yes" }, ctx());
+    expect(result.ok).toBe(false);
+  });
+
+  it("refuses the Mobula second layer for any target other than the supported Compound III market", async () => {
+    const result = await validateCreateJob(
+      {
+        ...base,
+        address: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        mode: "scan_withdrawal_test",
+        refreshAssetContext: true,
+      },
+      ctx(),
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe("unsupported_mode");
+    expect(result.error.message).toContain("Compound III");
+  });
+
+  it("refuses the Mobula second layer when no fork withdrawal test was selected", async () => {
+    const result = await validateCreateJob({ ...base, refreshAssetContext: true }, ctx());
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe("unsupported_mode");
+    expect(result.error.message).toContain("withdrawal-test");
+  });
   it("accepts a well-formed request and checksums the address", async () => {
     const result = await validateCreateJob({ ...base, address: COMET.toLowerCase() }, ctx());
     expect(result.ok).toBe(true);
@@ -132,7 +170,9 @@ describe("job request validation", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     // The validated shape carries only these fields; nothing above survives.
-    expect(Object.keys(result.value).sort()).toEqual(["address", "block", "blockSource", "chainId", "idempotencyKey", "mode"]);
+    expect(Object.keys(result.value).sort()).toEqual([
+      "address", "block", "blockSource", "chainId", "idempotencyKey", "mode", "refreshAssetContext",
+    ]);
   });
 });
 

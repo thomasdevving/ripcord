@@ -41,6 +41,31 @@
  */
 export type RunMode = "scan" | "scan_withdrawal_test" | "scan_withdrawal_test_upgrade_proof";
 
+/**
+ * The only target for which the experimental Mobula second-layer fork pass is
+ * currently implemented. This value is shared by the browser and the server:
+ * the UI can explain why the option is unavailable, while server validation
+ * remains the authority for clients that do not use the form.
+ */
+export const MOBULA_SECOND_LAYER_TARGET = {
+  chainId: 1,
+  address: "0xc3d688B66703497DAA19211EEdff47f25384cdc3",
+  label: "Compound III (Comet) cUSDCv3",
+} as const;
+
+/**
+ * Modes that actually run a fork, and therefore the only ones for which the
+ * experimental per-asset scenario pass may be offered.
+ *
+ * Stated POSITIVELY on purpose. The entrypoint used to ask `mode !== "scan"`,
+ * which is fail-OPEN: `StoredReportMeta.mode` is nullable, so a report whose
+ * mode could not be recovered would have requested a fork batch. Naming the
+ * modes that qualify means an unknown mode qualifies for nothing.
+ */
+export function modeRunsFork(mode: RunMode | null | undefined): boolean {
+  return mode === "scan_withdrawal_test" || mode === "scan_withdrawal_test_upgrade_proof";
+}
+
 export const RUN_MODES: readonly RunMode[] = [
   "scan",
   "scan_withdrawal_test",
@@ -323,6 +348,14 @@ export interface CreateJobRequest {
   block: string | "latest";
   mode: RunMode;
   /**
+   * Explicit consent for the post-analysis live layer. When true, the server
+   * sends the target address to Mobula after the pinned report is complete,
+   * then selects candidates from the complete response independently of the UI
+   * subset and verifies eligible same-chain ERC20 identities at the report block.
+   * The worker and verdict engine never receive this flag or the resulting data.
+   */
+  refreshAssetContext?: boolean;
+  /**
    * Optional client-supplied key that makes a repeated submit idempotent. Two
    * submits with the same key and the same parameters return the SAME job
    * rather than queueing a second heavyweight scan. A deliberate re-run simply
@@ -356,6 +389,8 @@ export interface JobSummary {
   jobId: string;
   state: JobState;
   mode: RunMode;
+  /** Whether this run requested the separate Mobula refresh and pinned candidate pass. */
+  refreshAssetContext: boolean;
   address: string;
   chainId: number;
   /** The pinned block, as a decimal string. Fixed at submit time and never re-resolved. */

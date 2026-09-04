@@ -32,6 +32,19 @@ export interface ServerConfig {
   maxActiveJobs: number;
   maxQueuedJobs: number;
   jobTimeoutMs: number;
+  /**
+   * Post-analysis asset-context refreshes allowed to run at once.
+   *
+   * These start AFTER a job's worker has finished, so they are outside
+   * `maxActiveJobs` and were previously unbounded: N jobs completing together
+   * meant N Mobula fetches and N anvil forks with no ceiling at all, which is
+   * the resource limit `maxActiveJobs` exists to impose.
+   */
+  maxActiveAssetContexts: number;
+  /** Refreshes allowed to WAIT. Beyond this the sidecar is written `unavailable` immediately rather than queued indefinitely. */
+  maxQueuedAssetContexts: number;
+  /** Hard ceiling on one refresh, fork included. Without it a stuck fork leaves a sidecar `pending` forever and browsers polling it forever. */
+  assetContextTimeoutMs: number;
   defaultBlock: bigint;
   /** Where the built frontend lives. Absent in dev, where Vite serves it. */
   webDistDir: string | null;
@@ -112,6 +125,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     maxActiveJobs: intVar(env, "RIPCORD_MAX_ACTIVE_JOBS", 1, 1, 4),
     maxQueuedJobs: intVar(env, "RIPCORD_MAX_QUEUED_JOBS", 3, 0, 50),
     jobTimeoutMs: intVar(env, "RIPCORD_JOB_TIMEOUT_MS", 600_000, 10_000, 3_600_000),
+    maxActiveAssetContexts: intVar(env, "RIPCORD_MAX_ACTIVE_ASSET_CONTEXTS", 1, 1, 4),
+    maxQueuedAssetContexts: intVar(env, "RIPCORD_MAX_QUEUED_ASSET_CONTEXTS", 4, 0, 50),
+    assetContextTimeoutMs: intVar(env, "RIPCORD_ASSET_CONTEXT_TIMEOUT_MS", 900_000, 30_000, 3_600_000),
     defaultBlock: 0n,
     webDistDir: env.RIPCORD_WEB_DIST ? resolve(env.RIPCORD_WEB_DIST) : null,
     calibrationDir: resolve(env.RIPCORD_CALIBRATION_DIR ?? "calibration/reports"),

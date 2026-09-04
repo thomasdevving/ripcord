@@ -52,9 +52,47 @@ function findRevertData(err: unknown, depth = 0): Hex | null {
   return null;
 }
 
-/** Deterministic-ish port in the ephemeral range, derived from pid+block so parallel runs don't collide. */
-function pickPort(seed: bigint): number {
-  return 8600 + Number((seed + BigInt(process.pid)) % 300n);
+/**
+ * PORT OWNERSHIP, AND WHY ANVIL CHOOSES THE PORT.
+ *
+ * This used to be `8600 + (blockNumber + pid) % 300` — deterministic, and
+ * therefore COLLIDING for two forks started from the same process at the same
+ * pinned block. That is not a hypothetical: the post-analysis asset-context
+ * layer starts forks outside the job-capacity limiter, so two runs on one block
+ * were an ordinary event.
+ *
+ * The collision itself would be survivable if it failed loud. It did not. The
+ * second anvil fails to BIND, but the readiness loop polls the port and gets a
+ * healthy answer — from the FIRST anvil — whose fork block, and therefore whose
+ * `expectedBlockHash` check, is identical. The second engine then drives the
+ * first engine's fork, interleaving transactions into someone else's
+ * differential. A corrupted before/after comparison is exactly the result this
+ * project must never produce silently.
+ *
+ * An in-memory reservation set fixed only the one-process case. Ripcord has at
+ * least two processes that can spawn forks (the worker and the post-analysis
+ * service), and there is an unavoidable bind gap between "this port looks
+ * free" and a child actually owning it.
+ *
+ * Passing port 0 delegates allocation to the operating system in Anvil's own
+ * bind call. We learn the selected port only from THIS child process's
+ * `Listening on 127.0.0.1:<port>` line, and create the RPC client afterwards.
+ * There is no probe/release/bind window and no cross-process lock to coordinate.
+ * An explicitly requested port follows the same ownership rule: a foreign node
+ * can answer there, but it is ignored unless our child first announces that it
+ * successfully bound that exact port.
+ *
+ * Exact-head and pinned-hash checks remain as state-identity checks. They no
+ * longer double as a fallible substitute for process ownership.
+ */
+const LISTENING_LINE = /Listening on 127\.0\.0\.1:(\d{1,5})/;
+
+/** Child output may contain the fork URL, which usually contains an API key. */
+function safeChildOutput(value: string): string {
+  return value
+    .replace(/(?:https?|wss?):\/\/[^\s"']+/gi, "[url redacted]")
+    .replace(/(api[_-]?key|token|authorization)\s*[:=]\s*\S+/gi, "$1=[redacted]")
+    .slice(-8192);
 }
 
 export interface StartForkOptions {
@@ -70,9 +108,11 @@ export interface StartForkOptions {
 }
 
 export async function startAnvilFork(opts: StartForkOptions): Promise<ForkHandle> {
-  const port = opts.port ?? pickPort(opts.blockNumber);
-  const rpcUrl = `http://127.0.0.1:${port}`;
+  const requestedPort = opts.port ?? 0;
   const timeoutMs = opts.timeoutMs ?? 60_000;
+  // One deadline covers spawn, ownership handshake and RPC readiness. A slow
+  // bind must not earn the process a fresh full timeout for the next phase.
+  const deadline = Date.now() + timeoutMs;
 
   const proc: ChildProcess = spawn(
     opts.anvilExecutable ?? "anvil",
@@ -83,28 +123,24 @@ export async function startAnvilFork(opts: StartForkOptions): Promise<ForkHandle
       opts.blockNumber.toString(),
       "--host", "127.0.0.1",
       "--port",
-      String(port),
+      String(requestedPort),
       // All actors are explicitly funded and impersonated. Avoid unrelated
       // archive lookups for Anvil's default ten development accounts.
       "--accounts", "0",
-      "--silent",
     ],
-    { stdio: ["ignore", "ignore", "pipe"] },
+    // stdout MUST be piped: its listening line is the ownership handshake.
+    // Nothing else from stdout is retained or logged, because Anvil may print
+    // upstream fork details. stderr is retained only after redaction.
+    { stdio: ["ignore", "pipe", "pipe"] },
   );
 
   let stderr = "";
-  proc.stderr?.on("data", (d) => (stderr = (stderr + String(d)).slice(-8192)));
+  proc.stderr?.on("data", (d) => (stderr = safeChildOutput(stderr + String(d))));
   let exited = false;
+  let exitCode: number | null = null;
   proc.on("exit", () => (exited = true));
+  proc.on("exit", (code) => { exitCode = code; });
   proc.on("error", () => { exited = true; stderr = "anvil process could not be spawned"; });
-
-  const client = createTestClient({
-    mode: "anvil",
-    chain: mainnet,
-    transport: http(rpcUrl),
-  })
-    .extend(publicActions)
-    .extend(walletActions);
 
   const stop = async (): Promise<void> => {
     if (exited) return;
@@ -115,21 +151,86 @@ export async function startAnvilFork(opts: StartForkOptions): Promise<ForkHandle
     });
   };
 
+  let port: number;
+  try {
+    port = await new Promise<number>((resolve, reject) => {
+      let buffer = "";
+      const timer = setTimeout(() => {
+        cleanup();
+        reject(new Error(`anvil did not announce a listening port within ${timeoutMs}ms`));
+      }, Math.max(1, deadline - Date.now()));
+      const cleanup = () => {
+        clearTimeout(timer);
+        proc.stdout?.off("data", onData);
+        proc.off("exit", onExit);
+        proc.off("error", onError);
+      };
+      const onData = (data: Buffer | string) => {
+        // Retain only enough text to bridge a chunk boundary. Never surface it.
+        buffer = (buffer + String(data)).slice(-512);
+        const match = LISTENING_LINE.exec(buffer);
+        if (!match) return;
+        const announced = Number(match[1]);
+        cleanup();
+        if (!Number.isInteger(announced) || announced < 1 || announced > 65535) {
+          reject(new Error("anvil announced an invalid listening port"));
+        } else if (requestedPort !== 0 && announced !== requestedPort) {
+          reject(new Error(`anvil announced port ${announced}, not the explicitly requested port ${requestedPort}`));
+        } else {
+          resolve(announced);
+        }
+      };
+      const onExit = (code: number | null) => {
+        cleanup();
+        reject(new Error(`anvil exited before announcing its listening port (exit ${code ?? "unknown"})`));
+      };
+      const onError = () => {
+        cleanup();
+        reject(new Error("anvil could not be spawned"));
+      };
+      proc.stdout?.on("data", onData);
+      proc.once("exit", onExit);
+      proc.once("error", onError);
+    });
+  } catch (err) {
+    await stop();
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(`${detail}. stderr:\n${stderr || `(child exit ${exitCode ?? "unknown"}; no stderr)`}`);
+  }
+
+  const rpcUrl = `http://127.0.0.1:${port}`;
+  const client = createTestClient({
+    mode: "anvil",
+    chain: mainnet,
+    transport: http(rpcUrl),
+  })
+    .extend(publicActions)
+    .extend(walletActions);
+
   // Poll until the fork answers, or fail loud with anvil's stderr.
-  const deadline = Date.now() + timeoutMs;
   for (;;) {
     if (exited) {
-      throw new Error(`anvil exited before becoming ready. stderr:\n${stderr}`);
+      throw new Error(`anvil on port ${port} exited before becoming ready. stderr:\n${stderr}`);
     }
     try {
       const bn = await client.getBlockNumber();
-      if (bn >= opts.blockNumber) break;
-    } catch {
+      // EXACTLY the fork block, never `>=`. Ownership is already established by
+      // the child announcement; this separately proves its initial chain state.
+      if (bn === opts.blockNumber) break;
+      if (bn > opts.blockNumber) {
+        await stop();
+        throw new Error(
+          `the spawned anvil on port ${port} answered at block ${bn}, past the requested fork block ${opts.blockNumber} — ` +
+            "refusing to drive a fork with the wrong initial state",
+        );
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("refusing to drive a fork")) throw err;
       // not up yet
     }
     if (Date.now() > deadline) {
       await stop();
-      throw new Error(`anvil did not become ready within ${timeoutMs}ms. stderr:\n${stderr}`);
+      throw new Error(`anvil on port ${port} did not become ready within ${timeoutMs}ms. stderr:\n${stderr}`);
     }
     await new Promise((r) => setTimeout(r, 150));
   }

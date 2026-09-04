@@ -26,6 +26,7 @@ import type {
   SavedReportListItem,
 } from "@shared/dto";
 import type { AssetCoverage } from "@shared/coverage";
+import type { EnrichedAssessment } from "@shared/enriched";
 
 export class ApiRequestError extends Error {
   constructor(public readonly api: ApiError, public readonly status: number) {
@@ -58,7 +59,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const getConfig = () => request<ConfigResponse>("/api/config");
 
-export const createJob = (body: { address: string; chainId: number; block: string; mode: RunMode; idempotencyKey?: string; controlToken?: string }) =>
+export const createJob = (body: {
+  address: string;
+  chainId: number;
+  block: string;
+  mode: RunMode;
+  refreshAssetContext?: boolean;
+  idempotencyKey?: string;
+  controlToken?: string;
+}) =>
   request<CreateJobResponse>("/api/jobs", { method: "POST", body: JSON.stringify(body) });
 
 export const getJob = (jobId: string) => request<JobSummary>(`/api/jobs/${encodeURIComponent(jobId)}`);
@@ -74,7 +83,9 @@ export const cancelJob = (jobId: string, controlToken: string) =>
  * report body, so a blocked report yields a 451 here too.
  */
 export const getCoverage = (id: string) =>
-  request<{ id: string; coverage: AssetCoverage }>(`/api/reports/${encodeURIComponent(id)}/coverage`);
+  request<{ id: string; coverage: AssetCoverage; enriched: EnrichedAssessment }>(
+    `/api/reports/${encodeURIComponent(id)}/coverage`,
+  );
 
 export const listReports = () => request<{ reports: SavedReportListItem[] }>("/api/reports");
 

@@ -46,11 +46,22 @@ function mobulaLabel(m: MobulaObservation): { text: string; tone: "" | "warn" } 
 function balanceLabel(b: BalanceEvidence): { text: string; tone: "" | "good" | "warn" } {
   switch (b.state) {
     case "verified":
-      // "Verified" is about the BALANCE READ, not about the token being safe or
-      // legitimate. The detail panel spells that out.
-      return { text: `Balance verified at block ${b.block}`, tone: "good" };
+      // "Reported" rather than "verified": what was established is that THIS
+      // contract answered balanceOf with this number at this block. The token
+      // itself decides that number, and this layer's whole input is a vendor
+      // list that really does contain hostile tokens — so the word must not
+      // imply the holding was corroborated.
+      return { text: `Balance reported at block ${b.block}`, tone: "good" };
+    case "verified_zero":
+      // Deliberately NOT the same tone as a real balance. A reader scanning a
+      // column of green must not read "nothing here" as "checked and fine".
+      return { text: `Zero balance read at block ${b.block}`, tone: "" };
     case "read_failed":
       return { text: "Balance read failed", tone: "warn" };
+    case "no_contract_at_block":
+      return { text: `No contract at this address at block ${b.block}`, tone: "" };
+    case "not_an_erc20_balance":
+      return { text: `Did not answer balanceOf at block ${b.block}`, tone: "warn" };
     case "different_chain":
       return { text: `Observed on ${b.observedOn}, outside this analysis`, tone: "warn" };
     default:
@@ -145,7 +156,7 @@ function RowDetail({ row }: { row: AssetCoverageRow }): ReactElement {
       )}
 
       <h4>Balance at the analysis block</h4>
-      {row.balance.state === "verified" ? (
+      {row.balance.state === "verified" || row.balance.state === "verified_zero" ? (
         <table>
           <tbody>
             <tr>
@@ -162,7 +173,11 @@ function RowDetail({ row }: { row: AssetCoverageRow }): ReactElement {
             </tr>
             <tr>
               <th>Evidence entries</th>
-              <td>{row.balance.evidenceCount} recorded read(s) in `dependencies.tokens[].balanceEvidence`</td>
+              <td>
+                {row.balance.evidenceCount} recorded read(s) · {row.balance.source === "report_dependency_scan"
+                  ? "deterministic report dependency scan"
+                  : "post-analysis Mobula candidate verification"}
+              </td>
             </tr>
           </tbody>
         </table>
@@ -186,7 +201,9 @@ function RowDetail({ row }: { row: AssetCoverageRow }): ReactElement {
         row.experiments.map((experiment, i) => (
           <div className="evidence-block" key={i} style={{ marginBottom: 10 }}>
             <header>
-              <span className="step">{experiment.kind === "withdrawal_restriction" ? "W" : "U"}</span>
+              <span className="step">
+                {experiment.kind === "withdrawal_restriction" ? "W" : experiment.kind === "candidate_withdrawal" ? "C" : "U"}
+              </span>
               <h4 style={{ margin: 0 }}>{experiment.label}</h4>
               <span className={`chip ${experiment.execution === "completed" ? "" : "warn"}`}>{experiment.execution.replace(/_/g, " ")}</span>
             </header>
@@ -241,7 +258,7 @@ function RowDetail({ row }: { row: AssetCoverageRow }): ReactElement {
   );
 }
 
-export function AssetCoveragePanel({ coverage }: { coverage: AssetCoverage }): ReactElement {
+export function AssetCoveragePanel({ coverage, stalled = false }: { coverage: AssetCoverage; stalled?: boolean }): ReactElement {
   const [open, setOpen] = useState<string | null>(null);
   const p = coverage.provenance;
 
@@ -286,6 +303,73 @@ export function AssetCoveragePanel({ coverage }: { coverage: AssetCoverage }): R
         </div>
       </div>
 
+      {stalled && (
+        <div className="banner warn">
+          <strong>This page stopped waiting for the asset-context refresh</strong>
+          <div className="small" style={{ marginTop: 4 }}>
+            It was still reported as pending after 20 minutes, so this page stopped polling. Nothing below is wrong —
+            it is simply missing the candidate pass. Reload to check again, or re-run the analysis.
+          </div>
+        </div>
+      )}
+
+      <div className={`banner ${p.candidateVerification.status === "partial" || p.candidateVerification.status === "unavailable" ? "warn" : "info"}`}>
+        <strong>Mobula implementation · candidate verification</strong>
+        <div className="small" style={{ marginTop: 4 }}>
+          {p.candidateVerification.status === "not_requested" ? (
+            <>Not requested for this analysis.</>
+          ) : p.candidateVerification.status === "pending" ? (
+            <>Refreshing the snapshot and verifying eligible candidates at the pinned block…</>
+          ) : p.candidateVerification.status === "complete" ? (
+            <>
+              Complete — {p.candidateVerification.candidatesVerified} of {p.candidateVerification.candidatesEligible} eligible candidate(s) returned a pinned balance.
+            </>
+          ) : p.candidateVerification.status === "partial" ? (
+            <>
+              Partial — {p.candidateVerification.candidatesVerified} verified; {p.candidateVerification.candidatesFailed} unresolved.
+            </>
+          ) : (
+            <>Unavailable — no candidate balance claims were made.</>
+          )}
+        </div>
+        {p.candidateVerification.status !== "not_requested" && p.candidateVerification.status !== "pending" && (
+          <div className="small muted" style={{ marginTop: 4 }}>{p.candidateVerification.note}</div>
+        )}
+        {p.candidateVerification.withheld.length > 0 && (
+          <div className="small" style={{ marginTop: 6 }}>
+            <strong>Candidate selection:</strong> {p.candidateVerification.candidatesProposed} proposed; up to {p.candidateVerification.discoveryCap ?? "—"} eligible identities considered. Withheld: {p.candidateVerification.withheld.map((item) => `${item.count} ${item.reason.replaceAll("_", " ")}`).join(", ")}.
+          </div>
+        )}
+        <div className="small" style={{ marginTop: 8 }}>
+          <strong>Supported fork scenarios</strong>
+          {p.candidateFork.experimental && p.candidateFork.status !== "not_requested" && (
+            <span className="chip warn" style={{ marginLeft: 6 }}>experimental</span>
+          )}
+          <strong>: </strong>
+          {p.candidateFork.status === "not_requested" ? (
+            <>not requested by the selected analysis mode.</>
+          ) : p.candidateFork.status === "pending" ? (
+            <>running a bounded Compound III collateral-withdrawal differential…</>
+          ) : p.candidateFork.status === "complete" || p.candidateFork.status === "partial" ? (
+            <>
+              {p.candidateFork.evaluated} of {p.candidateFork.supported} supported collateral scenario(s) evaluated;
+              {" "}{p.candidateFork.restrictorsConfirmed} restriction(s) confirmed
+              {p.candidateFork.unresolved > 0 ? `; ${p.candidateFork.unresolved} candidate(s) unresolved or unsupported.` : "."}
+            </>
+          ) : (
+            <>unavailable — {p.candidateFork.note}</>
+          )}
+        </div>
+        {p.candidateFork.experimental && p.candidateFork.status !== "not_requested" && (
+          <div className="small muted" style={{ marginTop: 4 }}>
+            Experimental because this adapter covers one Compound III collateral-withdrawal action and one guardian pause
+            mutation. Candidate discovery is independent of the UI floor, sandbox balances are seeded without draining the
+            target, and every asset starts from its own fork snapshot. A confirmed restriction is demonstrated; a no-effect
+            result is not evidence of safety and is not part of any calibration claim.
+          </div>
+        )}
+      </div>
+
       {/* Counts, each with its scope stated. They overlap and are never combined. */}
       {/* NOT `.row`: that gives every child `flex: 1`, which stretches these
           into full-width boxes instead of the compact chips they are. */}
@@ -295,7 +379,9 @@ export function AssetCoveragePanel({ coverage }: { coverage: AssetCoverage }): R
         </span>
         <span className="chip">{coverage.counts.mobulaEntriesShown} shown here</span>
         <span className="chip">{coverage.counts.assetsWithBalanceEvidence} with recorded target-balance evidence</span>
+        <span className="chip">{coverage.counts.mobulaCandidatesVerified} Mobula candidate(s) pinned-verified</span>
         <span className="chip">{coverage.counts.assetsInWithdrawalExperiment} in a withdrawal experiment</span>
+        <span className="chip">{coverage.counts.assetsInCandidateFork} in a candidate fork scenario</span>
         <span className="chip">{coverage.counts.assetsInUpgradeProof} in an upgrade proof</span>
       </div>
 

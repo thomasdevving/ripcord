@@ -28,6 +28,11 @@
  *     count, so a demo left running does not fill the volume. Completed
  *     PUBLISHABLE reports are pruned last and separately, because their URLs are
  *     meant to keep working after the run that produced them is long gone.
+ *
+ *  5. ORDERED ASSET-CONTEXT WRITES. Atomic replacement protects readers from a
+ *     partial document, but two valid concurrent replacements can still finish
+ *     out of order. Sidecar writes are therefore serialised per report id so an
+ *     older generation cannot land after its successor.
  */
 import { mkdir, readFile, rename, writeFile, readdir, rm, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -69,6 +74,8 @@ export interface JobRecord {
   controlTokenHash: string;
   state: JobState;
   mode: RunMode;
+  /** Explicit opt-in; the worker never receives it. */
+  refreshAssetContext: boolean;
   address: string;
   chainId: number;
   block: string;
@@ -102,6 +109,8 @@ export interface StoredReportMeta {
   publishable: boolean;
   hasExitRestriction: boolean;
   mode: RunMode | null;
+  /** Whether a per-analysis Mobula refresh and candidate verification was requested. */
+  refreshAssetContext?: boolean;
 }
 
 export class JobStore {
@@ -110,12 +119,24 @@ export class JobStore {
   readonly eventsDir: string;
   readonly artifactsDir: string;
   readonly cacheDir: string;
+  /** Per-report Mobula refresh + pinned candidate verification. Never report content. */
+  readonly assetContextsDir: string;
+  /**
+   * One write tail per report id.
+   *
+   * Atomic rename prevents half a JSON document, but it does not preserve the
+   * order of two concurrent complete writes: an older, slower rename can still
+   * land after a newer generation. Serialising per id makes invocation order
+   * durable while allowing unrelated reports to write concurrently.
+   */
+  private readonly assetContextWriteTails = new Map<string, Promise<void>>();
 
   constructor(private readonly dataDir: string) {
     this.jobsDir = join(dataDir, "jobs");
     this.reportsDir = join(dataDir, "reports");
     this.eventsDir = join(dataDir, "events");
     this.artifactsDir = join(dataDir, "artifacts");
+    this.assetContextsDir = join(dataDir, "asset-contexts");
     // The pinned RPC cache keeps its own subdirectory and its existing
     // (chainId, block, method, params) key semantics untouched. It lives under
     // the data dir so a mounted volume makes warm reruns fast across deploys,
@@ -125,7 +146,7 @@ export class JobStore {
   }
 
   async init(): Promise<void> {
-    for (const dir of [this.jobsDir, this.reportsDir, this.eventsDir, this.artifactsDir, this.cacheDir]) {
+    for (const dir of [this.jobsDir, this.reportsDir, this.eventsDir, this.artifactsDir, this.cacheDir, this.assetContextsDir]) {
       await mkdir(dir, { recursive: true });
     }
     // Fail loudly at boot if the volume is not writable, rather than at the
@@ -293,6 +314,66 @@ export class JobStore {
     return out.sort((a, b) => b.generatedAt.localeCompare(a.generatedAt));
   }
 
+  // --- post-analysis asset context ------------------------------------------
+
+  /**
+   * Stored separately from the report on purpose. Deleting this file must leave
+   * the pinned report byte-for-byte unchanged, including its verdict.
+   */
+  async saveAssetContext(reportId: string, context: unknown): Promise<void> {
+    const previous = this.assetContextWriteTails.get(reportId) ?? Promise.resolve();
+    const write = previous
+      .catch(() => undefined)
+      .then(() => this.writeAtomic(safeJoin(this.assetContextsDir, reportId), JSON.stringify(context, null, 2)));
+    this.assetContextWriteTails.set(reportId, write);
+    try {
+      await write;
+    } finally {
+      if (this.assetContextWriteTails.get(reportId) === write) this.assetContextWriteTails.delete(reportId);
+    }
+  }
+
+  async loadAssetContext(reportId: string): Promise<unknown | null> {
+    if (!isSafeId(reportId)) return null;
+    return this.readJson<unknown>(safeJoin(this.assetContextsDir, reportId));
+  }
+
+  /**
+   * A post-analysis fetch cannot be resumed after a process restart. Convert a
+   * stranded `pending` sidecar into an explicit unavailable result so browsers
+   * do not poll forever or mistake silence for an empty inventory.
+   */
+  async recoverPendingAssetContexts(): Promise<number> {
+    if (!existsSync(this.assetContextsDir)) return 0;
+    let recovered = 0;
+    for (const file of (await readdir(this.assetContextsDir)).filter((name) => name.endsWith(".json"))) {
+      const path = join(this.assetContextsDir, file);
+      const context = await this.readJson<Record<string, unknown>>(path);
+      if (!context) continue;
+      const forkScenarios = context.forkScenarios as Record<string, unknown> | undefined;
+      if (context.status !== "pending" && forkScenarios?.status !== "pending") continue;
+      const notes = Array.isArray(context.notes)
+        ? context.notes.filter((note): note is string => typeof note === "string")
+        : [];
+      const balanceWasPending = context.status === "pending";
+      await this.writeAtomic(path, JSON.stringify({
+        ...context,
+        ...(balanceWasPending ? { completedAt: new Date().toISOString(), status: "unavailable" } : {}),
+        ...(forkScenarios?.status === "pending"
+          ? { forkScenarios: { ...forkScenarios, status: "unavailable", note: "The service restarted before the candidate fork batch completed; no fork conclusion was recovered." } }
+          : {}),
+        notes: [
+          ...notes,
+          balanceWasPending
+            ? "The service restarted before post-analysis asset verification completed; no candidate claim was recovered."
+            : "The service restarted during candidate fork execution; completed balance evidence remains available, but no fork conclusion was recovered.",
+        ],
+      }, null, 2));
+      recovered++;
+    }
+    return recovered;
+  }
+
   // --- artifacts -------------------------------------------------------------
 
   /** Each job gets its own artifact directory, so cleanup is a single recursive remove that cannot touch another job. */
@@ -337,6 +418,7 @@ export class JobStore {
     for (const meta of reports.slice(opts.maxReports)) {
       await rm(safeJoin(this.reportsDir, meta.id), { force: true });
       await rm(safeJoin(this.reportsDir, meta.id, ".meta.json"), { force: true });
+      await rm(safeJoin(this.assetContextsDir, meta.id), { force: true });
       prunedReports++;
     }
     return { jobs: prunedJobs, reports: prunedReports };

@@ -27,13 +27,14 @@ import { DetailPanel } from "../components/DetailPanel.js";
 import { ForkEvidence } from "../components/ForkEvidence.js";
 import { ReportView } from "../components/ReportView.js";
 import { asReport, type Report } from "../report-types.js";
-import { getReport, getCoverage, cancelJob } from "../api.js";
+import { getReport, cancelJob } from "../api.js";
 import { readControlToken, forgetControlToken } from "../control.js";
 import { navigate } from "../router.js";
 import { isTerminal } from "@shared/dto";
 import { preferLiveBlocks } from "../fork-blocks.js";
 import { AssetCoveragePanel } from "../components/AssetCoverage.js";
-import type { AssetCoverage } from "@shared/coverage";
+import { EnrichedAssessmentPanel } from "../components/EnrichedAssessment.js";
+import { useAssetCoverage } from "../useAssetCoverage.js";
 import type { ReactElement } from "react";
 
 function useElapsed(startedAt: string | null, endedAt: string | null): string {
@@ -56,7 +57,7 @@ export function AnalysisScreen({ jobId }: { jobId: string }): ReactElement {
   const [publishedStructure, setPublishedStructure] = useState<import("@shared/dto").StructuralSnapshot | null>(null);
   const [report, setReport] = useState<Report | null>(null);
   const [reportError, setReportError] = useState<string | null>(null);
-  const [coverage, setCoverage] = useState<AssetCoverage | null>(null);
+  const { coverage, enriched, gaveUp: coverageStalled } = useAssetCoverage(job.reportId);
   const elapsed = useElapsed(job.summary?.startedAt ?? null, job.summary?.endedAt ?? null);
   const controlToken = readControlToken(jobId);
 
@@ -70,11 +71,6 @@ export function AnalysisScreen({ jobId }: { jobId: string }): ReactElement {
         else setReportError("The report was returned in a shape this page does not recognise.");
       })
       .catch(() => setReportError("The report could not be loaded."));
-    // Independent of the report fetch: coverage is additive, and its absence
-    // must not be able to hide the report.
-    getCoverage(job.reportId)
-      .then((res) => setCoverage(res.coverage))
-      .catch(() => setCoverage(null));
   }, [job.reportId]);
 
   if (job.loadError) {
@@ -110,6 +106,10 @@ export function AnalysisScreen({ jobId }: { jobId: string }): ReactElement {
         <div className="item">
           <span className="k">Chain</span>
           <span className="v">Ethereum Mainnet ({summary?.chainId ?? 1})</span>
+        </div>
+        <div className="item">
+          <span className="k">Analysis layer</span>
+          <span className="v">{summary?.refreshAssetContext ? "Core + Mobula 2nd layer" : "Ripcord core"}</span>
         </div>
         <div className="item">
           <span className="k">Pinned block</span>
@@ -231,7 +231,8 @@ export function AnalysisScreen({ jobId }: { jobId: string }): ReactElement {
 
         {reportError && <div className="banner warn">{reportError}</div>}
         {report && <ReportView report={report} reportId={job.reportId} />}
-        {coverage && <AssetCoveragePanel coverage={coverage} />}
+        {enriched && <EnrichedAssessmentPanel assessment={enriched} />}
+      {coverage && <AssetCoveragePanel coverage={coverage} stalled={coverageStalled} />}
 
         {running && !report && (
           <section className="card">

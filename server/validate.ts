@@ -21,7 +21,7 @@
  */
 import { isAddress, getAddress } from "viem";
 import type { ApiError, CreateJobRequest, RunMode } from "./shared/dto.js";
-import { isRunMode, modeNeedsFork } from "./shared/dto.js";
+import { isRunMode, modeNeedsFork, MOBULA_SECOND_LAYER_TARGET } from "./shared/dto.js";
 import { classify } from "./sanitize.js";
 
 export interface ValidatedRequest {
@@ -30,6 +30,7 @@ export interface ValidatedRequest {
   block: bigint;
   blockSource: "explicit" | "resolved_latest";
   mode: RunMode;
+  refreshAssetContext: boolean;
   idempotencyKey: string | undefined;
   controlToken?: string;
   blockHash?: string;
@@ -91,6 +92,29 @@ export async function validateCreateJob(body: unknown, ctx: ValidationContext): 
     );
   }
 
+  if (raw.refreshAssetContext !== undefined && typeof raw.refreshAssetContext !== "boolean") {
+    return fail("unsupported_mode", "The Mobula second-layer option must be true or false.", null);
+  }
+  if (raw.refreshAssetContext === true) {
+    const supportedTarget =
+      chainId === MOBULA_SECOND_LAYER_TARGET.chainId &&
+      address.toLowerCase() === MOBULA_SECOND_LAYER_TARGET.address.toLowerCase();
+    if (!supportedTarget) {
+      return fail(
+        "unsupported_mode",
+        `Mobula second-layer analysis is currently available only for ${MOBULA_SECOND_LAYER_TARGET.label}.`,
+        `Use ${MOBULA_SECOND_LAYER_TARGET.address}, or run the standard Ripcord analysis for this contract.`,
+      );
+    }
+    if (!modeNeedsFork(mode)) {
+      return fail(
+        "unsupported_mode",
+        "Mobula second-layer analysis requires a withdrawal-test run.",
+        "Choose Scan + withdrawal test, or run the standard scan without the second layer.",
+      );
+    }
+  }
+
   let block: bigint;
   let blockSource: ValidatedRequest["blockSource"];
   if (raw.block === "latest") {
@@ -143,5 +167,18 @@ export async function validateCreateJob(body: unknown, ctx: ValidationContext): 
   if (raw.controlToken !== undefined && (typeof raw.controlToken !== "string" || !/^[A-Za-z0-9_-]{32,128}$/.test(raw.controlToken))) {
     return fail("forbidden", "Invalid cancellation capability format.", null);
   }
-  return { ok: true, value: { address, chainId, block, blockSource, mode, idempotencyKey, ...(blockHash ? { blockHash } : {}), ...(raw.controlToken ? { controlToken: raw.controlToken } : {}) } };
+  return {
+    ok: true,
+    value: {
+      address,
+      chainId,
+      block,
+      blockSource,
+      mode,
+      refreshAssetContext: raw.refreshAssetContext === true,
+      idempotencyKey,
+      ...(blockHash ? { blockHash } : {}),
+      ...(raw.controlToken ? { controlToken: raw.controlToken } : {}),
+    },
+  };
 }

@@ -49,7 +49,7 @@ import type { MobulaHolding } from "./mobula.js";
 import { MAJOR_TOKENS } from "../chain/majorTokens.js";
 
 /** Bump when the shape, the valuation rules, or the withholding rules change. */
-export const liveLayerVersion = "0.4.0";
+export const liveLayerVersion = "0.5.0";
 
 /** Holdings worth less than this are withheld from the page (and counted). */
 export const DISPLAY_FLOOR_USD = 1;
@@ -144,6 +144,22 @@ export interface LiveHolding {
   outsideCuratedList: boolean;
 }
 
+/**
+ * Minimal identity supplied to the post-analysis discovery pass.
+ *
+ * This is intentionally separate from `holdings`: that array is a ranked,
+ * floored UI view. Security discovery must also see unpriced and sub-dollar
+ * entries, while still treating every vendor name as unverified metadata.
+ */
+export interface LiveCandidateHolding {
+  chainId: string | null;
+  address: string | null;
+  isNative: boolean;
+  unverifiedSymbol: string;
+  unverifiedName: string;
+  holdingsQuoteUsd: number | null;
+}
+
 /** One withheld bucket. Separate reasons stay separate — see problem 3 above. */
 export interface WithheldBucket {
   reason: string;
@@ -177,6 +193,8 @@ export interface LiveExposure {
   chainCount: number | null;
   chains: string[];
   holdings: LiveHolding[];
+  /** All vendor-proposed identities, before the independent discovery cap. */
+  candidateHoldings?: LiveCandidateHolding[];
   withheld: WithheldBucket[];
   floorUsd: number;
   cap: number;
@@ -223,6 +241,7 @@ function unavailable(target: string, chainId: number, reason: string): LiveExpos
     chainCount: null,
     chains: [],
     holdings: [],
+    candidateHoldings: [],
     withheld: [],
     concentration: null,
     floorUsd: DISPLAY_FLOOR_USD,
@@ -278,13 +297,17 @@ function valuate(
   return { basis: "endpoints_agree", usd: holdingsUsd };
 }
 
-export async function buildLiveExposure(target: string, chainId: number): Promise<LiveExposure> {
+export async function buildLiveExposure(
+  target: string,
+  chainId: number,
+  opts: { signal?: AbortSignal } = {},
+): Promise<LiveExposure> {
   const fetchedAt = new Date().toISOString();
   const notes: string[] = [];
 
   // --- endpoint 1: holdings. The only failure that is fatal to the panel,
   // because there is nothing to price or name without it.
-  const holdingsRes = await fetchHoldings(target);
+  const holdingsRes = await fetchHoldings(target, { ...(opts.signal ? { signal: opts.signal } : {}) });
   if (!holdingsRes.ok) return unavailable(target, chainId, holdingsRes.reason);
 
   const payload = holdingsRes.data.data;
@@ -302,6 +325,19 @@ export async function buildLiveExposure(target: string, chainId: number): Promis
   const shown = aboveFloor.slice(0, DISPLAY_CAP);
   const cappedOut = aboveFloor.slice(DISPLAY_CAP);
 
+  // Candidate discovery deliberately consumes ALL identities, not `shown`.
+  // No price or metadata endpoint is needed to decide whether an address can
+  // be verified on-chain, and an unpriced new collateral is exactly the asset
+  // a display-floor-derived security pass used to miss.
+  const candidateHoldings: LiveCandidateHolding[] = all.map((h) => ({
+    chainId: h.token?.chainId ?? null,
+    address: h.token?.address ?? null,
+    isNative: isNativeAsset(h.token?.address),
+    unverifiedSymbol: h.token?.symbol ?? "",
+    unverifiedName: h.token?.name ?? "",
+    holdingsQuoteUsd: num(h.amountUSD),
+  }));
+
   // --- endpoint 2: batch price, for the ERC20s being shown. The native
   // sentinel is deliberately NOT sent: it is not a contract, and because the
   // same sentinel is used on every chain, including it once produced a price
@@ -311,7 +347,7 @@ export async function buildLiveExposure(target: string, chainId: number): Promis
     .map((h) => ({ address: h.token?.address ?? "", blockchain: h.token?.chainId ?? "" }))
     .filter((i) => i.address && i.blockchain);
 
-  const priceRes = await fetchPrices(erc20Items);
+  const priceRes = await fetchPrices(erc20Items, { ...(opts.signal ? { signal: opts.signal } : {}) });
   // Keyed by (chainId, address) — never by address alone. See tokenKey().
   const priceBy = new Map<string, { priceUSD: number | null; liquidityUSD: number | null; logo: string | null }>();
   if (priceRes.ok) {
@@ -333,7 +369,7 @@ export async function buildLiveExposure(target: string, chainId: number): Promis
 
   // --- endpoint 3: metadata, for display names and logos. ERC20s only, same
   // reason as above.
-  const metaRes = await fetchMetadata(erc20Items);
+  const metaRes = await fetchMetadata(erc20Items, { ...(opts.signal ? { signal: opts.signal } : {}) });
   const metaBy = new Map<string, { name: string | null; logo: string | null }>();
   if (metaRes.ok) {
     for (const entry of metaRes.data.data ?? []) {
@@ -441,6 +477,7 @@ export async function buildLiveExposure(target: string, chainId: number): Promis
     chainCount: chainSet.size,
     chains: [...chainSet].sort(),
     holdings,
+    candidateHoldings,
     withheld,
     concentration,
     floorUsd: DISPLAY_FLOOR_USD,

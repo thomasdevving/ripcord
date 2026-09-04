@@ -424,6 +424,51 @@
     .asset.verified { border-color: rgba(76, 195, 132, .5); color: var(--green); }
     .asset.observed { border-color: rgba(91, 157, 255, .45); color: var(--blue); }
 
+    .layer-flow {
+      display: grid;
+      gap: 10px;
+      margin-top: 22px;
+    }
+
+    .layer-item {
+      display: grid;
+      grid-template-columns: 44px 1fr;
+      gap: 14px;
+      align-items: start;
+      padding: 12px 14px;
+      border: 1px solid var(--rule);
+      background: var(--surface-2);
+    }
+
+    .layer-item .layer-num {
+      color: var(--blue);
+      font: 700 clamp(11px, .75vw, 13px)/1.35 var(--mono);
+    }
+
+    .layer-item strong {
+      display: block;
+      margin-bottom: 3px;
+      font-size: clamp(14px, 1.05vw, 18px);
+    }
+
+    .layer-item p {
+      margin: 0;
+      color: var(--secondary);
+      font-size: clamp(11px, .82vw, 14px);
+      line-height: 1.35;
+    }
+
+    .boundary-strip {
+      margin-top: 18px;
+      padding: 11px 14px;
+      border-left: 3px solid var(--blue);
+      background: rgba(91, 157, 255, .08);
+      color: var(--secondary);
+      font: clamp(10px, .74vw, 13px)/1.4 var(--mono);
+      text-transform: uppercase;
+      letter-spacing: .07em;
+    }
+
     .roadmap {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -727,17 +772,17 @@
               <div class="micro">Target · Ethereum mainnet</div>
               <div class="address">0xc3d688B66703497DAA19211EEdff47f25384cdc3</div>
             </div>
-            <a class="action" id="open-demo" href="https://thomasdevving.github.io/ripcord/compound-comet-cusdcv3.html" target="_blank" rel="noreferrer">Open report ↗</a>
+            <a class="action" id="open-demo" href="https://thomasdevving.github.io/ripcord/compound-comet-cusdcv3.html" target="_blank" rel="noreferrer">Open Compound report ↗</a>
           </div>
           <div class="demo-status">
             <span class="live"><span class="pulse-dot"></span> Product demo</span>
-            <span>POWER MAP → FORK DIFFERENTIAL → EXIT WINDOW</span>
+            <span>POWER MAP → EXIT WINDOW → MOBULA 2ND LAYER</span>
           </div>
         </div>
       </div>
       <aside class="speaker-notes">
-        <strong>1:00–4:05 · Switch to the real site</strong><br />
-        Start a full analysis, then open the completed report for this same target. Show: (1) target → proxy admin → two-day timelock; (2) the separate pause guardian route; (3) baseline withdrawal succeeds; (4) guardian pauses; (5) identical withdrawal fails with Compound’s Paused error; (6) upgrade route = 2D, guardian route = 0S, effective Exit Window = 0S.<br /><br />
+        <strong>1:00–3:50 · Switch to the real site</strong><br />
+        On the new-analysis screen, paste this address and select <strong>Ripcord + Mobula 2nd layer</strong>. Point out that this default-off option is available only for the supported Compound III withdrawal analysis. Start it, then open the completed report for this same target. Show: (1) target → proxy admin → two-day timelock; (2) the separate pause guardian route; (3) baseline withdrawal succeeds; (4) guardian pauses; (5) identical withdrawal fails with Compound’s Paused error; (6) upgrade route = 2D, guardian route = 0S, effective Exit Window = 0S. If the live sidecar has completed, briefly open Asset coverage and show one candidate row; do not wait for it.<br /><br />
         If the live site fails, return here and press <strong>B</strong> for the three backup evidence slides. When finished, press <strong>B</strong> again to return to the process slide.
       </aside>
     </section>
@@ -762,7 +807,7 @@
         </div>
       </div>
       <aside class="speaker-notes">
-        <strong>4:05–4:40 · Technical execution</strong><br />
+        <strong>3:50–4:25 · Technical execution</strong><br />
         “Ripcord combines static discovery with execution evidence. It pins the chain state, reconstructs authority recursively, measures the shortest supported route and tests the decisive capability on a deterministic fork. Every conclusion links back to RPC reads, storage evidence, transactions and receipts. Incomplete evidence remains undetermined.”
       </aside>
     </section>
@@ -774,28 +819,32 @@
           <div class="section-label">Asset coverage · Mobula implementation</div>
         </div>
         <div class="content">
-          <div class="eyebrow">Context expands the investigation—not the verdict</div>
-          <h2>What was tested, and what still needs investigation?</h2>
+          <div class="eyebrow">Opt-in · post-report · sidecar only</div>
+          <h2>Mobula expands what Ripcord can investigate.</h2>
           <div class="coverage-grid">
             <article class="coverage-card core">
-              <div class="micro green">Ripcord core evidence</div>
-              <h3>Determines the verdict</h3>
-              <ul><li>Pinned onchain state</li><li>Authority and enforced notice</li><li>Supported fork experiments</li></ul>
-              <div class="asset-row"><span class="asset verified">USDC · VERIFIED</span><span class="asset verified">WETH · VERIFIED</span><span class="asset verified">WBTC · VERIFIED</span></div>
+              <div class="micro green">Deterministic core report</div>
+              <h3>Finishes first. Determines the verdict.</h3>
+              <ul><li>Pinned block and authority graph</li><li>Enforced notice and Exit Window</li><li>Primary fork evidence</li></ul>
+              <div class="asset-row"><span class="asset verified">PINNED</span><span class="asset verified">REPRODUCIBLE</span><span class="asset verified">VERDICT</span></div>
             </article>
             <div class="divider-word">separate boundary</div>
             <article class="coverage-card context">
-              <div class="micro" style="color: var(--blue)">Timestamped Mobula snapshot</div>
-              <h3>Reveals coverage gaps</h3>
-              <ul><li>Surfaces additional asset candidates</li><li>Prioritises material exposure</li><li>Shows where testing ends</li></ul>
-              <div class="asset-row"><span class="asset observed">LINK · OBSERVED</span><span class="asset observed">cbBTC · OBSERVED</span><span class="asset observed">COMP · OBSERVED</span></div>
+              <div class="micro" style="color: var(--blue)">Mobula second layer</div>
+              <div class="layer-flow">
+                <div class="layer-item"><span class="layer-num">01</span><div><strong>Discover</strong><p>Use every returned identity—not only the visible or priced top 12.</p></div></div>
+                <div class="layer-item"><span class="layer-num">02</span><div><strong>Verify</strong><p>Check up to 64 same-chain ERC20s at the pinned block, including explicit zero balances.</p></div></div>
+                <div class="layer-item"><span class="layer-num">03</span><div><strong>Test</strong><p>Ask Compound for the asset role; run real approve, supply and withdraw paths from an isolated snapshot.</p></div></div>
+                <div class="layer-item"><span class="layer-num">04</span><div><strong>Disclose</strong><p>Show every exclusion and unresolved state. Never convert missing evidence into safety.</p></div></div>
+              </div>
+              <div class="boundary-strip">Timestamped vendor input → separate sidecar → core verdict unchanged</div>
             </article>
           </div>
         </div>
       </div>
       <aside class="speaker-notes">
-        <strong>4:40–5:05 · Mobula</strong><br />
-        “Mobula adds a timestamped view of assets observed around the target. It helps show which exposure was tested, which material assets may require investigation, and where coverage ends. Mobula expands the search; it never determines the security verdict. An asset must be verified onchain before Ripcord makes evidence-backed claims about it.”
+        <strong>4:25–5:10 · Mobula implementation</strong><br />
+        “The core report finishes first. Mobula then adds a separate, opt-in second layer. It proposes every asset identity from the fresh holdings response—not only the priced top twelve. Ripcord selects up to sixty-four same-chain ERC20s, verifies their code and target balance at the pinned block, and itemises anything it excludes. For Compound, even a verified zero-balance candidate can continue: Ripcord asks Compound whether it is registered collateral, seeds an isolated holder only inside Anvil, executes the real approve, supply and withdraw paths, then repeats the exit after the guardian pause. Every asset gets its own snapshot. This expands evidence coverage, but the live vendor data never changes the deterministic verdict.”
       </aside>
     </section>
 
@@ -809,15 +858,15 @@
           <div class="eyebrow">From analysis to continuous sovereignty monitoring</div>
           <h2>Test the complete ways an exit can fail.</h2>
           <div class="roadmap">
-            <article class="roadmap-item"><span class="tag">Governance paths</span><h3>Execute every required step.</h3><p>Proposals, votes, queues, timelocks and final execution—not just the advertised delay.</p></article>
+            <article class="roadmap-item"><span class="tag">Protocol adapters</span><h3>Move beyond Compound.</h3><p>Add explicit position, exit and restrictor definitions for lending, vault and staking systems.</p></article>
             <article class="roadmap-item"><span class="tag">Economic stress</span><h3>Test recoverable value.</h3><p>Liquidity shocks, mass withdrawals, oracle changes and multi-step failure scenarios.</p></article>
             <article class="roadmap-item"><span class="tag">Continuous alerts</span><h3>Detect when the window changes.</h3><p>Monitor authority, exit conditions and verified asset exposure for risk teams.</p></article>
           </div>
         </div>
       </div>
       <aside class="speaker-notes">
-        <strong>5:05–5:35 · Vision</strong><br />
-        “Next, Ripcord will move from one privileged action to complete failure scenarios: governance votes, timelock execution, liquidity shocks and mass withdrawals. Mobula will propose material assets, Ripcord will verify them onchain, and supported assets will enter reproducible fork tests. The final product is continuous sovereignty monitoring.”
+        <strong>5:10–5:35 · Vision</strong><br />
+        “Today, Mobula candidates can already be verified and enter the supported Compound fork adapter. Next, I want to expand that adapter model across protocols and move from one privileged action to complete failure scenarios: governance execution, oracle changes, liquidity shocks and mass withdrawals. The final product is continuous sovereignty monitoring.”
       </aside>
     </section>
 

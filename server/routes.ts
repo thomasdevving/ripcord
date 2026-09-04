@@ -33,6 +33,7 @@ import { availableModes, liveRunsBlockedReason, providerHostFor, rpcUrlFor } fro
 import { JobManager, QueueFullError, IdempotencyConflictError, SubmissionRateError } from "./jobs/manager.js";
 import { ReportService, BLOCKED_MESSAGE } from "./reports.js";
 import { buildAssetCoverage } from "./coverage.js";
+import { buildEnrichedAssessment } from "./enriched.js";
 import type { LiveExposure } from "../src/live/exposure.js";
 import { validateCreateJob } from "./validate.js";
 import { classify } from "./sanitize.js";
@@ -156,6 +157,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
             block: validation.value.blockSource === "resolved_latest" ? "latest" : validation.value.block.toString(),
             ...(validation.value.controlToken ? { controlToken: validation.value.controlToken } : {}),
             mode: validation.value.mode,
+            refreshAssetContext: validation.value.refreshAssetContext,
             ...(validation.value.idempotencyKey ? { idempotencyKey: validation.value.idempotencyKey } : {}),
           },
           validation.value.block,
@@ -302,7 +304,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
    *
    * Goes through `loadPublishable` like every other report transport, so a
    * blocked report cannot leak its findings sideways through coverage labels,
-   * counts or evidence references. Composed on demand from two artifacts that
+   * counts or evidence references. Composed on demand from artifacts that
    * already exist — it performs no chain read, no fork and no Mobula fetch, so
    * a missing snapshot makes the panel PARTIAL and never fails the request.
    */
@@ -313,11 +315,25 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
       return sendError(reply, 404, { code: "not_found", message: "No such report.", hint: null });
     }
     const report = loaded.value.report as Report;
-    // Mobula is optional by construction here: a null snapshot yields a coverage
-    // model whose Mobula characteristic reads "unavailable", with every pinned
-    // balance and fork observation still present.
-    const exposure = (await reports.loadLiveExposure(report.chainId, report.target?.address ?? "")) as LiveExposure | null;
-    return reply.send({ id: loaded.value.id, coverage: buildAssetCoverage(report, exposure) });
+    const requested = loaded.value.origin === "live" && await reports.assetContextRequested(loaded.value.id);
+    const assetContext = loaded.value.origin === "live" ? await reports.loadAssetContext(loaded.value.id) : null;
+    const committed = (await reports.loadLiveExposure(report.chainId, report.target?.address ?? "")) as LiveExposure | null;
+    // While a requested refresh is pending the timestamped committed snapshot
+    // may still be shown. Once it completes, its fresh result is authoritative
+    // for this run; an unavailable refresh is not silently replaced by old data.
+    const exposure = assetContext?.status === "pending"
+      ? committed
+      : assetContext
+        ? assetContext.exposure
+        : committed;
+    return reply.send({
+      id: loaded.value.id,
+      coverage: buildAssetCoverage(report, exposure, assetContext, requested),
+      // Composed here rather than merged into the report: it is a statement
+      // ABOUT the report and the sidecar together, and it must always be
+      // readable beside the untouched verdict rather than in place of it.
+      enriched: buildEnrichedAssessment(report, assetContext),
+    });
   });
 
   app.get("/api/reports/:id/download", async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
