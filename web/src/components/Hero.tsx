@@ -401,7 +401,7 @@ export function Hero({
           <div className="hb-copy">
             <h1 className="hb-headline" id="hb-headline">
               <span className="hb-setup">Audits check the code.</span>{"\u00a0"}
-              Ripcord checks who can close the exit.
+              Ripcord checks who can <span className="hb-emphasis">close the exit.</span>
             </h1>
 
             <p className="hb-sub">{SUBHEAD[view]}</p>

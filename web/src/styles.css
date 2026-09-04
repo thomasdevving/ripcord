@@ -73,17 +73,28 @@
   /* Flat. The hero is a security document, not a card UI, and a 10px radius on
      every panel was the single biggest thing making the two look unrelated. */
   --radius: 3px;
-  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* The showcase deck uses the same two voices: a dense, confident display
+     sans for the argument and a machine-readable mono for provenance and
+     controls. Both stacks remain local so loading Ripcord does not disclose a
+     visit to a font CDN. */
+  --display: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  background: var(--plane);
+  background:
+    radial-gradient(circle at 82% 12%, rgba(76, 195, 132, 0.055), transparent 30rem),
+    linear-gradient(135deg, rgba(231, 237, 228, 0.012), transparent 48rem),
+    var(--plane);
+  background-attachment: fixed;
   color: var(--text-primary);
-  font: 14px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+  font: 400 14px/1.6 var(--sans);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 code, pre, .mono { font-family: var(--mono); }
@@ -191,15 +202,29 @@ a { color: var(--accent); }
 /* --- generic blocks ------------------------------------------------------- */
 
 section.card {
-  background: var(--surface-1);
+  background: color-mix(in srgb, var(--surface-1) 97%, transparent);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 20px;
   margin-bottom: 16px;
+  box-shadow: inset 0 1px 0 rgba(231, 237, 228, 0.018);
 }
 
-h1 { font-size: 22px; margin: 0 0 10px; letter-spacing: -0.01em; }
-h2 { font-size: 17px; margin: 0 0 10px; }
+h1, h2, h4 { font-family: var(--display); }
+h1 {
+  margin: 0 0 12px;
+  font-size: clamp(24px, 2.35vw, 32px);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.038em;
+}
+h2 {
+  margin: 0 0 11px;
+  font-size: clamp(18px, 1.65vw, 23px);
+  font-weight: 680;
+  line-height: 1.12;
+  letter-spacing: -0.024em;
+}
 h3 {
   font-family: var(--mono);
   font-size: 11px;
@@ -240,7 +265,10 @@ button.primary {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-ink);
-  font-weight: 600;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.055em;
 }
 button.primary:hover:not(:disabled) { background: var(--accent-lift); border-color: var(--accent-lift); }
 
@@ -585,7 +613,7 @@ pre.raw {
 .hero.unknown .verdict-badge { background: var(--warn-bg); color: var(--warn-ink); }
 .hero.good .verdict-badge { background: var(--good-bg); color: var(--good-ink); }
 
-.statement { font-size: 15px; line-height: 1.5; }
+.statement { max-width: 76ch; font-size: 16px; line-height: 1.58; }
 
 /* --- route list ----------------------------------------------------------- */
 
@@ -674,16 +702,18 @@ pre.raw {
 .home-question {
   max-width: 18ch;
   margin: 0;
-  font-size: clamp(1.65rem, 3vw, 2.55rem);
-  line-height: 1.12;
-  letter-spacing: -0.025em;
+  font-family: var(--display);
+  font-size: clamp(1.85rem, 3.35vw, 2.8rem);
+  font-weight: 680;
+  line-height: 1.06;
+  letter-spacing: -0.042em;
   text-wrap: balance;
 }
 .home-answer-copy > p {
   max-width: 64ch;
   margin: 2px 0 22px;
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.7;
 }
 
@@ -710,9 +740,10 @@ pre.raw {
 }
 .home-section-heading h2 {
   margin: 0 0 10px;
-  font-size: clamp(1.4rem, 2.2vw, 1.9rem);
-  line-height: 1.18;
-  letter-spacing: -0.02em;
+  font-size: clamp(1.5rem, 2.35vw, 2.05rem);
+  font-weight: 680;
+  line-height: 1.1;
+  letter-spacing: -0.034em;
 }
 .home-section-heading > p:last-child {
   margin: 0;
@@ -923,24 +954,29 @@ ul.plain li { margin-bottom: 5px; font-size: 13px; color: var(--text-secondary);
 
 .hb-headline {
   margin: 0;
-  font-size: clamp(2rem, 4.4vw, 3.4rem);
-  font-weight: 700;
-  line-height: 1.05;
-  letter-spacing: -0.032em;
+  font-family: var(--display);
+  font-size: clamp(2.15rem, 4.85vw, 3.75rem);
+  font-weight: 680;
+  line-height: 1.01;
+  letter-spacing: -0.048em;
   color: var(--hb-ink);
   text-wrap: balance;
 }
 /* The premise is the quiet half; the gap it leaves is the loud one. */
 .hb-setup { color: var(--hb-ink-muted); }
+.hb-emphasis { color: var(--hb-green); }
 
-.hb-sub { margin: 0; font-size: 15px; line-height: 1.6; color: var(--hb-ink-muted); max-width: 60ch; }
+.hb-sub { margin: 0; font-size: 16px; line-height: 1.62; color: var(--hb-ink-muted); max-width: 62ch; }
 
 .hb-actions { display: flex; align-items: center; gap: clamp(16px, 2vw, 26px); flex-wrap: wrap; }
 
 
 .hb-btn {
-  font-size: 14px;
-  font-weight: 600;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
   color: var(--hb-bg);
   background: var(--hb-green);
   border: 1px solid var(--hb-green);
