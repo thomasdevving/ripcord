@@ -1834,6 +1834,50 @@ only via delegatecall and is usually uninitialized.
     `pruneCache` still walks the cache directory on every job completion. Both
     are bounded by retention today and both are the next things to index.
 
+43a. **[SHIPPED BROKEN, THEN FIXED — two defects in the ownership mechanism, and
+    both produced the same misleading sentence.]** A user saw "This analysis lost
+    its ownership lease and was stopped so two workers could not run it at once"
+    on a single-instance deployment where no second worker existed or could have.
+    Two independent causes, found in that order:
+
+    (1) ONE FUNCTION, TWO WORLDS. `recoverInterruptedJobs` answers "which jobs are
+    abandoned?" for two callers standing in different worlds, and for one input —
+    a record stamped with THIS instance's id — the correct answer is opposite in
+    each. At boot a fresh process owns nothing, so its own id means a previous
+    life: reclaim. In the 30s sweep that same id means a worker is running it
+    right now: leave it alone. The sweep applied the boot rule, so the reaper
+    interrupted its own live job every 30 seconds and nulled the lease, the next
+    heartbeat found nothing, and the manager reported a competing worker. Every
+    analysis longer than one sweep interval died. Fixed with an explicit
+    `scope: "boot" | "sweep"`.
+
+    (2) THE LOST UPDATE, which survived (1) and moved the failure from ~30s to
+    ~60s. Ownership and job state shared one whole-record write with two writers
+    on very different cadences: the manager persists the ENTIRE record on every
+    worker event, and it captured the lease once at claim time — so each event
+    wrote that frozen copy back over the heartbeat's renewal and the on-disk
+    expiry never advanced past the original claim. At the original expiry the
+    heartbeat failed its own liveness check and the job was stopped with the
+    identical message. Reproduced before fixing: heartbeat at +15s renewed,
+    one state write reverted it, `heartbeat` returned false at the claim expiry
+    and the sweep reported `recovered: 1`. Fixed structurally — leases now live
+    in their own file, `saveJob` strips the field, and `loadJob`/`listJobs`
+    hydrate it — so a state write CANNOT express a lease change.
+
+    THE LESSON, and it is not "add a flag": both defects are one shape. A single
+    record with two writers who disagree about what a field means is a lost
+    update, and a single function with two callers who need opposite answers is a
+    conflation. The project already had a name for this — encode the distinction
+    in the data, do not leave it to caller discipline — and neither instance did.
+    A cleaner (2)-proof form of (1) also exists and is NOT yet built: give the
+    lease a `runId` (random per process) beside `instanceId` (stable per replica),
+    and "my previous life" becomes `same instanceId, different runId` — one rule
+    that is correct for both callers, with no scope parameter to pass wrongly.
+
+    Neither defect was caught by the step-5 test suite, because the reaper is
+    `unref`'d on a 30s interval and no test runs that long. Both are now pinned
+    with injected time in test/jobLeaseSweep.test.ts.
+
 43. **[SCALABILITY STEP 5] Job ownership is durable; the STORE behind it is
     still single-volume.** See jobs/lease.ts for the model and its rails. What is
     genuinely fixed is the destructive one: a second instance can no longer

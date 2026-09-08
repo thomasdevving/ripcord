@@ -51,6 +51,7 @@ nothing here is read at build time, and the image builds with no RPC key at all.
 | `RIPCORD_MAX_QUEUED_JOBS` | `3` | |
 | `RIPCORD_JOB_TIMEOUT_MS` | `600000` | An operational **maximum**, not an expected duration. See §6. |
 | `RIPCORD_DEFAULT_BLOCK` | `25800000` | The block the Comet preset pins. Visibly historical, and the UI says so. |
+| `RIPCORD_INSTANCE_ID` | a stable value per replica, e.g. `railway-web` | Optional but recommended. Stamped on every job ownership lease. Unset, each deploy gets a fresh random identity, so a restart cannot recognise its own abandoned jobs and they are only reclaimed once their lease expires (~60s) by the background sweep. Two replicas MUST NOT share a value. |
 | `MOBULA_API_KEY` | *optional feature* | Required for fresh Mobula production calls; its absence never blocks the pinned scan or primary fork run. |
 
 `RIPCORD_*` are conventions introduced by this webapp. They are not Railway

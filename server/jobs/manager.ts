@@ -211,7 +211,10 @@ export class JobManager {
     if (this.reaper) return;
     this.reaper = setInterval(() => {
       if (this.shuttingDown) return;
-      void this.store.recoverInterruptedJobs(this.identity).then(({ recovered }) => {
+      // "sweep", NOT the boot rule: this instance's own jobs are live and
+      // heartbeating, and the boot rule would reclaim them out from under
+      // their own workers. Only an EXPIRED lease is abandoned here.
+      void this.store.recoverInterruptedJobs(this.identity, Date.now(), "sweep").then(({ recovered }) => {
         if (recovered > 0) console.warn(`[ripcord] reclaimed ${recovered} job(s) whose ownership lease expired`);
       }).catch(() => undefined);
     }, Math.max(1000, Math.floor(LEASE_DURATION_MS / 2)));

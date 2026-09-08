@@ -19,7 +19,7 @@ import { existsSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { randomUUID, randomBytes } from "node:crypto";
 import type { JobEvent, JobState, JobSummary, PhaseSnapshot, RunMode, StructuralSnapshot } from "../shared/dto.js";
-import { claimable, heldBy, leaseExpired, newLease, reclaimReason, renewLease, type InstanceIdentity } from "./lease.js";
+import { claimable, heldBy, leaseExpired, newLease, reclaimReason, renewLease, type InstanceIdentity, type JobLease } from "./lease.js";
 
 /** Ids we generate and ids we accept from a URL share this shape. Anything else is rejected before touching the filesystem. */
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
@@ -113,6 +113,25 @@ export class JobStore {
   /** Per-report Mobula refresh + pinned candidate verification. Never report content. */
   readonly assetContextsDir: string;
   /**
+   * OWNERSHIP LIVES IN ITS OWN FILE, and that is a correctness requirement
+   * rather than tidiness.
+   *
+   * The lease and the job record have different writers, different cadences and
+   * very different sizes: the manager persists the whole record on EVERY worker
+   * event (it carries the power-map structure, so it is not small), while the
+   * heartbeat renews a handful of fields every 15 seconds. Sharing one
+   * whole-record write made that a lost update by construction — the manager
+   * captured the lease once at claim time and then wrote that frozen copy back
+   * over every renewal, so the on-disk expiry never advanced past the original
+   * claim. A run longer than one lease then failed its own heartbeat and was
+   * stopped with "lost its ownership lease", with no second worker anywhere.
+   * Reproduced before this split, and pinned by test/jobLeaseSweep.test.ts.
+   *
+   * Separate files make the clobber unexpressible: `saveJob` cannot write a
+   * lease, and a lease write cannot touch job state.
+   */
+  readonly leasesDir: string;
+  /**
    * One write tail per report id.
    *
    * Atomic rename prevents half a JSON document, but it does not preserve the
@@ -128,6 +147,7 @@ export class JobStore {
     this.eventsDir = join(dataDir, "events");
     this.artifactsDir = join(dataDir, "artifacts");
     this.assetContextsDir = join(dataDir, "asset-contexts");
+    this.leasesDir = join(dataDir, "leases");
     // The pinned RPC cache keeps its own subdirectory and its existing
     // (chainId, block, method, params) key semantics untouched. It lives under
     // the data dir so a mounted volume makes warm reruns fast across deploys,
@@ -137,7 +157,7 @@ export class JobStore {
   }
 
   async init(): Promise<void> {
-    for (const dir of [this.jobsDir, this.reportsDir, this.eventsDir, this.artifactsDir, this.cacheDir, this.assetContextsDir]) {
+    for (const dir of [this.jobsDir, this.reportsDir, this.eventsDir, this.artifactsDir, this.cacheDir, this.assetContextsDir, this.leasesDir]) {
       await mkdir(dir, { recursive: true });
     }
     // Fail loudly at boot if the volume is not writable, rather than at the
@@ -173,13 +193,25 @@ export class JobStore {
     return `job_${randomUUID().replace(/-/g, "").slice(0, 24)}`;
   }
 
+  /**
+   * Writes job STATE. The `lease` field is stripped on the way out: ownership is
+   * written only by claim/heartbeat/release, and letting a state write carry one
+   * is precisely the lost update this split exists to prevent. Callers may keep
+   * a hydrated `lease` on their in-memory copy — it simply never round-trips.
+   */
   async saveJob(record: JobRecord): Promise<void> {
-    await this.writeAtomic(safeJoin(this.jobsDir, record.jobId), JSON.stringify(record, null, 2));
+    const { lease: _ignored, ...state } = record;
+    await this.writeAtomic(safeJoin(this.jobsDir, record.jobId), JSON.stringify(state, null, 2));
   }
 
   async loadJob(jobId: string): Promise<JobRecord | null> {
     if (!isSafeId(jobId)) return null;
-    return this.readJson<JobRecord>(safeJoin(this.jobsDir, jobId));
+    const record = await this.readJson<JobRecord>(safeJoin(this.jobsDir, jobId));
+    if (!record) return null;
+    // Hydrated from the lease file, so every existing reader sees ownership on
+    // the record exactly as before while the write paths stay separate.
+    record.lease = await this.readLease(jobId);
+    return record;
   }
 
   async listJobs(): Promise<JobRecord[]> {
@@ -189,9 +221,27 @@ export class JobStore {
     for (const file of files) {
       const record = await this.readJson<JobRecord>(join(this.jobsDir, file));
       // Corrupt metadata fails loudly; it is never silently treated as an empty job.
-      if (record?.jobId) out.push(record);
+      if (record?.jobId) {
+        record.lease = await this.readLease(record.jobId);
+        out.push(record);
+      }
     }
     return out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  /** The current owner of a job, or null when nobody holds it. */
+  async readLease(jobId: string): Promise<JobLease | null> {
+    if (!isSafeId(jobId)) return null;
+    return (await this.readJson<JobLease>(safeJoin(this.leasesDir, jobId))) ?? null;
+  }
+
+  private async writeLease(jobId: string, lease: JobLease | null): Promise<void> {
+    const path = safeJoin(this.leasesDir, jobId);
+    if (lease === null) {
+      await rm(path, { force: true });
+      return;
+    }
+    await this.writeAtomic(path, JSON.stringify(lease, null, 2));
   }
 
   /**
@@ -211,8 +261,31 @@ export class JobStore {
    * Deliberately conservative in one direction: an unparseable lease counts as
    * NOT expired (see `leaseExpired`), so a corrupt record is left for an
    * operator rather than reclaimed into a double execution.
+   *
+   * `scope` IS LOAD-BEARING, AND CONFLATING THE TWO CALLERS WAS A LIVE BUG.
+   * Both callers ask "which jobs are abandoned?", but they stand in different
+   * worlds and the answer to "is a record bearing OUR instance id abandoned?"
+   * is opposite in each:
+   *
+   *   "boot"  — this process has just started and has claimed nothing, so a
+   *             persisted job stamped with our id belongs to a PREVIOUS LIFE
+   *             and cannot be live. Reclaiming it is what lets a restart clear
+   *             its own wreckage immediately instead of waiting out the lease.
+   *   "sweep" — this process has been running for a while and its own jobs are
+   *             being heartbeated RIGHT NOW. Applying the boot rule here
+   *             interrupted the caller's own live work every 30 seconds, nulled
+   *             its lease, and made the very next heartbeat report the job lost
+   *             to a competing worker that never existed. Any analysis longer
+   *             than one sweep interval died this way.
+   *
+   * So a sweep reclaims ONLY on an expired lease — the one signal that means
+   * nothing, anywhere, is heartbeating for this job.
    */
-  async recoverInterruptedJobs(identity: InstanceIdentity, now = Date.now()): Promise<{ recovered: number; skippedLive: number }> {
+  async recoverInterruptedJobs(
+    identity: InstanceIdentity,
+    now = Date.now(),
+    scope: "boot" | "sweep" = "boot",
+  ): Promise<{ recovered: number; skippedLive: number }> {
     const jobs = await this.listJobs();
     let recovered = 0;
     let skippedLive = 0;
@@ -226,7 +299,8 @@ export class JobStore {
       // jobs showing `running` until the lease timed out — which only helps
       // when RIPCORD_INSTANCE_ID is set to a stable value, and is exactly why
       // setting it is recommended for a fixed replica.
-      const ours = job.lease?.instanceId === identity.instanceId;
+      // Our own id counts as abandoned only at boot; see `scope` above.
+      const ours = scope === "boot" && job.lease?.instanceId === identity.instanceId;
       if (!ours && !leaseExpired(job.lease, now)) { skippedLive++; continue; }
       const reason = job.lease ? reclaimReason(job.lease, identity) : "The service restarted while this analysis was in progress, so it did not complete.";
       job.state = "interrupted";
@@ -241,6 +315,10 @@ export class JobStore {
       // does not imply work is still happening.
       job.phases = job.phases.map(p => p.status === "running" ? { ...p, status: "failed" as const, detail: "interrupted by a service restart" } : p.status === "pending" ? { ...p, status: "skipped" as const, detail: "not reached before service restart" } : p);
       await this.saveJob(job);
+      // The claim is dropped explicitly. `saveJob` no longer carries a lease, so
+      // clearing the field on the record above is a local convenience; THIS is
+      // what actually releases ownership.
+      await this.writeLease(job.jobId, null);
       recovered++;
     }
     return { recovered, skippedLive };
@@ -262,8 +340,9 @@ export class JobStore {
     const current = await this.loadJob(jobId);
     if (!current) return null;
     if (!claimable(current.lease, identity, now)) return null;
-    current.lease = newLease(identity, now);
-    await this.saveJob(current);
+    const lease = newLease(identity, now);
+    await this.writeLease(jobId, lease);
+    current.lease = lease;
     return current;
   }
 
@@ -273,21 +352,21 @@ export class JobStore {
    * already have reclaimed the job.
    */
   async heartbeat(jobId: string, identity: InstanceIdentity, now = Date.now()): Promise<boolean> {
-    const current = await this.loadJob(jobId);
-    if (!current || !current.lease) return false;
-    if (!heldBy(current.lease, identity, now)) return false;
-    current.lease = renewLease(current.lease, now);
-    await this.saveJob(current);
+    // Reads and writes ONLY the lease file. It never loads or rewrites the job
+    // record, so a heartbeat can neither be clobbered by a state write nor
+    // clobber one — and it stays cheap enough to run on a short interval even
+    // when the record carries a large power-map structure.
+    const lease = await this.readLease(jobId);
+    if (!lease || !heldBy(lease, identity, now)) return false;
+    await this.writeLease(jobId, renewLease(lease, now));
     return true;
   }
 
   /** Drops this instance's claim, so a terminal job is not left looking owned. */
   async releaseJob(jobId: string, identity: InstanceIdentity): Promise<void> {
-    const current = await this.loadJob(jobId);
-    if (!current || !current.lease) return;
-    if (current.lease.instanceId !== identity.instanceId) return;
-    current.lease = null;
-    await this.saveJob(current);
+    const lease = await this.readLease(jobId);
+    if (!lease || lease.instanceId !== identity.instanceId) return;
+    await this.writeLease(jobId, null);
   }
 
   // --- events ----------------------------------------------------------------
@@ -467,6 +546,7 @@ export class JobStore {
       // Never prune a job that is still live — the queue holds a reference to it.
       if (job.state === "running" || job.state === "queued") continue;
       await rm(safeJoin(this.jobsDir, job.jobId), { force: true });
+      await rm(safeJoin(this.leasesDir, job.jobId), { force: true });
       await rm(safeJoin(this.eventsDir, job.jobId, ".jsonl"), { force: true });
       await rm(this.artifactDirFor(job.jobId), { recursive: true, force: true });
       prunedJobs++;
