@@ -718,7 +718,6 @@ label {
 .report-map-layout { grid-template-columns: minmax(0, 1fr) 380px; align-items: stretch; }
 .report-map-layout > section.card { margin-bottom: 16px; }
 .report-map-card { min-width: 0; }
-.report-map-description { max-width: 72ch; margin-top: 0; }
 .report-map-layout > .detail-panel { min-width: 0; }
 
 @media (max-width: 1040px) {
@@ -1749,6 +1748,15 @@ details.fold.inline-fold .fold-body { padding: 12px 14px 14px; }
    them. Visibility belongs to the `hidden` attribute alone, which is also
    what keeps the panes out of the accessibility tree. */
 .report-panel[hidden] { display: none; }
+
+/* The one-line answer to "what am I looking at", under the strip. */
+.tab-intro {
+  margin: -4px 0 16px;
+  max-width: 88ch;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
 /* The scroll target is a heading inside a card; without this its focus ring
    would sit under the sticky strip that just moved us there. */
 .report-panel section.card { scroll-margin-top: calc(var(--topbar-height) + 64px); }
@@ -1783,7 +1791,7 @@ details.fold.inline-fold .fold-body { padding: 12px 14px 14px; }
   display: flex;
   align-items: flex-start;
   gap: 16px;
-  padding: 12px 14px;
+  padding: 10px 14px;
   border: 1px solid var(--border);
   border-left-width: 3px;
   border-radius: var(--radius);
@@ -1792,13 +1800,50 @@ details.fold.inline-fold .fold-body { padding: 12px 14px 14px; }
 .finding.crit { border-left-color: var(--critical); }
 .finding.warn { border-left-color: var(--warning); }
 
-.finding-body { flex: 1 1 auto; min-width: 0; }
-.finding-title { margin: 0; font-weight: 600; }
-.finding-detail { margin: 4px 0 0; max-width: 80ch; }
+/* The row IS the container; the generic `details` chrome would draw a second
+   box inside it. Resetting here rather than loosening the generic rule, which
+   the evidence dumps elsewhere on the page depend on. */
+.finding-fold {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+}
+.finding-fold[open] > summary { margin-bottom: 0; }
 
+.finding-fold > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  cursor: pointer;
+  list-style: none;
+  padding: 2px 0;
+}
+.finding-fold > summary::-webkit-details-marker { display: none; }
+.finding-fold > summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex: none;
+  align-self: center;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+}
+.finding-fold[open] > summary::before { transform: rotate(45deg); }
+.finding-fold > summary:hover::before { border-color: var(--text-primary); }
+
+.finding-title { font-weight: 600; }
+.finding-detail { margin: 8px 0 4px 16px; max-width: 80ch; }
+
+/* Stays on the collapsed row: which layer produced a finding is part of
+   reading the list, not part of its detail. */
 .finding-source {
-  display: inline-block;
-  margin-top: 6px;
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1840,10 +1885,12 @@ details.fold.inline-fold .fold-body { padding: 12px 14px 14px; }
    nothing. */
 @media print {
   .report-tabs { display: none !important; }
-  .report-panel[hidden] { display: block !important; }
+  .report-panel[hidden],
+  section.card.verdict-card[hidden] { display: block !important; }
   /* Same reasoning as the hidden panels: a printed report carries everything,
      not the subset this reader happened to open. */
-  details.fold > .fold-body { display: block !important; }
+  details.fold > .fold-body,
+  .finding-fold > .finding-detail { display: block !important; }
 }
 
 /* The three-step legend above the fork evidence blocks. Its job is to let a

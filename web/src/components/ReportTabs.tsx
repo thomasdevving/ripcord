@@ -24,6 +24,29 @@ export interface TabDef {
   label: string;
 }
 
+/**
+ * One sentence per pane, shown under the strip.
+ *
+ * A tab label is a filing category, not an explanation — "Fork" and "Evidence"
+ * tell a reader where something is kept, never what they are about to look at
+ * or how much it is worth. These say what each pane holds and, where it
+ * matters, what it does NOT establish: the fork line names the sandbox, and the
+ * assets line says outright that an untested asset is a limit of the run rather
+ * than a finding about the asset.
+ */
+export const TAB_INTRO: Record<FindingTab, string> = {
+  overview:
+    "The answer, and what the run established behind it. Every line links to the pane holding its evidence.",
+  power:
+    "Who can control this contract. Authority rises from the analysed address to the accounts, multisigs and timelocks that hold power over it — select any node to see the reads behind the relation and where the path stopped.",
+  fork:
+    "What happened when we actually tried it. The chain is copied into a private sandbox at this block, a withdrawal is performed, the party that can stop withdrawals does so, and the identical withdrawal is attempted again. Nothing is sent to the real network.",
+  assets:
+    "What this contract holds, and how far the evidence reaches for each asset — observed by the market-data provider, read on-chain at this block, or exercised in an experiment. An asset with no experiment is a limit of what this run tested, never a result about the asset.",
+  evidence:
+    "The raw material: every privileged function the dispatcher recovered, everything the run could not establish, and the provenance of the report itself — block, hashes and ruleset.",
+};
+
 export function ReportTabs({
   tabs,
   active,

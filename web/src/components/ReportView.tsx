@@ -30,7 +30,7 @@ import {
 } from "../report-types.js";
 import { CopyButton } from "./CopyButton.js";
 import { ReportFindings } from "./ReportFindings.js";
-import { ReportTabs, type TabDef } from "./ReportTabs.js";
+import { ReportTabs, TAB_INTRO, type TabDef } from "./ReportTabs.js";
 import type { FindingTab } from "@shared/findings";
 import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
@@ -408,21 +408,6 @@ export function ReportView({
         </header>
       )}
 
-      {/* THE ANSWER, AND ONLY THE ANSWER. The card used to carry the verdict's
-          full statement, its gloss, the margin and the list of what was
-          missing — six paragraphs a reader had to cross before reaching the
-          first piece of evidence. All of it still exists, one fold below, in
-          "Why this verdict": nothing was deleted, because the missing list in
-          particular is what stops a thin verdict reading as a confident one.
-          What changed is that the reader chooses when to read it. */}
-      <section className={`card verdict-card ${tone}`}>
-        <div className="verdict-line">
-          <h2 className="verdict-badge">{(verdict?.status ?? "no verdict").toUpperCase().replace(/_/g, " ")}</h2>
-          {verdict && <span className="chip">confidence: {verdict.confidence}</span>}
-        </div>
-        <Clocks report={report} />
-      </section>
-
       <ReportTabs
         tabs={tabs}
         active={active}
@@ -431,6 +416,28 @@ export function ReportView({
           setPending(null);
         }}
       />
+
+      {/* What the reader is looking at, before they look at it. */}
+      <p className="tab-intro">{TAB_INTRO[active]}</p>
+
+      {/* THE ANSWER, AND ONLY THE ANSWER. The card used to carry the verdict's
+          full statement, its gloss, the margin and the list of what was
+          missing — six paragraphs a reader had to cross before reaching the
+          first piece of evidence. All of it still exists, one fold below, in
+          "Why this verdict": nothing was deleted, because the missing list in
+          particular is what stops a thin verdict reading as a confident one.
+          What changed is that the reader chooses when to read it. */}
+      {/* Belongs to the Overview pane: on the power map or the fork it was a
+          header to scroll past to reach what the reader switched tabs for.
+          HIDDEN, not unrendered, for the same reason the panes are — a printed
+          report carries the verdict whichever tab happened to be open. */}
+      <section className={`card verdict-card ${tone}`} hidden={active !== "overview"}>
+        <div className="verdict-line">
+          <h2 className="verdict-badge">{(verdict?.status ?? "no verdict").toUpperCase().replace(/_/g, " ")}</h2>
+          {verdict && <span className="chip">confidence: {verdict.confidence}</span>}
+        </div>
+        <Clocks report={report} />
+      </section>
 
       <div
         className="report-panel"

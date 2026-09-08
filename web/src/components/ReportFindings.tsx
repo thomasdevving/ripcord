@@ -47,11 +47,21 @@ function Group({
       <ul className="finding-list">
         {findings.map((finding) => (
           <li className={`finding ${tone}`} key={finding.id}>
-            <div className="finding-body">
-              <p className="finding-title">{finding.title}</p>
+            {/* THE CLAIM STAYS VISIBLE; ITS QUALIFICATION FOLDS. A collapsed
+                row still carries the finding and the layer that produced it,
+                so scanning the list never means reading past the paragraph
+                that explains each one. The detail is a fold rather than a
+                truncation — nothing is cut, and the qualification a finding
+                travels with is one click away rather than gone. */}
+            <details className="finding-fold">
+              <summary>
+                <span className="finding-title">{finding.title}</span>
+                <span className="finding-source mono">{finding.source}</span>
+              </summary>
               {finding.detail && <p className="note small finding-detail">{finding.detail}</p>}
-              <span className="finding-source mono">{finding.source}</span>
-            </div>
+            </details>
+            {/* Outside the fold: the way to the evidence must not itself be
+                hidden behind a disclosure the reader has to find first. */}
             <button type="button" className="shrink finding-link" onClick={() => onOpen(finding)}>
               View evidence
             </button>

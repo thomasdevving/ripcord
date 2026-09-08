@@ -93,12 +93,11 @@ export function ReportScreen({ reportId }: { reportId: string }): ReactElement {
         // answer first and the mechanism second.
         powerMap={
           <div className="split report-map-layout">
+            {/* No description here any more: the pane's own intro under the tab
+                strip (ReportTabs.TAB_INTRO) says the same thing, and printing
+                one sentence twice teaches a reader to skip both. */}
             <section className="card report-map-card" id="power-map" tabIndex={-1}>
               <h2>Power map</h2>
-              <p className="note report-map-description">
-                Authority rises from the analyzed contract to the addresses and contracts that can control it. Select
-                any node to inspect the observed relation and the reads behind it.
-              </p>
               <PowerMap snapshot={structure} selected={selected} onSelect={setSelected} />
             </section>
             <DetailPanel snapshot={structure} selected={selected} onClose={() => setSelected(null)} />

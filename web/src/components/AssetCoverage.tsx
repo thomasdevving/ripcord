@@ -476,11 +476,9 @@ export function AssetCoveragePanel({
 
   return (
     <section className="card">
+      {/* The pane's intro under the tab strip already says what this panel is
+          for. Repeating it here taught a reader to skip both. */}
       <h2>Assets &amp; analysis coverage</h2>
-      <p className="note" style={{ marginTop: 0, maxWidth: "78ch" }}>
-        See which assets were observed, which balances were verified at the analysis block, and which assets were
-        included in a fork experiment.
-      </p>
 
       {layerPending && !stalled && (
         <div className="banner info processing-banner" role="status" aria-live="polite">
