@@ -85,12 +85,15 @@ export function ReportScreen({ reportId }: { reportId: string }): ReactElement {
         report={report}
         reportId={reportId}
         showHead
+        // A finding that names an address selects it here, so "View evidence"
+        // lands on the node rather than merely on the map.
+        onNodeFocus={(address) => setSelected(address)}
         // Below the verdict, not above it. The map explains HOW the answer
         // comes about; a reader arriving on a shared link should meet the
         // answer first and the mechanism second.
         powerMap={
           <div className="split report-map-layout">
-            <section className="card report-map-card">
+            <section className="card report-map-card" id="power-map" tabIndex={-1}>
               <h2>Power map</h2>
               <p className="note report-map-description">
                 Authority rises from the analyzed contract to the addresses and contracts that can control it. Select

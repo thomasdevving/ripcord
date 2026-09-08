@@ -147,6 +147,67 @@ input, textarea { caret-color: var(--accent); }
   }
 }
 
+/* --- light theme ----------------------------------------------------------
+ *
+ * DARK IS THE DEFAULT AND STAYS THE DEFAULT: the ground above is the hero's,
+ * and nothing here changes it unless a reader asks. `data-theme="light"` is
+ * written on <html> by web/src/theme.ts from an explicit choice held in
+ * localStorage — never from a system preference, because a projector and a
+ * laptop disagree about that and a demo should not change appearance on the
+ * machine it is shown from.
+ *
+ * ONLY TOKENS ARE REDEFINED. Not one component rule below cares which theme is
+ * active, which is the same property that let the dark palette be unified in
+ * one place. The values are the printed report's, already contrast-checked for
+ * ink on white, so the two light surfaces the project ships cannot drift apart.
+ *
+ * THE SEMANTIC RULE SURVIVES THE FLIP: --good is still "this step finished",
+ * never "this contract is safe", and the verdict tones still resolve to
+ * critical or neutral only.
+ */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --plane: #f7f7f4;
+  --surface-1: #ffffff;
+  --surface-2: #f0f0ea;
+
+  --text-primary: #14150f;
+  --text-secondary: #43443c;
+  /* The same contrast floor the dark palette documents: every uppercase mono
+     label on the page is set in this, at 10px, so it is held above 4.5:1 on
+     plane, both surfaces and all three status washes. */
+  --muted: #5f6157;
+
+  --grid: #e3e3db;
+  --baseline: #a6a79c;
+  --border: #d5d5cc;
+
+  --accent: #0a6b45;
+  --accent-lift: #0b7d50;
+  --accent-ink: #ffffff;
+
+  --series-1: #1f5fbf;
+  --series-2: #a87400;
+
+  --good: #0a7a0a;
+  --warning: #a87400;
+  --critical: #b03030;
+  --good-ink: #0a6300;
+  --warn-ink: #7a5200;
+  --crit-ink: #9c2020;
+  --good-bg: #eef7ee;
+  --warn-bg: #fdf5e3;
+  --crit-bg: #fbeded;
+}
+
+/* The plane's two washes are tuned for a dark ground; on white they read as
+   dirt. The ground itself stays a token, so this is the only place the body's
+   painting knows about the theme. */
+:root[data-theme="light"] body {
+  background: var(--plane);
+}
+
 /* --- shell ---------------------------------------------------------------- */
 
 .app { min-height: 100vh; display: flex; flex-direction: column; }
@@ -1456,4 +1517,149 @@ ul.plain li { margin-bottom: 5px; font-size: 13px; line-height: 1.6; color: var(
   .clock { background: #ffffff; }
   details { break-inside: avoid; }
   details:not([open]) > summary::after { content: " (collapsed in print)"; color: #66665f; }
+}
+
+/* --- report tabs and the overview list ------------------------------------
+ *
+ * The tab strip sits directly under the verdict card and above the panes, so a
+ * reader always has the answer in view while paging through the evidence for
+ * it. It sticks to the top bar for the same reason: on a long Evidence pane,
+ * losing the way back to the verdict is losing the point of the page.
+ *
+ * The finding rows borrow the status washes rather than inventing a palette.
+ * They carry the CAUTIONARY tones only — critical for what was demonstrated,
+ * warning for what stayed unresolved — and there is deliberately no green row
+ * shape at all, because a list entry rendered in the healthy tone would read as
+ * a clean bill, which is exactly the claim this project never makes.
+ */
+.report-tabs {
+  display: flex;
+  gap: 2px;
+  margin: 0 0 16px;
+  padding: 3px;
+  background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  position: sticky;
+  top: var(--topbar-height);
+  z-index: 5;
+  backdrop-filter: blur(6px);
+  overflow-x: auto;
+}
+
+.report-tab {
+  flex: 1 1 auto;
+  min-width: max-content;
+  padding: 8px 16px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: 500 12px/1.2 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.report-tab:hover { color: var(--text-primary); }
+
+.report-tab.active {
+  background: var(--surface-1);
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+
+.report-panel { display: block; }
+/* The scroll target is a heading inside a card; without this its focus ring
+   would sit under the sticky strip that just moved us there. */
+.report-panel section.card { scroll-margin-top: calc(var(--topbar-height) + 64px); }
+.report-panel .route[id] { scroll-margin-top: calc(var(--topbar-height) + 72px); }
+
+.finding-group + .finding-group { margin-top: 24px; }
+
+.finding-group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font: 600 11px/1.2 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.finding-group-title.crit { color: var(--crit-ink); }
+.finding-group-title.warn { color: var(--warn-ink); }
+
+.finding-count {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+}
+
+.finding-gloss { margin: 6px 0 12px; max-width: 74ch; }
+
+.finding-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+
+.finding {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.finding.crit { border-left-color: var(--critical); }
+.finding.warn { border-left-color: var(--warning); }
+
+.finding-body { flex: 1 1 auto; min-width: 0; }
+.finding-title { margin: 0; font-weight: 600; }
+.finding-detail { margin: 4px 0 0; max-width: 80ch; }
+
+.finding-source {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.finding-link { flex: 0 0 auto; white-space: nowrap; }
+
+@media (max-width: 720px) {
+  .finding { flex-direction: column; gap: 10px; }
+  .finding-link { align-self: flex-start; }
+}
+
+/* The theme control is a peer of the nav links, not a feature: same height,
+   same muted voice, no colour of its own. */
+.theme-toggle {
+  min-width: 34px;
+  padding: 6px 9px;
+  margin-left: 4px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.theme-toggle:hover { color: var(--text-primary); border-color: var(--border); }
+
+/* PRINTING TAKES THE WHOLE REPORT, NOT THE PANE THAT HAPPENED TO BE OPEN — which
+   is why every pane but the map is mounted and merely hidden rather than
+   unmounted. A printed report that silently carried a quarter of the evidence
+   would be the paper version of a partial scan presented as a whole one.
+
+   The map pane is the exception and it costs nothing: React Flow cannot lay
+   itself out inside a hidden container, and the print rules above already drop
+   `.graph-wrap`, so the graph was never part of a printed page — its node detail
+   is in the report body regardless. The tab strip is navigation and prints as
+   nothing. */
+@media print {
+  .report-tabs { display: none !important; }
+  .report-panel[hidden] { display: block !important; }
 }

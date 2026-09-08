@@ -29,6 +29,10 @@ import {
   TIME_TO_EXIT_QUALIFIER,
 } from "../report-types.js";
 import { CopyButton } from "./CopyButton.js";
+import { ReportFindings } from "./ReportFindings.js";
+import { ReportTabs, type TabDef } from "./ReportTabs.js";
+import type { FindingTab } from "@shared/findings";
+import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
 
 /**
@@ -265,6 +269,7 @@ export function ReportView({
   assetEvidence,
   powerMap,
   showHead = false,
+  onNodeFocus,
 }: {
   report: Report;
   reportId: string | null;
@@ -297,11 +302,60 @@ export function ReportView({
    * and needs to say what it is about.
    */
   showHead?: boolean;
+  /**
+   * Lets a finding's "View evidence" control select the power-map node it
+   * names. The map's selection lives on the screen that owns the structural
+   * snapshot, so this component asks rather than holding a second copy of it.
+   */
+  onNodeFocus?: (address: string) => void;
 }): ReactElement {
   const verdict = report.verdict;
   const tone = verdictTone(verdict?.status);
   const tte = report.timeToExit;
   const er = report.exitRestriction;
+
+  /**
+   * A pane is offered only when the run produced that kind of artifact. See
+   * ReportTabs: absent is not the same as empty, and an empty pane must never
+   * read as a checked-and-clean one.
+   */
+  const tabs: TabDef[] = [
+    { id: "overview", label: "Overview" },
+    ...(powerMap ? [{ id: "power" as const, label: "Power map" }] : []),
+    ...(er || report.proof || forkEvidence ? [{ id: "fork" as const, label: "Fork" }] : []),
+    ...(assetEvidence ? [{ id: "assets" as const, label: "Assets" }] : []),
+    { id: "evidence", label: "Evidence" },
+  ];
+
+  const [tab, setTab] = useState<FindingTab>("overview");
+  // A tab can disappear between renders — the asset sidecar arrives late, and a
+  // live run gains its fork pane only when the engine reaches it. Falling back
+  // to Overview keeps the page from rendering a panel with no tab.
+  const active = tabs.some((t) => t.id === tab) ? tab : "overview";
+
+  /**
+   * A deep link is TWO steps that cannot happen in one render: the target pane
+   * has to mount before anything on it can be scrolled to. `pending` holds the
+   * anchor across that boundary and is cleared once it has been used, so a
+   * later re-render never re-scrolls a reader who has since moved.
+   */
+  const [pending, setPending] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pending) return;
+    const target = document.getElementById(pending);
+    setPending(null);
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    // The heading, not the button that sent us here: a reader arriving at a
+    // section should hear what it is.
+    target.focus?.();
+  }, [pending, active]);
+
+  const openEvidence = (destination: FindingTab, anchor: string, node: string | null) => {
+    if (node) onNodeFocus?.(node);
+    setTab(tabs.some((t) => t.id === destination) ? destination : "evidence");
+    setPending(anchor);
+  };
 
   return (
     <>
@@ -365,359 +419,412 @@ export function ReportView({
         )}
       </section>
 
-      {powerMap}
+      <ReportTabs
+        tabs={tabs}
+        active={active}
+        onSelect={(tab) => {
+          setTab(tab);
+          setPending(null);
+        }}
+      />
 
-      <section className="card">
-        <h2>Notice before the rules can change</h2>
-        <Routes report={report} />
-        {report.exitWindow && (
-          <details>
-            <summary>
-              What was checked ({report.exitWindow.checksPerformed.filter((c) => c.performed).length} of{" "}
-              {report.exitWindow.checksPerformed.length} checks performed)
-            </summary>
-            {/* This list is what makes an empty bypass list mean "checked, found
-                none" rather than "never looked". */}
-            <ul className="plain">
-              {report.exitWindow.checksPerformed.map((check, i) => (
-                <li key={i}>
-                  <span className={`chip ${check.performed ? "" : "warn"}`}>{check.performed ? "performed" : "not performed"}</span>{" "}
-                  {check.check} — {check.note}
-                </li>
-              ))}
-            </ul>
-          </details>
-        )}
-      </section>
+      <div
+        className="report-panel"
+        role="tabpanel"
+        id="panel-overview"
+        aria-labelledby="tab-overview"
+        hidden={active !== "overview"}
+      >
+          <ReportFindings report={report} onOpen={openEvidence} />
+          <section className="card">
+            <h2>Notice before the rules can change</h2>
+            <Routes report={report} />
+            {report.exitWindow && (
+              <details>
+                <summary>
+                  What was checked ({report.exitWindow.checksPerformed.filter((c) => c.performed).length} of{" "}
+                  {report.exitWindow.checksPerformed.length} checks performed)
+                </summary>
+                {/* This list is what makes an empty bypass list mean "checked, found
+                    none" rather than "never looked". */}
+                <ul className="plain">
+                  {report.exitWindow.checksPerformed.map((check, i) => (
+                    <li key={i}>
+                      <span className={`chip ${check.performed ? "" : "warn"}`}>{check.performed ? "performed" : "not performed"}</span>{" "}
+                      {check.check} — {check.note}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </section>
 
-      <section className="card">
-        <h2>How long leaving takes</h2>
-        {tte ? (
-          <>
-            <p className="statement" style={{ marginTop: 0 }}>
-              {tte.statement}
-            </p>
-            <p className="note">
-              {tte.atLeastSeconds === null ? (
-                <strong>No exit duration was established.</strong>
-              ) : (
-                <>
-                  <strong>
-                    {tte.tight ? "" : "At least "}
-                    {formatDuration(tte.atLeastSeconds)}
-                  </strong>
-                  {!tte.tight && " — a lower bound, with the unmeasured parts named below."}
-                  {tte.atLeastSeconds === "0" && (
+          <section className="card" id="time-to-exit" tabIndex={-1}>
+            <h2>How long leaving takes</h2>
+            {tte ? (
+              <>
+                <p className="statement" style={{ marginTop: 0 }}>
+                  {tte.statement}
+                </p>
+                <p className="note">
+                  {tte.atLeastSeconds === null ? (
+                    <strong>No exit duration was established.</strong>
+                  ) : (
                     <>
-                      {" "}
-                      A zero lower bound means no waiting period was <em>detected</em>, not that leaving is instant.
+                      <strong>
+                        {tte.tight ? "" : "At least "}
+                        {formatDuration(tte.atLeastSeconds)}
+                      </strong>
+                      {!tte.tight && " — a lower bound, with the unmeasured parts named below."}
+                      {tte.atLeastSeconds === "0" && (
+                        <>
+                          {" "}
+                          A zero lower bound means no waiting period was <em>detected</em>, not that leaving is instant.
+                        </>
+                      )}
                     </>
                   )}
+                </p>
+                {tte.legs.length > 0 && (
+                  <ul className="plain">
+                    {tte.legs.map((leg, i) => (
+                      <li key={i}>
+                        {leg.kind}: {leg.name} ={" "}
+                        {leg.seconds === null ? <strong>duration unknown</strong> : formatDuration(leg.seconds)}
+                        {leg.mutableBy && <> — settable via {leg.mutableBy}, so this is not a protocol constant</>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {tte.unmeasuredLegs.length > 0 && (
+                  <div className="banner warn">
+                    <strong>Not measured, and therefore not counted as zero:</strong>
+                    <ul className="plain" style={{ marginBottom: 0 }}>
+                      {tte.unmeasuredLegs.map((leg, i) => (
+                        <li key={i}>
+                          {leg.name} — {leg.reason}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <p className="note small">
+                  Liquidity depth is not modelled: {tte.liquidity.reason} For a position large relative to available
+                  liquidity, the real time to exit is longer than reported, never shorter.
+                </p>
+              </>
+            ) : (
+              <p className="note">No time-to-exit analysis was produced for this target.</p>
+            )}
+          </section>
+
+      </div>
+
+      {active === "power" && (
+        <div className="report-panel" role="tabpanel" id="panel-power" aria-labelledby="tab-power">
+          {powerMap}
+        </div>
+      )}
+
+      <div
+        className="report-panel"
+        role="tabpanel"
+        id="panel-fork"
+        aria-labelledby="tab-fork"
+        hidden={active !== "fork"}
+      >
+          {er && (
+            <section className="card" id="fork-result" tabIndex={-1}>
+              <h2>Fork experiment result</h2>
+              <div className="chip-row">
+                <span className="chip">{er.outcome.replace(/_/g, " ")}</span>
+                <span className="chip">{er.restrictionState.replace(/_/g, " ")}</span>
+                <span className={`chip ${er.confirmationMethod === "fork_confirmed" ? "crit" : "warn"}`}>
+                  {er.confirmationMethod.replace(/_/g, " ")}
+                </span>
+              </div>
+              <table>
+                <tbody>
+                  <tr>
+                    <th>Exit action</th>
+                    <td>
+                      {er.exitAction.status === "identified" ? (
+                        <>
+                          <span className="mono">{er.exitAction.signature}</span> — {er.exitAction.note}
+                        </>
+                      ) : (
+                        er.exitAction.note
+                      )}
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>Baseline</th>
+                    <td>
+                      <span className={`chip ${er.baseline.status === "established" ? "good" : "warn"}`}>{er.baseline.status}</span>{" "}
+                      {er.baseline.note}
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>Coverage</th>
+                    <td>
+                      {er.coverage.evaluated} of {er.coverage.guardedTotal} registered candidate(s) evaluated. This covers the
+                      matched archetype's registered candidates, never every privileged function in the bytecode.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              {er.candidates.length > 0 && (
+                <details>
+                  <summary>
+                    Candidate evaluation ({er.candidates.length}) — controller, calldata and classifier detail
+                  </summary>
+                  {er.candidates.map((candidate, i) => (
+                    <div
+                      className={`route ${candidate.result === "restrictor" ? "immediate" : "unknown"}`}
+                      key={i}
+                      id={`candidate-${i}`}
+                      tabIndex={-1}
+                    >
+                      <header>
+                        <span className="r-label mono">{candidate.signature ?? candidate.selector}</span>
+                        <span className={`chip ${candidate.result === "restrictor" ? "crit" : "warn"}`}>{candidate.result}</span>
+                      </header>
+                      <div className="note small">
+                        called by <span className="addr">{candidate.guardingParty ?? "party not resolved"}</span>{" "}
+                        ({candidate.guardingPartyType ?? "type not established"}) with {candidate.args}
+                      </div>
+                      <p className="note" style={{ marginBottom: 0 }}>
+                        {candidate.detail}
+                      </p>
+                    </div>
+                  ))}
+                </details>
+              )}
+
+              {er.evaluationGaps.length > 0 && (
+                <div className="banner warn">
+                  <strong>Gaps that stop this evaluation concluding cleanly</strong>
+                  <ul className="plain" style={{ marginBottom: 0 }}>
+                    {er.evaluationGaps.map((gap, i) => (
+                      <li key={i}>{gap}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* A stored report passes the same limitations to ForkEvidence below,
+                  where they belong beside A/B/C. Do not print them twice. The live
+                  analysis renders ReportView without that evidence slot, so it
+                  retains the standalone fallback here. */}
+              {!forkEvidence && (
+                <>
+                  <div className="ceiling">
+                    <strong>What this experiment does not establish</strong>
+                    <ul>
+                      {er.ceiling.map((item, i) => (
+                        <li key={i}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <p className="note small">{er.sandboxNote}</p>
                 </>
               )}
+              {er.reproduceCommand && (
+                <details>
+                  <summary>Reproduce this</summary>
+                  <pre className="raw">{er.reproduceCommand}</pre>
+                </details>
+              )}
+            </section>
+          )}
+
+          {forkEvidence}
+
+          {report.proof && (
+            <section className="card" id="drain-proof" tabIndex={-1}>
+              <h2>Upgrade drain proof</h2>
+              {report.proof.produced ? (
+                <>
+                  <p className="statement" style={{ marginTop: 0 }}>
+                    {report.proof.headline}
+                  </p>
+                  <p className="note">
+                    Impersonated via {report.proof.impersonatedVia}. Notice on this route:{" "}
+                    {report.proof.noticeSeconds === null ? "not established" : formatDuration(report.proof.noticeSeconds)} —{" "}
+                    {report.proof.noticeNote}
+                  </p>
+                  {report.proof.deltas.length > 0 && (
+                    <div className="scroll-x">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Asset</th>
+                            <th>Moved</th>
+                            <th>USD</th>
+                            <th>Price source</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {report.proof.deltas.map((delta, i) => (
+                            <tr key={i}>
+                              <td>{delta.symbol}</td>
+                              <td className="mono">{formatTokenUnits(delta.delta, delta.decimals)}<details><summary>Raw units</summary>{delta.delta}</details></td>
+                              <td className="mono">{delta.usd === null ? "undetermined" : `$${delta.usd.toFixed(2)}`}</td>
+                              <td className="small">{delta.priceSource}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  <p className="note small">
+                    Only curated major-token holdings are measured, so this figure is a floor, never a ceiling. {report.proof.sandboxNote}
+                  </p>
+                </>
+              ) : (
+                <p className="note" style={{ marginTop: 0 }}>
+                  <strong>No proof was produced.</strong> {report.proof.failureReason} This is a statement about Ripcord's
+                  coverage, not a finding about the contract.
+                </p>
+              )}
+            </section>
+          )}
+
+      </div>
+
+      <div
+        className="report-panel"
+        role="tabpanel"
+        id="panel-assets"
+        aria-labelledby="tab-assets"
+        hidden={active !== "assets"}
+      >
+        {assetEvidence}
+      </div>
+
+      <div
+        className="report-panel"
+        role="tabpanel"
+        id="panel-evidence"
+        aria-labelledby="tab-evidence"
+        hidden={active !== "evidence"}
+      >
+          <section className="card" id="capabilities" tabIndex={-1}>
+            <h2>Detected privileged capabilities</h2>
+            <p className="note" style={{ marginTop: 0 }}>
+              The Power Map shows the control chain. This table answers the different question of which recognised powers
+              Ripcord attributed to those controllers.
             </p>
-            {tte.legs.length > 0 && (
+            <Capabilities report={report} />
+          </section>
+
+          <section className="card" id="uncertainty" tabIndex={-1}>
+            <h2>Coverage and uncertainty</h2>
+            <div className="banner info">
+              <strong>Enumeration:</strong>{" "}
+              {report.enumeration.complete
+                ? "every site the verdict rests on reported a complete scan."
+                : "at least one site could not be fully enumerated. A reassuring window or verdict cannot be constructed over an incomplete route set, so the result stays cautious."}
+            </div>
+            {report.enumeration.gaps.length > 0 && (
               <ul className="plain">
-                {tte.legs.map((leg, i) => (
+                {report.enumeration.gaps.map((gap, i) => (
                   <li key={i}>
-                    {leg.kind}: {leg.name} ={" "}
-                    {leg.seconds === null ? <strong>duration unknown</strong> : formatDuration(leg.seconds)}
-                    {leg.mutableBy && <> — settable via {leg.mutableBy}, so this is not a protocol constant</>}
+                    <span className="mono">{gap.where}</span> — {gap.reason}
                   </li>
                 ))}
               </ul>
             )}
-            {tte.unmeasuredLegs.length > 0 && (
-              <div className="banner warn">
-                <strong>Not measured, and therefore not counted as zero:</strong>
-                <ul className="plain" style={{ marginBottom: 0 }}>
-                  {tte.unmeasuredLegs.map((leg, i) => (
+            {report.unknowns.length > 0 && (
+              <details>
+                <summary>{report.unknowns.length} explicit unknown(s)</summary>
+                <ul className="plain">
+                  {report.unknowns.map((unknown, i) => (
                     <li key={i}>
-                      {leg.name} — {leg.reason}
+                      <span className="mono">{unknown.field}</span> — {unknown.reason}
                     </li>
                   ))}
                 </ul>
-              </div>
+              </details>
             )}
-            <p className="note small">
-              Liquidity depth is not modelled: {tte.liquidity.reason} For a position large relative to available
-              liquidity, the real time to exit is longer than reported, never shorter.
-            </p>
-          </>
-        ) : (
-          <p className="note">No time-to-exit analysis was produced for this target.</p>
-        )}
-      </section>
-
-      {er && (
-        <section className="card">
-          <h2>Fork experiment result</h2>
-          <div className="chip-row">
-            <span className="chip">{er.outcome.replace(/_/g, " ")}</span>
-            <span className="chip">{er.restrictionState.replace(/_/g, " ")}</span>
-            <span className={`chip ${er.confirmationMethod === "fork_confirmed" ? "crit" : "warn"}`}>
-              {er.confirmationMethod.replace(/_/g, " ")}
-            </span>
-          </div>
-          <table>
-            <tbody>
-              <tr>
-                <th>Exit action</th>
-                <td>
-                  {er.exitAction.status === "identified" ? (
-                    <>
-                      <span className="mono">{er.exitAction.signature}</span> — {er.exitAction.note}
-                    </>
-                  ) : (
-                    er.exitAction.note
-                  )}
-                </td>
-              </tr>
-              <tr>
-                <th>Baseline</th>
-                <td>
-                  <span className={`chip ${er.baseline.status === "established" ? "good" : "warn"}`}>{er.baseline.status}</span>{" "}
-                  {er.baseline.note}
-                </td>
-              </tr>
-              <tr>
-                <th>Coverage</th>
-                <td>
-                  {er.coverage.evaluated} of {er.coverage.guardedTotal} registered candidate(s) evaluated. This covers the
-                  matched archetype's registered candidates, never every privileged function in the bytecode.
-                </td>
-              </tr>
-            </tbody>
-          </table>
-
-          {er.candidates.length > 0 && (
-            <details>
-              <summary>
-                Candidate evaluation ({er.candidates.length}) — controller, calldata and classifier detail
-              </summary>
-              {er.candidates.map((candidate, i) => (
-                <div className={`route ${candidate.result === "restrictor" ? "immediate" : "unknown"}`} key={i}>
-                  <header>
-                    <span className="r-label mono">{candidate.signature ?? candidate.selector}</span>
-                    <span className={`chip ${candidate.result === "restrictor" ? "crit" : "warn"}`}>{candidate.result}</span>
-                  </header>
-                  <div className="note small">
-                    called by <span className="addr">{candidate.guardingParty ?? "party not resolved"}</span>{" "}
-                    ({candidate.guardingPartyType ?? "type not established"}) with {candidate.args}
-                  </div>
-                  <p className="note" style={{ marginBottom: 0 }}>
-                    {candidate.detail}
-                  </p>
-                </div>
-              ))}
-            </details>
-          )}
-
-          {er.evaluationGaps.length > 0 && (
-            <div className="banner warn">
-              <strong>Gaps that stop this evaluation concluding cleanly</strong>
-              <ul className="plain" style={{ marginBottom: 0 }}>
-                {er.evaluationGaps.map((gap, i) => (
-                  <li key={i}>{gap}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* A stored report passes the same limitations to ForkEvidence below,
-              where they belong beside A/B/C. Do not print them twice. The live
-              analysis renders ReportView without that evidence slot, so it
-              retains the standalone fallback here. */}
-          {!forkEvidence && (
-            <>
-              <div className="ceiling">
-                <strong>What this experiment does not establish</strong>
-                <ul>
-                  {er.ceiling.map((item, i) => (
-                    <li key={i}>{item}</li>
+            {report.errors.length > 0 && (
+              <details>
+                <summary>{report.errors.length} infrastructure error(s)</summary>
+                <p className="note small">
+                  These are failures of our reads, not properties of the contract. A stage listed here fell back to a
+                  placeholder value and is never shown as a clean result.
+                </p>
+                <ul className="plain">
+                  {report.errors.map((error, i) => (
+                    <li key={i}>
+                      <span className="mono">{error.stage}</span> — {error.message}
+                    </li>
                   ))}
                 </ul>
+              </details>
+            )}
+          </section>
+
+          <section className="card">
+            <h2>Provenance</h2>
+            <div className="scroll-x">
+              <table>
+                <tbody>
+                  <tr>
+                    <th>Target</th>
+                    <td className="mono">
+                      {report.target.address} <CopyButton value={report.target.address} />
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>Chain</th>
+                    <td>{report.chainId}</td>
+                  </tr>
+                  <tr>
+                    <th>Block</th>
+                    <td className="mono">
+                      {report.block.number}
+                      {report.block.hash && report.block.hash !== "0x" && <div className="muted">{report.block.hash}</div>}
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>Analysis run at</th>
+                    {/* Distinct from the block's own time: one is when we looked,
+                        the other is when the chain state existed. */}
+                    <td>{report.generatedAt}</td>
+                  </tr>
+                  <tr>
+                    <th>Ruleset / schema</th>
+                    <td className="mono">
+                      ruleset {report.rulesetVersion} · schema {report.schemaVersion}
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>Bytecode</th>
+                    <td className="mono">
+                      {report.target.bytecodeSize} bytes
+                      {report.target.bytecodeHash && <div className="muted">{report.target.bytecodeHash}</div>}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            {reportId && (
+              <div className="row" style={{ marginTop: 14 }}>
+                <a className="btn shrink" href={`/api/reports/${encodeURIComponent(reportId)}/download`} download>
+                  Download JSON
+                </a>
+                <button className="shrink" type="button" onClick={() => window.print()}>
+                  Print / save as PDF
+                </button>
+                <span className="shrink">
+                  <CopyButton value={new URL(`/report/${reportId}`, window.location.origin).href} label="Copy link to this report" />
+                </span>
               </div>
-              <p className="note small">{er.sandboxNote}</p>
-            </>
-          )}
-          {er.reproduceCommand && (
-            <details>
-              <summary>Reproduce this</summary>
-              <pre className="raw">{er.reproduceCommand}</pre>
-            </details>
-          )}
-        </section>
-      )}
-
-      {forkEvidence}
-
-      {report.proof && (
-        <section className="card">
-          <h2>Upgrade drain proof</h2>
-          {report.proof.produced ? (
-            <>
-              <p className="statement" style={{ marginTop: 0 }}>
-                {report.proof.headline}
-              </p>
-              <p className="note">
-                Impersonated via {report.proof.impersonatedVia}. Notice on this route:{" "}
-                {report.proof.noticeSeconds === null ? "not established" : formatDuration(report.proof.noticeSeconds)} —{" "}
-                {report.proof.noticeNote}
-              </p>
-              {report.proof.deltas.length > 0 && (
-                <div className="scroll-x">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Asset</th>
-                        <th>Moved</th>
-                        <th>USD</th>
-                        <th>Price source</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {report.proof.deltas.map((delta, i) => (
-                        <tr key={i}>
-                          <td>{delta.symbol}</td>
-                          <td className="mono">{formatTokenUnits(delta.delta, delta.decimals)}<details><summary>Raw units</summary>{delta.delta}</details></td>
-                          <td className="mono">{delta.usd === null ? "undetermined" : `$${delta.usd.toFixed(2)}`}</td>
-                          <td className="small">{delta.priceSource}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              <p className="note small">
-                Only curated major-token holdings are measured, so this figure is a floor, never a ceiling. {report.proof.sandboxNote}
-              </p>
-            </>
-          ) : (
-            <p className="note" style={{ marginTop: 0 }}>
-              <strong>No proof was produced.</strong> {report.proof.failureReason} This is a statement about Ripcord's
-              coverage, not a finding about the contract.
-            </p>
-          )}
-        </section>
-      )}
-
-      {assetEvidence}
-
-      <section className="card">
-        <h2>Detected privileged capabilities</h2>
-        <p className="note" style={{ marginTop: 0 }}>
-          The Power Map shows the control chain. This table answers the different question of which recognised powers
-          Ripcord attributed to those controllers.
-        </p>
-        <Capabilities report={report} />
-      </section>
-
-      <section className="card">
-        <h2>Coverage and uncertainty</h2>
-        <div className="banner info">
-          <strong>Enumeration:</strong>{" "}
-          {report.enumeration.complete
-            ? "every site the verdict rests on reported a complete scan."
-            : "at least one site could not be fully enumerated. A reassuring window or verdict cannot be constructed over an incomplete route set, so the result stays cautious."}
-        </div>
-        {report.enumeration.gaps.length > 0 && (
-          <ul className="plain">
-            {report.enumeration.gaps.map((gap, i) => (
-              <li key={i}>
-                <span className="mono">{gap.where}</span> — {gap.reason}
-              </li>
-            ))}
-          </ul>
-        )}
-        {report.unknowns.length > 0 && (
-          <details>
-            <summary>{report.unknowns.length} explicit unknown(s)</summary>
-            <ul className="plain">
-              {report.unknowns.map((unknown, i) => (
-                <li key={i}>
-                  <span className="mono">{unknown.field}</span> — {unknown.reason}
-                </li>
-              ))}
-            </ul>
-          </details>
-        )}
-        {report.errors.length > 0 && (
-          <details>
-            <summary>{report.errors.length} infrastructure error(s)</summary>
-            <p className="note small">
-              These are failures of our reads, not properties of the contract. A stage listed here fell back to a
-              placeholder value and is never shown as a clean result.
-            </p>
-            <ul className="plain">
-              {report.errors.map((error, i) => (
-                <li key={i}>
-                  <span className="mono">{error.stage}</span> — {error.message}
-                </li>
-              ))}
-            </ul>
-          </details>
-        )}
-      </section>
-
-      <section className="card">
-        <h2>Provenance</h2>
-        <div className="scroll-x">
-          <table>
-            <tbody>
-              <tr>
-                <th>Target</th>
-                <td className="mono">
-                  {report.target.address} <CopyButton value={report.target.address} />
-                </td>
-              </tr>
-              <tr>
-                <th>Chain</th>
-                <td>{report.chainId}</td>
-              </tr>
-              <tr>
-                <th>Block</th>
-                <td className="mono">
-                  {report.block.number}
-                  {report.block.hash && report.block.hash !== "0x" && <div className="muted">{report.block.hash}</div>}
-                </td>
-              </tr>
-              <tr>
-                <th>Analysis run at</th>
-                {/* Distinct from the block's own time: one is when we looked,
-                    the other is when the chain state existed. */}
-                <td>{report.generatedAt}</td>
-              </tr>
-              <tr>
-                <th>Ruleset / schema</th>
-                <td className="mono">
-                  ruleset {report.rulesetVersion} · schema {report.schemaVersion}
-                </td>
-              </tr>
-              <tr>
-                <th>Bytecode</th>
-                <td className="mono">
-                  {report.target.bytecodeSize} bytes
-                  {report.target.bytecodeHash && <div className="muted">{report.target.bytecodeHash}</div>}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        {reportId && (
-          <div className="row" style={{ marginTop: 14 }}>
-            <a className="btn shrink" href={`/api/reports/${encodeURIComponent(reportId)}/download`} download>
-              Download JSON
-            </a>
-            <button className="shrink" type="button" onClick={() => window.print()}>
-              Print / save as PDF
-            </button>
-            <span className="shrink">
-              <CopyButton value={new URL(`/report/${reportId}`, window.location.origin).href} label="Copy link to this report" />
-            </span>
-          </div>
-        )}
-      </section>
+            )}
+          </section>
+      </div>
     </>
   );
 }

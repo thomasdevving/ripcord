@@ -7,6 +7,7 @@
  * than not offering it.
  */
 import { useEffect, useState } from "react";
+import { applyTheme, readTheme, type Theme } from "./theme.js";
 import type { ConfigResponse } from "@shared/dto";
 import { getConfig } from "./api.js";
 import { navigate, useRoute } from "./router.js";
@@ -20,6 +21,9 @@ import type { ReactElement } from "react";
 export function App(): ReactElement {
   const route = useRoute();
   const [config, setConfig] = useState<ConfigResponse | null>(null);
+  // Initialised from the same reader main.tsx already applied, so the control
+  // reflects the document rather than a second opinion about it.
+  const [theme, setTheme] = useState<Theme>(() => readTheme());
   const [configError, setConfigError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -75,6 +79,21 @@ export function App(): ReactElement {
           >
             Reports
           </a>
+          <button
+            type="button"
+            className="theme-toggle"
+            onClick={() => {
+              const next: Theme = theme === "dark" ? "light" : "dark";
+              applyTheme(next);
+              setTheme(next);
+            }}
+            // The control names the theme it SWITCHES TO, which is what a
+            // reader is choosing; the icon shows the same thing.
+            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+            title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+          >
+            <span aria-hidden="true">{theme === "dark" ? "☀" : "☾"}</span>
+          </button>
         </nav>
       </header>
 
