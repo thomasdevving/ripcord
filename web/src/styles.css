@@ -858,6 +858,10 @@ pre {
  * asked for 4px and `section.card` outranked it on specificity, so the one
  * element meant to carry the verdict's tone rendered a 1px hairline.)
  */
+/* The card carries the answer alone now, so the clocks are the widest thing in
+   it rather than one column of a two-column body. */
+section.card.verdict-card .clocks { width: 100%; }
+
 section.card.verdict-card {
   position: relative;
   background: var(--surface-2);
@@ -1584,6 +1588,110 @@ ul.plain li { margin-bottom: 5px; font-size: 13px; line-height: 1.6; color: var(
   details:not([open]) > summary::after { content: " (collapsed in print)"; color: #66665f; }
 }
 
+/* --- folds ----------------------------------------------------------------
+ *
+ * A fold is how detail stays PRESENT without being in the way. The rule this
+ * interface follows is that nothing a report established may be deleted to
+ * make a page shorter — the missing list, the ceiling items and the unmeasured
+ * legs are the parts that stop a thin result reading as a confident one — so
+ * the length problem is solved by letting the reader choose, never by dropping
+ * the qualification.
+ *
+ * WHAT IS NEVER FOLDED, and this is the line: the verdict, the two clocks, and
+ * the findings themselves. Anything that would let a reader walk away with a
+ * more reassuring impression than the report supports stays open.
+ *
+ * Built on <details>, so it works with no JavaScript, is keyboard-operable and
+ * findable by the browser's own in-page search.
+ */
+details.fold {
+  padding: 0;
+  overflow: hidden;
+}
+
+details.fold > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 14px 18px;
+  cursor: pointer;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text-primary);
+  list-style: none;
+}
+details.fold > summary::-webkit-details-marker { display: none; }
+
+/* The marker is drawn rather than inherited: the platform triangles differ
+   between browsers and sit at a different baseline in each. */
+details.fold > summary::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  flex: none;
+  align-self: center;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+}
+details.fold[open] > summary::before { transform: rotate(45deg); }
+details.fold > summary:hover { background: var(--surface-2); }
+details.fold > summary:hover::before { border-color: var(--text-primary); }
+
+.fold-hint {
+  font: 400 12px/1.4 var(--sans);
+  color: var(--muted);
+}
+
+.fold-body {
+  padding: 2px 18px 18px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
+/* A fold that lives INSIDE a card rather than being one. */
+details.fold.inline-fold {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  margin: 0 0 16px;
+}
+details.fold.inline-fold > summary { padding: 10px 14px; font-size: 13px; }
+details.fold.inline-fold .fold-body { padding: 12px 14px 14px; }
+
+/* An inline "Why?" that explains a label without spending a paragraph on it.
+   Focusable, so the explanation is reachable without a pointer; the same text
+   is always available in full somewhere unfolded, because a tooltip is not a
+   place to keep something a reader must not miss. */
+.finding-why,
+.why-hint {
+  /* Resets, not decoration: both hints sit inside uppercase, letter-spaced
+     mono headings and table cells, and inheriting that turned a quiet aside
+     into a shouted "WHY?". */
+  font: 400 11px/1 var(--sans);
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--muted);
+  border-bottom: 1px dotted var(--baseline);
+  cursor: help;
+  margin-left: 6px;
+}
+.finding-why:hover,
+.finding-why:focus-visible,
+.why-hint:hover,
+.why-hint:focus-visible { color: var(--text-primary); }
+
+/* Printing opens every fold. A printed report that carried only the sections
+   someone happened to have expanded would be a different document each time,
+   which is the opposite of what a pinned report is for. */
+@media print {
+  details.fold > summary::before { display: none; }
+  details.fold, details.fold[open] { border: 1px solid #cfcfc7; }
+}
+
 /* --- report tabs and the overview list ------------------------------------
  *
  * The tab strip sits directly under the verdict card and above the panes, so a
@@ -1634,7 +1742,13 @@ ul.plain li { margin-bottom: 5px; font-size: 13px; line-height: 1.6; color: var(
   color: var(--text-primary);
 }
 
-.report-panel { display: block; }
+/* NO `display` DECLARATION FOR THE VISIBLE STATE, and that omission is the
+   point: an author-stylesheet `display: block` outranks the user agent's
+   `[hidden] { display: none }`, so writing one here silently disabled the
+   tabs — every pane rendered, stacked, with the strip highlighting one of
+   them. Visibility belongs to the `hidden` attribute alone, which is also
+   what keeps the panes out of the accessibility tree. */
+.report-panel[hidden] { display: none; }
 /* The scroll target is a heading inside a card; without this its focus ring
    would sit under the sticky strip that just moved us there. */
 .report-panel section.card { scroll-margin-top: calc(var(--topbar-height) + 64px); }
@@ -1727,4 +1841,78 @@ ul.plain li { margin-bottom: 5px; font-size: 13px; line-height: 1.6; color: var(
 @media print {
   .report-tabs { display: none !important; }
   .report-panel[hidden] { display: block !important; }
+  /* Same reasoning as the hidden panels: a printed report carries everything,
+     not the subset this reader happened to open. */
+  details.fold > .fold-body { display: block !important; }
 }
+
+/* The three-step legend above the fork evidence blocks. Its job is to let a
+   reader understand A/B/C before meeting any of the terminology in them. */
+.fork-legend {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.fork-legend li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 13.5px;
+  color: var(--text-secondary);
+}
+.fork-legend-step {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  font: 600 11px/1 var(--mono);
+  color: var(--text-primary);
+}
+
+/* --- "Why Ripcord?" -------------------------------------------------------
+ *
+ * The argument page. It reuses the home page's section shapes deliberately:
+ * this is the same document's voice, not a marketing skin over it, and a
+ * separate visual language would undercut the claim that the tool and its
+ * explanation come from one place.
+ */
+.why-page { padding-top: clamp(28px, 4vw, 52px); }
+
+.why-head {
+  max-width: 62rem;
+  margin-bottom: clamp(30px, 4vw, 48px);
+  padding-bottom: clamp(22px, 3vw, 32px);
+  border-bottom: 1px solid var(--border);
+}
+
+.why-head h1 {
+  margin: 10px 0 0;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: clamp(28px, 3.6vw, 46px);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.why-lede {
+  margin: 16px 0 0;
+  max-width: 62ch;
+  font-size: 16px;
+  line-height: 1.62;
+  color: var(--text-secondary);
+}
+
+.why-cta {
+  margin: clamp(30px, 4vw, 48px) 0 clamp(40px, 5vw, 64px);
+  padding-top: clamp(22px, 3vw, 32px);
+  border-top: 1px solid var(--border);
+}
+.why-cta h2 { margin: 0 0 6px; font-family: var(--display); font-size: clamp(20px, 2vw, 26px); }
+.why-cta .note { max-width: 62ch; margin-bottom: 18px; }
