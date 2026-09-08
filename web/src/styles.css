@@ -2058,8 +2058,6 @@ details.fold.inline-fold .fold-body { padding: 12px 14px 14px; }
  * its rail segment is drawn; the others are exactly as they were, never dimmed
  * into unreadability to make the marked one stand out.
  */
-.method-steps { position: relative; }
-
 .steps.walkable .step {
   position: relative;
   padding-left: 18px;
@@ -2067,22 +2065,14 @@ details.fold.inline-fold .fold-body { padding: 12px 14px 14px; }
   transition: background 160ms ease;
 }
 
-/* The rail. One continuous hairline behind every stage. */
-.steps.walkable .step::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: var(--border);
-}
-
-/* The marker: a short bright segment of that rail, beside the active stage. */
+/* THE ONLY MARK, and it appears only under the pointer. There was a continuous
+   hairline down the left of every stage as well; with a marker that already
+   says where the reader is, a permanent rail was one line of furniture doing no
+   work, and it made a list of prose look like a diagram. */
 .steps.walkable .step::after {
   content: "";
   position: absolute;
-  left: -1px;
+  left: 0;
   top: 14px;
   bottom: 14px;
   width: 3px;
@@ -2099,26 +2089,15 @@ details.fold.inline-fold .fold-body { padding: 12px 14px 14px; }
 .steps.walkable .step.active .step-title { color: var(--text-primary); }
 .steps.walkable .step:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
-.method-note {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin: 12px 0 0;
-  font-size: 12px;
-  color: var(--muted);
-}
-
-/* Under reduced motion there is no walk, so the label describing one and the
-   control that replays it are both untrue. The list itself is unchanged. */
+/* Nothing here moves on its own, so reduced motion only drops the transitions.
+   The marker itself stays: it answers a pointer, and a reader who asked for
+   less motion still needs to see what they are pointing at. */
 @media (prefers-reduced-motion: reduce) {
-  .reduced-hide { display: none; }
-  .steps.walkable .step::after { display: none; }
-  .steps.walkable .step { transition: none; }
+  .steps.walkable .step,
+  .steps.walkable .step::after { transition: none; }
 }
 
-/* The marker is a screen affordance; on paper the rail is just a line. */
+/* The marker is a pointer affordance and there is no pointer on paper. */
 @media print {
-  .steps.walkable .step::after,
-  .method-note { display: none !important; }
+  .steps.walkable .step::after { display: none !important; }
 }
