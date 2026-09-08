@@ -104,6 +104,31 @@ export function Hero({
     const SEG_MS = 230;
     const TAIL_MS = 520;
 
+    /**
+     * THE GRAPH'S INK COMES FROM THE STYLESHEET, NOT FROM THIS FILE.
+     *
+     * It used to be six hardcoded `rgba(231,237,228,…)` calls — the dark
+     * theme's foreground, drawn on the dark ground the band used to be. Under
+     * the light theme that is near-white on near-white: the graph does not
+     * merely look wrong, it disappears, and nothing in a canvas fails loudly
+     * enough for anyone to notice.
+     *
+     * The values are read as RGB TRIPLETS from the band's own custom
+     * properties, so the hero has exactly one palette definition and it lives
+     * beside every other colour in the app. Read on demand rather than per
+     * frame — `getComputedStyle` forces style resolution, and doing that 60
+     * times a second to re-learn a colour that changes when someone presses a
+     * button would be a real cost for no gain.
+     */
+    let ink = "231,237,228";
+    let pulseInk = "91,157,255";
+
+    function readInk(): void {
+      const styles = window.getComputedStyle(canvas!);
+      ink = styles.getPropertyValue("--hb-net-ink").trim() || ink;
+      pulseInk = styles.getPropertyValue("--hb-net-pulse").trim() || pulseInk;
+    }
+
     function build(): void {
       const rect = canvas!.getBoundingClientRect();
       W = Math.max(1, rect.width);
@@ -204,7 +229,7 @@ export function Hero({
         if (!a || !b) continue;
         const alpha = Math.max(0, 0.5 - (idx - s) * 0.11) * fade;
         if (alpha <= 0.01) continue;
-        ctx!.strokeStyle = `rgba(91,157,255,${alpha.toFixed(3)})`;
+        ctx!.strokeStyle = `rgba(${pulseInk},${alpha.toFixed(3)})`;
         ctx!.lineWidth = 1;
         ctx!.beginPath();
         ctx!.moveTo(a.x, a.y);
@@ -219,14 +244,14 @@ export function Hero({
         const hx = from.x + (to.x - from.x) * ease;
         const hy = from.y + (to.y - from.y) * ease;
 
-        ctx!.strokeStyle = "rgba(231,237,228,0.7)";
+        ctx!.strokeStyle = `rgba(${ink},0.7)`;
         ctx!.lineWidth = 1.1;
         ctx!.beginPath();
         ctx!.moveTo(from.x, from.y);
         ctx!.lineTo(hx, hy);
         ctx!.stroke();
 
-        ctx!.fillStyle = "rgba(231,237,228,0.95)";
+        ctx!.fillStyle = `rgba(${ink},0.95)`;
         ctx!.beginPath();
         ctx!.arc(hx, hy, 1.9, 0, 6.2832);
         ctx!.fill();
@@ -240,7 +265,7 @@ export function Hero({
 
       ctx!.lineWidth = 1;
       for (const link of links) {
-        ctx!.strokeStyle = `rgba(231,237,228,${(link.strength * 0.17).toFixed(3)})`;
+        ctx!.strokeStyle = `rgba(${ink},${(link.strength * 0.17).toFixed(3)})`;
         ctx!.beginPath();
         ctx!.moveTo(link.a.x, link.a.y);
         ctx!.lineTo(link.b.x, link.b.y);
@@ -251,13 +276,13 @@ export function Hero({
 
       for (const n of nodes) {
         const alpha = n.focal ? 0.66 + 0.28 * Math.sin(clock / 1500 + n.phase) : 0.3;
-        ctx!.fillStyle = `rgba(231,237,228,${alpha.toFixed(3)})`;
+        ctx!.fillStyle = `rgba(${ink},${alpha.toFixed(3)})`;
         ctx!.beginPath();
         ctx!.arc(n.x, n.y, n.r, 0, 6.2832);
         ctx!.fill();
 
         if (n.focal) {
-          ctx!.strokeStyle = "rgba(231,237,228,0.16)";
+          ctx!.strokeStyle = `rgba(${ink},0.16)`;
           ctx!.beginPath();
           ctx!.arc(n.x, n.y, n.r + 3.2, 0, 6.2832);
           ctx!.stroke();
@@ -316,9 +341,25 @@ export function Hero({
     }
 
     function reset(): void {
+      readInk();
       build();
       start();
     }
+
+    /**
+     * A theme change repaints the graph without rebuilding it: the node
+     * positions are the picture, and rebuilding would reshuffle the
+     * constellation for what is only a change of ink. Under reduced motion
+     * there is no frame loop to pick the new colour up, so the single static
+     * frame is redrawn here.
+     */
+    function onTheme(): void {
+      readInk();
+      if (reduce.matches) draw();
+    }
+
+    const themeWatch = new MutationObserver(onTheme);
+    themeWatch.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
     function onResize(): void {
       window.clearTimeout(resizeTimer);
@@ -348,6 +389,7 @@ export function Hero({
       window.removeEventListener("resize", onResize);
       document.removeEventListener("visibilitychange", onVisibility);
       reduce.removeEventListener("change", reset);
+      themeWatch.disconnect();
     };
   }, []);
 
@@ -378,9 +420,19 @@ export function Hero({
 
         <div className="hb-stage">
           <div className="hb-copy">
+            {/* THE HEADLINE IS THE METRIC, PHRASED AS THE QUESTION IT ANSWERS.
+                The setup keeps the contrast the whole project rests on — an
+                audit answers "is there a bug", not "who holds the keys" — and
+                the question that follows is the two-clock comparison in one
+                line: time to leave against notice before the rules change.
+
+                The green sits on "get out", never on the answer. Green marks
+                the exit concept and the primary control in this band; putting
+                it on a verdict word would be the stylesheet making a claim the
+                report refuses to. */}
             <h1 className="hb-headline" id="hb-headline">
               <span className="hb-setup">Audits check the code.</span>{"\u00a0"}
-              Ripcord checks who can <span className="hb-emphasis">close the exit.</span>
+              Can you <span className="hb-emphasis">get out</span> before privileged parties can act?
             </h1>
 
             <p className="hb-sub">{SUBHEAD[view]}</p>

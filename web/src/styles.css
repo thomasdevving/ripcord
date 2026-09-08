@@ -147,6 +147,55 @@ input, textarea { caret-color: var(--accent); }
   }
 }
 
+/* THE HERO FOLLOWS THE THEME, AND IT USED NOT TO.
+ *
+ * The band carries its own `--hb-*` palette so the canvas and the example card
+ * stay tunable without their component names leaking into report styles. That
+ * scoping is still right; what was wrong is that the palette had exactly one
+ * definition, so a reader on the light theme got a black band above a white
+ * page — the two halves of one document disagreeing about which product they
+ * belong to.
+ *
+ * Only the tokens are restated. Not one `.hb-*` rule below knows a theme
+ * exists, which is the same property that let the app's own palette be
+ * redefined in one block.
+ *
+ * THE SEMANTIC RULE SURVIVES THE FLIP, and it is the one thing here that is not
+ * taste: green still marks the exit concept, the primary control and links —
+ * never a verdict — and the example card's verdict stays amber and red, exactly
+ * as a rendered report shows it. The greens and the amber are darkened rather
+ * than merely reused, because a hue that reads as confident on a dark ground
+ * reads as washed out on a light one and drops under the contrast floor the
+ * rest of this sheet holds.
+ */
+:root[data-theme="light"] .hb {
+  --hb-bg: #f2f2ee;
+  --hb-surface: #ffffff;
+  --hb-surface-2: #f0f0ea;
+  --hb-ink: #14150f;
+  --hb-ink-muted: #43443c;
+  --hb-ink-faint: #5f6157;
+  --hb-rule: #d5d5cc;
+  --hb-rule-strong: #a6a79c;
+  --hb-green: #0a6b45;
+  --hb-green-lift: #0b7d50;
+  --hb-green-wash: #e8f3ed;
+  --hb-green-edge: #b9d9c9;
+  --hb-green-rule: #cbe2d6;
+  --hb-green-dim: #3f7a60;
+  --hb-amber: #8a5e00;
+  --hb-amber-wash: #fbf1dc;
+  --hb-amber-dim: #7a5200;
+  --hb-red: #b03030;
+  --hb-red-wash: #fbeded;
+  --hb-red-edge: #e8c4c0;
+
+  /* The graph is drawn IN the ink and veiled BY the ground, so both invert. */
+  --hb-net-ink: 20, 21, 15;
+  --hb-net-pulse: 31, 95, 191;
+  --hb-veil-rgb: 242, 242, 238;
+}
+
 /* --- light theme ----------------------------------------------------------
  *
  * DARK IS THE DEFAULT AND STAYS THE DEFAULT: the ground above is the hero's,
@@ -206,6 +255,14 @@ input, textarea { caret-color: var(--accent); }
    painting knows about the theme. */
 :root[data-theme="light"] body {
   background: var(--plane);
+}
+
+/* THE MARK IS A DARK ARTWORK, INVERTED TO SIT ON THE DARK GROUND. Inverting it
+   again on a light one paints white on white — the logo does not look wrong,
+   it is simply not there, which is the quietest kind of visual bug. On this
+   ground the artwork is already the right way round. */
+:root[data-theme="light"] .brand-mark img {
+  filter: none;
 }
 
 /* --- shell ---------------------------------------------------------------- */
@@ -1194,6 +1251,14 @@ ul.plain li { margin-bottom: 5px; font-size: 13px; line-height: 1.6; color: var(
   --hb-red-wash: #2c1917;
   --hb-red-edge: #4a2823;
 
+  /* RGB TRIPLETS, not colours, because two consumers need the channels and not
+     the value: the canvas composes them with a per-node alpha (Hero.tsx reads
+     these two properties by name), and the veil below builds gradient stops
+     from the ground. Keeping them here means the band still has ONE palette. */
+  --hb-net-ink: 231, 237, 228;
+  --hb-net-pulse: 91, 157, 255;
+  --hb-veil-rgb: 15, 18, 14;
+
   position: relative;
   overflow: hidden;
   isolation: isolate;
@@ -1212,8 +1277,8 @@ ul.plain li { margin-bottom: 5px; font-size: 13px; line-height: 1.6; color: var(
   z-index: 1;
   pointer-events: none;
   background:
-    radial-gradient(115% 88% at 4% 68%, rgba(15, 18, 14, 0.95) 0%, rgba(15, 18, 14, 0.78) 32%, rgba(15, 18, 14, 0) 68%),
-    linear-gradient(180deg, rgba(15, 18, 14, 0.62) 0%, rgba(15, 18, 14, 0) 20%, rgba(15, 18, 14, 0) 72%, rgba(15, 18, 14, 0.66) 100%);
+    radial-gradient(115% 88% at 4% 68%, rgba(var(--hb-veil-rgb), 0.95) 0%, rgba(var(--hb-veil-rgb), 0.78) 32%, rgba(var(--hb-veil-rgb), 0) 68%),
+    linear-gradient(180deg, rgba(var(--hb-veil-rgb), 0.62) 0%, rgba(var(--hb-veil-rgb), 0) 20%, rgba(var(--hb-veil-rgb), 0) 72%, rgba(var(--hb-veil-rgb), 0.66) 100%);
 }
 
 .hb-frame {
