@@ -1677,10 +1677,16 @@ details.fold.inline-fold .fold-body { padding: 12px 14px 14px; }
   color: var(--muted);
   border-bottom: 1px dotted var(--baseline);
   cursor: help;
-  margin-left: 6px;
+  /* Padding, not just margin: the hit area was the width of the word, which is
+     a small target for something whose whole job is to be discovered. */
+  padding: 2px 5px;
+  margin-left: 4px;
+  border-radius: 2px;
 }
 .why-hint:hover,
-.why-hint:focus-visible { color: var(--text-primary); }
+.why-hint.open { background: var(--surface-2); }
+.why-hint:hover,
+.why-hint.open { color: var(--text-primary); }
 
 /* The bubble. Hidden by `visibility` rather than `display` so it can carry a
    transition and stay in the accessibility tree for `aria-describedby`. */
@@ -1706,9 +1712,12 @@ details.fold.inline-fold .fold-body { padding: 12px 14px 14px; }
   transition: opacity 110ms ease;
   pointer-events: none;
 }
-.why-hint:hover > .why-bubble,
-.why-hint:focus-visible > .why-bubble,
-.why-hint:focus-within > .why-bubble {
+/* Visibility is driven by WhyHint's own state, not by a cascade — see the
+   comment at the top of that component for why a CSS-only rule was replaced.
+   The `:hover` fallback is kept so the bubble still appears if the component's
+   handlers are ever lost, never as the primary mechanism. */
+.why-hint.open > .why-bubble,
+.why-hint:hover > .why-bubble {
   visibility: visible;
   opacity: 1;
 }
@@ -1969,4 +1978,63 @@ details.fold.inline-fold .fold-body { padding: 12px 14px 14px; }
 
 @media (max-width: 720px) {
   .label-legend > div { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+}
+
+/* The phases, as a run-bar item that opens. Same two-line shape as every other
+   item when closed, so the bar reads as one row of facts about the run rather
+   than a row with a control bolted on. */
+.runbar-phases > summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  cursor: pointer;
+  list-style: none;
+}
+.runbar-phases > summary::-webkit-details-marker { display: none; }
+.runbar-phases > summary .v::after {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 8px;
+  vertical-align: 2px;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform 120ms ease;
+}
+.runbar-phases[open] > summary .v::after { transform: rotate(-135deg); vertical-align: 0; }
+.runbar-phases > summary:hover .v { color: var(--text-primary); }
+
+/* The timeline floats over the page rather than pushing the bar taller: the bar
+   is sticky, and growing it would shove the report down every time someone
+   checked how the run went. */
+.runbar-phases {
+  position: relative;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+}
+.runbar-phases-body {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 10px);
+  left: 0;
+  width: max-content;
+  max-width: min(92vw, 900px);
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+
+.warn-ink { color: var(--warn-ink); }
+.crit { color: var(--crit-ink); }
+
+@media print {
+  /* A printed run record should carry its phases, not a collapsed summary. */
+  .runbar-phases-body { position: static; box-shadow: none; display: block !important; }
 }

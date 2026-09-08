@@ -88,6 +88,22 @@ export function AnalysisScreen({ jobId }: { jobId: string }): ReactElement {
   const forkBlocks = preferLiveBlocks(job.fork, report);
   const forkRan = Boolean(forkBlocks.baseline || forkBlocks.mutation || forkBlocks.reexit);
   const forkMode = summary?.mode !== "scan";
+  /**
+   * Counted rather than folded away. A collapsed summary that said only
+   * "Phases" would hide a failed stage behind a click, and a failed stage is
+   * the one thing on this bar a reader most needs to see without asking.
+   */
+  const phaseCounts = job.phases.reduce(
+    (acc, p) => ({
+      completed: acc.completed + (p.status === "completed" ? 1 : 0),
+      failed: acc.failed + (p.status === "failed" ? 1 : 0),
+      skipped: acc.skipped + (p.status === "skipped" ? 1 : 0),
+      // A stage that RAN and could not answer is neither a success nor a
+      // failure, and folding it into either would misdescribe the run.
+      unresolved: acc.unresolved + (p.status === "inconclusive" || p.status === "degraded" ? 1 : 0),
+    }),
+    { completed: 0, failed: 0, skipped: 0, unresolved: 0 },
+  );
 
   return (
     <>
@@ -126,6 +142,30 @@ export function AnalysisScreen({ jobId }: { jobId: string }): ReactElement {
           <span className="k">Elapsed</span>
           <span className="v">{elapsed}</span>
         </div>
+        {/* PHASES BELONG TO THE RUN, NOT TO THE REPORT. They were a full card
+            above the analysis, which on a finished run is a record of how the
+            work went sitting where the result should be. In the bar they read
+            as one more fact about this run — with the counts visible closed, so
+            a failed or skipped stage is never hidden behind a click. */}
+        <details className="item runbar-phases">
+          <summary>
+            <span className="k">Phases</span>
+            <span className="v">
+              {phaseCounts.completed} of {job.phases.length} finished
+              {phaseCounts.failed > 0 && <span className="crit"> · {phaseCounts.failed} failed</span>}
+              {phaseCounts.unresolved > 0 && <span className="warn-ink"> · {phaseCounts.unresolved} unresolved</span>}
+              {phaseCounts.skipped > 0 && <span className="muted"> · {phaseCounts.skipped} skipped</span>}
+            </span>
+          </summary>
+          <div className="runbar-phases-body">
+            <PhaseTimeline phases={job.phases} />
+            {job.phases.find((p) => p.status === "running")?.detail && (
+              <p className="note small" style={{ marginBottom: 0, marginTop: 10 }}>
+                {job.phases.find((p) => p.status === "running")?.detail}
+              </p>
+            )}
+          </div>
+        </details>
         <div className="item">
           <span className="k">State</span>
           <span className="v">
@@ -173,16 +213,6 @@ export function AnalysisScreen({ jobId }: { jobId: string }): ReactElement {
             whether it could conclude at all — is the verdict below.
           </div>
         )}
-
-        <section className="card">
-          <h3>Phases</h3>
-          <PhaseTimeline phases={job.phases} />
-          {job.phases.find((p) => p.status === "running")?.detail && (
-            <p className="note small" style={{ marginBottom: 0, marginTop: 10 }}>
-              {job.phases.find((p) => p.status === "running")?.detail}
-            </p>
-          )}
-        </section>
 
         {/* WHILE THE RUN IS IN FLIGHT these are the page: the map fills in as
             addresses resolve and the fork blocks arrive as they execute, which
