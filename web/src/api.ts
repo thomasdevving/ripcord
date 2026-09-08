@@ -25,6 +25,13 @@ import type {
 } from "@shared/dto";
 import type { AssetCoverage } from "@shared/coverage";
 import type { EnrichedAssessment } from "@shared/enriched";
+import type {
+  CreateProtocolRequest,
+  ProtocolDetailResponse,
+  ProtocolListItem,
+  ProtocolRecord,
+  StartProtocolScanResponse,
+} from "@shared/protocols";
 
 export class ApiRequestError extends Error {
   constructor(public readonly api: ApiError, public readonly status: number) {
@@ -89,6 +96,20 @@ export const listReports = () => request<{ reports: SavedReportListItem[] }>("/a
 
 export const getReport = (id: string) =>
   request<{ id: string; origin: "live" | "calibration"; report: unknown; structure: import("@shared/dto").StructuralSnapshot | null }>(`/api/reports/${encodeURIComponent(id)}`);
+
+export const listProtocols = () => request<{ protocols: ProtocolListItem[] }>("/api/protocols");
+
+export const createProtocol = (body: CreateProtocolRequest) =>
+  request<{ protocol: ProtocolRecord }>("/api/protocols", { method: "POST", body: JSON.stringify(body) });
+
+export const getProtocol = (id: string) =>
+  request<ProtocolDetailResponse>(`/api/protocols/${encodeURIComponent(id)}`);
+
+export const startProtocolScan = (id: string, idempotencyKey: string) =>
+  request<StartProtocolScanResponse>(`/api/protocols/${encodeURIComponent(id)}/scans`, {
+    method: "POST",
+    body: JSON.stringify({ idempotencyKey }),
+  });
 
 export const pollEvents = (jobId: string, after: number) =>
   request<{ events: JobEvent[]; truncated: boolean; summary: JobSummary }>(

@@ -16,6 +16,8 @@ import { ScanScreen } from "./screens/ScanScreen.js";
 import { AnalysisScreen } from "./screens/AnalysisScreen.js";
 import { ReportScreen } from "./screens/ReportScreen.js";
 import { SavedReportsScreen } from "./screens/SavedReportsScreen.js";
+import { ProtocolsScreen } from "./screens/ProtocolsScreen.js";
+import { ProtocolScreen } from "./screens/ProtocolScreen.js";
 import type { ReactElement } from "react";
 
 export function App(): ReactElement {
@@ -64,7 +66,7 @@ export function App(): ReactElement {
               and letting the section be found on the next frame. */}
           <a
             href="/#why"
-            className="topbar-link"
+            className="topbar-link topbar-why"
             onClick={(e) => {
               e.preventDefault();
               if (route.name !== "home") navigate({ name: "home" });
@@ -74,6 +76,17 @@ export function App(): ReactElement {
             }}
           >
             Why Ripcord?
+          </a>
+          <a
+            href="/protocols"
+            className={`topbar-link ${route.name === "protocols" || route.name === "protocol" ? "active" : ""}`}
+            aria-current={route.name === "protocols" ? "page" : undefined}
+            onClick={(e) => {
+              e.preventDefault();
+              navigate({ name: "protocols" });
+            }}
+          >
+            Protocols
           </a>
           <a
             href="/scan"
@@ -125,6 +138,8 @@ export function App(): ReactElement {
       {route.name === "scan" && <ScanScreen config={config} />}
       {route.name === "analysis" && <AnalysisScreen key={route.jobId} jobId={route.jobId} />}
       {route.name === "report" && <ReportScreen key={route.reportId} reportId={route.reportId} />}
+      {route.name === "protocols" && <ProtocolsScreen />}
+      {route.name === "protocol" && <ProtocolScreen key={route.protocolId} protocolId={route.protocolId} config={config} />}
       {route.name === "saved" && <SavedReportsScreen />}
     </div>
   );

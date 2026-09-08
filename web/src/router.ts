@@ -1,6 +1,6 @@
 /**
- * A ~40-line router. There are five routes, and pulling in a routing library for
- * five would add more bundle and API surface than it removes.
+ * A small router. Pulling in a routing library for this static route set would
+ * add more bundle and API surface than it removes.
  *
  * The reason routes exist at all rather than one stateful page: A REPORT URL MUST
  * SURVIVE A REFRESH. `/report/:id` re-fetches the stored report, and
@@ -15,12 +15,16 @@ export type Route =
   | { name: "scan" }
   | { name: "analysis"; jobId: string }
   | { name: "report"; reportId: string }
+  | { name: "protocols" }
+  | { name: "protocol"; protocolId: string }
   | { name: "saved" };
 
 export function parseRoute(pathname: string): Route {
   const parts = pathname.split("/").filter(Boolean);
   if (parts[0] === "analysis" && parts[1]) return { name: "analysis", jobId: parts[1] };
   if (parts[0] === "report" && parts[1]) return { name: "report", reportId: parts[1] };
+  if (parts[0] === "protocols" && parts[1]) return { name: "protocol", protocolId: parts[1] };
+  if (parts[0] === "protocols") return { name: "protocols" };
   if (parts[0] === "scan") return { name: "scan" };
   // /why was briefly a page of its own; it now falls through to the home
   // page, where that argument lives under the hero.
@@ -36,6 +40,10 @@ export function toPath(route: Route): string {
       return `/report/${route.reportId}`;
     case "scan":
       return "/scan";
+    case "protocols":
+      return "/protocols";
+    case "protocol":
+      return `/protocols/${route.protocolId}`;
     case "saved":
       return "/saved";
     default:
