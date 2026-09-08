@@ -456,9 +456,14 @@ export function Hero({
           </div>
 
           <aside className="hb-card" aria-label="Example result, quoted from a committed report">
+            {/* The block is no longer printed here — it is provenance for a
+                reader who wants to check the quote, and the source line at the
+                foot of the card already points at the report. `EXAMPLE.block`
+                stays in the literal because scripts/verify-claims.mjs reads it
+                to prove every figure on this card comes from ONE report at ONE
+                block; deleting the field would delete that check. */}
             <div className="hb-card-meta">
               <span>Example · {EXAMPLE.protocol}</span>
-              <span>Block {EXAMPLE.block}</span>
             </div>
 
             <div className="hb-card-top">

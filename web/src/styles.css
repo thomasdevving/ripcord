@@ -1410,7 +1410,13 @@ ul.plain li { margin-bottom: 5px; font-size: 13px; line-height: 1.6; color: var(
   color: var(--hb-ink-faint);
 }
 
-.hb-card-top { background: var(--hb-green-wash); padding: 18px 16px 0; }
+/* NEUTRAL, NOT GREEN — and this is the stylesheet's own rule catching up with
+   itself. The top of this card holds a VERDICT quotation: two days of notice
+   against an exit that closes with none. Green in this band marks the exit
+   concept and the primary control, never an outcome, and a green wash behind a
+   figure reads as a judgement about that figure. Grey lets the numbers and the
+   amber verdict chip below carry the meaning on their own. */
+.hb-card-top { background: var(--hb-surface-2); padding: 18px 16px 0; }
 
 .hb-figure {
   margin: 0;
@@ -1424,11 +1430,11 @@ ul.plain li { margin-bottom: 5px; font-size: 13px; line-height: 1.6; color: var(
   color: var(--hb-ink);
   font-variant-numeric: tabular-nums;
 }
-.hb-vs { font-family: var(--mono); font-weight: 400; font-size: 0.9rem; letter-spacing: 0.06em; color: var(--hb-green-dim); }
+.hb-vs { font-family: var(--mono); font-weight: 400; font-size: 0.9rem; letter-spacing: 0.06em; color: var(--hb-ink-faint); }
 
 .hb-card-label { margin: 10px 0 16px; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.04em; color: var(--hb-ink-muted); }
 
-.hb-stats { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--hb-green-rule); margin: 0 -16px; }
+.hb-stats { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--hb-rule); margin: 0 -16px; }
 
 /* The keys sit on a shared baseline. One of the three ("moved on a fork") wraps
    to two lines while its neighbours do not, and a ragged row of three facts
@@ -1439,7 +1445,7 @@ ul.plain li { margin-bottom: 5px; font-size: 13px; line-height: 1.6; color: var(
   justify-content: space-between;
   gap: 6px;
   padding: 12px;
-  border-left: 1px solid var(--hb-green-rule);
+  border-left: 1px solid var(--hb-rule);
 }
 .hb-stat:first-child { border-left: 0; padding-left: 16px; }
 .hb-stat-v {
