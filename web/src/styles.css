@@ -1342,8 +1342,8 @@ ul.plain li { margin-bottom: 5px; font-size: 13px; line-height: 1.6; color: var(
   color: var(--hb-ink);
   text-wrap: balance;
 }
-/* The premise is the quiet half; the gap it leaves is the loud one. */
-.hb-setup { color: var(--hb-ink-muted); }
+/* The one emphasised span in the headline. It carries the EXIT, never a
+   verdict — see the palette note at the top of this band. */
 .hb-emphasis { color: var(--hb-green); }
 
 .hb-sub { margin: 0; font-size: 16px; line-height: 1.62; color: var(--hb-ink-muted); max-width: 62ch; }
@@ -1568,7 +1568,7 @@ ul.plain li { margin-bottom: 5px; font-size: 13px; line-height: 1.6; color: var(
   .hb { background: #ffffff; color: #0b0b0b; border-bottom: 1px solid #cfcfc7; }
   .hb-net, .hb-veil, .hb-segmented, .hb-actions, .hb-card { display: none !important; }
   .hb-headline { color: #0b0b0b; font-size: 20px; }
-  .hb-setup, .hb-sub, .hb-eyebrow { color: #3a3a38; }
+  .hb-sub, .hb-eyebrow { color: #3a3a38; }
 
   .topbar, .runbar, button, .graph-wrap { display: none !important; }
   section.card { break-inside: avoid; border: 1px solid #cfcfc7; }

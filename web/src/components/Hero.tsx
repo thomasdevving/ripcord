@@ -420,19 +420,19 @@ export function Hero({
 
         <div className="hb-stage">
           <div className="hb-copy">
-            {/* THE HEADLINE IS THE METRIC, PHRASED AS THE QUESTION IT ANSWERS.
-                The setup keeps the contrast the whole project rests on — an
-                audit answers "is there a bug", not "who holds the keys" — and
-                the question that follows is the two-clock comparison in one
-                line: time to leave against notice before the rules change.
+            {/* THE HEADLINE IS THE TOOL'S TWO HALVES, IN THE ORDER IT RUNS
+                THEM: resolve who holds the power to change the rules, then
+                compare their fastest route against how long leaving takes.
+                Both clauses are questions because both are genuinely open —
+                the report answers them separately and often answers one and
+                not the other.
 
-                The green sits on "get out", never on the answer. Green marks
-                the exit concept and the primary control in this band; putting
-                it on a verdict word would be the stylesheet making a claim the
-                report refuses to. */}
+                The green sits on "exit", never on an answer. Green marks the
+                exit concept and the primary control in this band; putting it
+                on a verdict word would be the stylesheet making a claim the
+                report refuses to make. */}
             <h1 className="hb-headline" id="hb-headline">
-              <span className="hb-setup">Audits check the code.</span>{"\u00a0"}
-              Can you <span className="hb-emphasis">get out</span> before privileged parties can act?
+              Who can change the rules, and can you <span className="hb-emphasis">exit</span> before they do?
             </h1>
 
             <p className="hb-sub">{SUBHEAD[view]}</p>
