@@ -125,16 +125,53 @@ export function ForkEvidence({
   return (
     <section className="card">
       <h2>The withdrawal experiment</h2>
-      <p className="note" style={{ marginTop: 0, maxWidth: "76ch" }}>
-        The experiment compares a control withdrawal with a withdrawal after a candidate mutation.
-        The recorded outcome states which economic, state and timing checks actually passed.
-        Older reports retain their original evidence and limitations.
+
+      {/* PLAIN LANGUAGE FIRST, PRECISION UNDERNEATH. The old opening named a
+          "control withdrawal", a "candidate mutation" and "economic, state and
+          timing checks" — every term exact, and the paragraph unreadable to
+          anyone who did not already know what the experiment was. The three
+          sentences below say what physically happens; the blocks that follow
+          keep every original term, because the precise version is what a
+          reviewer checks. */}
+      <p className="statement" style={{ marginTop: 0, maxWidth: "76ch" }}>
+        We copied the blockchain at the analysed block into a private sandbox, took money out the normal way, then had
+        the party with the power to stop withdrawals do exactly that — and tried the identical withdrawal again.
       </p>
+      <p className="note" style={{ maxWidth: "76ch" }}>
+        If the first withdrawal works and the second one fails, that party can close the exit. This is a real sequence
+        of executed transactions, not an argument about what the code appears to allow — and it happens in a throwaway
+        copy of the chain. Nothing is sent to the real network, and nothing here says anyone intends to do it.
+      </p>
+
+      <ol className="fork-legend" aria-label="What each step below means">
+        <li><span className="fork-legend-step">A</span> Money comes out, so we know the exit worked to begin with.</li>
+        <li><span className="fork-legend-step">B</span> The privileged party makes its move.</li>
+        <li><span className="fork-legend-step">C</span> The same withdrawal is attempted once more.</li>
+      </ol>
+
+      <details className="fold inline-fold">
+        <summary>
+          <span>What has to be true before we call it a restriction</span>
+          <span className="fold-hint">why a failed second withdrawal is not enough on its own</span>
+        </summary>
+        <div className="fold-body">
+          <p className="note" style={{ marginTop: 0 }}>
+            A transaction that succeeds is not proof the money actually arrived, and a transaction that fails is not
+            proof of the reason it failed. So step A counts only when the engine saw the assets received, the position
+            cleared and no debt left behind — a receipt alone does not qualify. Step C counts only when it failed for
+            the expected reason, from the same starting position, at a matching fork time.
+          </p>
+          <p className="note small" style={{ marginBottom: 0 }}>
+            Those judgements are made in the engine (<span className="mono">src/fork/exitRestriction.ts</span>), not on
+            this page. Reports produced under older rules keep the evidence and the limits they were generated with.
+          </p>
+        </div>
+      </details>
 
       <Block
         step="A"
         title="Baseline withdrawal"
-        subtitle="Recorded setup and control withdrawal. A successful receipt alone does not demonstrate recovery of the full position."
+        subtitle="A normal withdrawal, before anyone interferes. It only counts if the assets genuinely came back — a successful receipt on its own does not demonstrate recovery of the full position."
         view={fork.baseline}
         pendingText={
           finished
@@ -146,7 +183,7 @@ export function ForkEvidence({
       <Block
         step="B"
         title="Privileged mutation"
-        subtitle="The candidate call and observed state change. This step alone does not establish that an exit was closed."
+        subtitle="The privileged party calls the function that restricts withdrawals, and we read the state back to confirm it actually changed. On its own this establishes nothing about the exit — a call can succeed and change nothing."
         view={fork.mutation}
         pendingText={notRun}
       />
@@ -154,18 +191,18 @@ export function ForkEvidence({
       <Block
         step="C"
         title="The same withdrawal, again"
-        subtitle="Recorded withdrawal after the candidate. Causality requires matching starting positions and times, verified economic recovery in A, and the expected cause of failure in C."
+        subtitle="The identical withdrawal, attempted again. For this to mean the exit was closed, step A must have genuinely recovered the position, the starting state and fork time must match, and this failure must carry the expected cause."
         view={fork.reexit}
         pendingText={notRun}
       />
 
       {(fork.mutation || fork.reexit) && (
         <div className="banner info">
-          <strong>The controller was impersonated on the fork.</strong> anvil ignores signatures, so where the guarding
-          party is a Safe or a contract, execution assumes that it can authorise the attempted call. Whether the exit
-          was restricted is stated only by the recorded differential outcome. Its own
-          signature checks, transaction guards and modules were not executed, and no notice its own process might impose
-          was modelled.
+          <strong>We acted AS the privileged party, without its permission.</strong> The sandbox accepts any sender
+          without a signature, so where that party is a multisig or a contract, this shows what it <em>can</em> do if it
+          decides to — not that it agreed to. Its own signature threshold, transaction guards and modules were never
+          executed, and any waiting period its internal process imposes is not modelled here. Whether the exit was
+          actually closed is stated only by the recorded outcome above.
         </div>
       )}
 

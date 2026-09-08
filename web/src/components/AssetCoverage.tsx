@@ -27,17 +27,44 @@ import type { EnrichedAssessment } from "@shared/enriched";
 import { CopyButton } from "./CopyButton.js";
 import { EnrichedAssessmentPanel } from "./EnrichedAssessment.js";
 
-/** Short, concrete status text. Each state is a distinct claim, never a rung on one ladder. */
-function mobulaLabel(m: MobulaObservation): { text: string; tone: "" | "warn" } {
+/**
+ * Short, concrete status text. Each state is a distinct claim, never a rung on
+ * one ladder.
+ *
+ * EVERY LABEL CARRIES ITS OWN MEANING. "Not listed in this snapshot" was the
+ * clearest example of a label that is exact and says nothing: it names a
+ * negative result about a third-party inventory, and a reader has no way to
+ * know that the inventory is capped and floored, that the asset reached this
+ * table by another route, or — the part that matters — that this is NOT a
+ * claim the target does not hold it. The explanation now travels with the
+ * label rather than living in a document nobody opens.
+ */
+function mobulaLabel(m: MobulaObservation): { text: string; tone: "" | "warn"; why: string } {
   switch (m.state) {
     case "observed":
-      return { text: "Observed in snapshot", tone: "" };
+      return {
+        text: "Observed in snapshot",
+        tone: "",
+        why: "The market-data provider's holdings snapshot for this address lists this asset. That is a vendor observation, not an on-chain fact — the balance column beside it is what was read from the chain.",
+      };
     case "not_listed":
-      return { text: "Not listed in this snapshot", tone: "warn" };
+      return {
+        text: "Not in the provider's list",
+        tone: "warn",
+        why: "The provider's snapshot exists but does not include this asset, so this row reached the table another way — usually Ripcord's own on-chain scan. The snapshot hides holdings below a dollar floor and caps how many it returns, so absence from it is NOT evidence that the target holds none.",
+      };
     case "chain_unclear":
-      return { text: "Chain attribution unclear", tone: "warn" };
+      return {
+        text: "Chain not established",
+        tone: "warn",
+        why: "The provider listed this asset without a chain we could resolve. Identity here is (chain, address), so an unresolved chain can never be matched to on-chain evidence — it is left unmatched rather than guessed at.",
+      };
     default:
-      return { text: "Mobula data unavailable", tone: "warn" };
+      return {
+        text: "No provider snapshot",
+        tone: "warn",
+        why: "No usable snapshot was stored for this target: the fetch failed, or none was requested. This says nothing about the asset — it is a fact about our own data collection.",
+      };
   }
 }
 
@@ -294,6 +321,136 @@ function RowDetail({ row }: { row: AssetCoverageRow }): ReactElement {
   );
 }
 
+/**
+ * Why an asset can appear here with no experiment against it.
+ *
+ * Written out because "No test run" is the single easiest label on this page to
+ * misread as a finding about the asset. It is a fact about Ripcord's coverage:
+ * the fork layer implements ONE protocol's withdrawal and one restricting
+ * function, so everything outside that shape is untested by construction.
+ */
+const UNTESTED_WHY =
+  "Nothing was executed against these on a fork. The withdrawal experiment implements one protocol's exit and one " +
+  "restricting call, so an asset is only reached when it fits that shape — and candidate discovery is capped. " +
+  "An absent experiment is a limit of what this run tested, never a result about the asset.";
+
+/**
+ * The asset table.
+ *
+ * SPLIT FROM THE PANEL SO THE SAME TABLE CAN RENDER TWICE — once for the assets
+ * an experiment actually reached, once for the ones it did not, behind a fold.
+ * One implementation, so the two lists cannot drift into showing different
+ * columns or different labels for the same state.
+ */
+function CoverageTable({
+  rows,
+  p,
+  open,
+  setOpen,
+}: {
+  rows: AssetCoverageRow[];
+  p: CoverageProvenance;
+  open: string | null;
+  setOpen: (key: string | null) => void;
+}): ReactElement {
+  return (
+          <div className="scroll-x">
+            <table>
+              <thead>
+                <tr>
+                  <th>Asset</th>
+                  <th>Mobula</th>
+                  <th>Balance at block</th>
+                  <th>Fork experiment</th>
+                  <th style={{ textAlign: "right" }}>Est. value</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => {
+                  const m = mobulaLabel(row.mobula);
+                  const b = balanceLabel(row.balance);
+                  const isOpen = open === row.identity.key;
+                  const progress = assetRowProgress(row, p);
+                  return (
+                    <Fragment key={row.identity.key}>
+                      <tr className={isOpen ? "coverage-summary-row open" : "coverage-summary-row"}>
+                        <td>
+                          <div>
+                            {/* Symbol is a hint; the mono line under it is identity. */}
+                            <span>{row.identity.unverifiedSymbol || "(unnamed)"}</span>{" "}
+                            <span className="muted small">unverified</span>
+                          </div>
+                          <div className="addr">
+                            {row.identity.chainRef ?? "chain unknown"} · {short(row.identity.address, row.identity.isNative)}
+                          </div>
+                        </td>
+                        <td>
+                          <span className={`chip ${m.tone}`} title={m.why}>{m.text}</span>{" "}
+                          <span className="why-hint" tabIndex={0} role="note" aria-label={m.why} title={m.why}>
+                            Why?
+                          </span>
+                        </td>
+                        <td>
+                          {progress === "candidate_pending" && row.balance.state === "no_recorded_evidence" ? (
+                            <span className="chip processing"><span className="processing-dot" aria-hidden="true" />Awaiting candidate check</span>
+                          ) : (
+                            <span className={`chip ${b.tone}`}>{b.text}</span>
+                          )}
+                        </td>
+                        <td>
+                          {row.experiments.map((e, i) => (
+                            <div key={i} style={{ marginBottom: 3 }}>
+                              <span className={`chip ${e.execution === "completed" ? "" : "warn"}`}>
+                                {e.label}: {e.execution.replace(/_/g, " ")}
+                              </span>
+                            </div>
+                          ))}
+                          {progress === "candidate_pending" && (
+                            <span className="chip processing"><span className="processing-dot" aria-hidden="true" />Selection pending</span>
+                          )}
+                          {progress === "fork_pending" && (
+                            <span className="chip processing"><span className="processing-dot" aria-hidden="true" />Fork test queued / running</span>
+                          )}
+                          {row.experiments.length === 0 && progress === null && (
+                            <span className="chip warn">
+                              {row.forkGap?.state === "unlinkable" ? "Coverage not establishable" : "No test run"}
+                            </span>
+                          )}
+                        </td>
+                        {/* Subordinate: muted, right-aligned, never a sort key above evidence. */}
+                        <td className="mono muted" style={{ textAlign: "right" }}>
+                          {row.mobula.state === "observed" ? usd(row.mobula.valuationUsd) : "—"}
+                        </td>
+                        <td className="coverage-action-cell">
+                          <button
+                            className="link small"
+                            type="button"
+                            aria-expanded={isOpen}
+                            onClick={() => setOpen(isOpen ? null : row.identity.key)}
+                          >
+                            {isOpen ? "Hide evidence" : "View evidence"}
+                          </button>
+                        </td>
+                      </tr>
+                      {isOpen && (
+                        <tr className="coverage-detail-row">
+                          <td colSpan={6}>
+                            <div className="coverage-detail-wrap">
+                              <RowDetail row={row} />
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+  );
+}
+
 export function AssetCoveragePanel({
   coverage,
   enriched = null,
@@ -306,6 +463,16 @@ export function AssetCoveragePanel({
   const [open, setOpen] = useState<string | null>(null);
   const p = coverage.provenance;
   const layerPending = p.candidateVerification.status === "pending" || p.candidateFork.status === "pending";
+
+  // A row is shown up front when an experiment reached it, or when one is on
+  // its way — work in flight belongs beside the work that finished, not filed
+  // under "nothing was tested".
+  const tested = coverage.rows.filter(
+    (row) => row.experiments.length > 0 || assetRowProgress(row, p) !== null,
+  );
+  const untested = coverage.rows.filter(
+    (row) => row.experiments.length === 0 && assetRowProgress(row, p) === null,
+  );
 
   return (
     <section className="card">
@@ -458,103 +625,53 @@ export function AssetCoveragePanel({
         </div>
       )}
 
+      {/* TESTED FIRST, UNTESTED BEHIND A FOLD — and the fold is labelled with
+          what it holds, never hidden. The table used to open with whichever
+          assets the vendor happened to list first, most of them carrying "No
+          test run", so the handful that an experiment actually reached were
+          buried among rows that establish nothing. Collapsing the untested ones
+          is a change of ORDER and prominence only: the count is on the summary,
+          the reason is one hover away, and every row is still here. */}
       {coverage.rows.length === 0 ? (
         <div className="empty">
           No assets could be listed: there is no Mobula snapshot for this target and the report records no
           asset-level balance or fork evidence.
         </div>
       ) : (
-        <div className="scroll-x">
-          <table>
-            <thead>
-              <tr>
-                <th>Asset</th>
-                <th>Mobula</th>
-                <th>Balance at block</th>
-                <th>Fork experiment</th>
-                <th style={{ textAlign: "right" }}>Est. value</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {coverage.rows.map((row) => {
-                const m = mobulaLabel(row.mobula);
-                const b = balanceLabel(row.balance);
-                const isOpen = open === row.identity.key;
-                const progress = assetRowProgress(row, p);
-                return (
-                  <Fragment key={row.identity.key}>
-                    <tr className={isOpen ? "coverage-summary-row open" : "coverage-summary-row"}>
-                      <td>
-                        <div>
-                          {/* Symbol is a hint; the mono line under it is identity. */}
-                          <span>{row.identity.unverifiedSymbol || "(unnamed)"}</span>{" "}
-                          <span className="muted small">unverified</span>
-                        </div>
-                        <div className="addr">
-                          {row.identity.chainRef ?? "chain unknown"} · {short(row.identity.address, row.identity.isNative)}
-                        </div>
-                      </td>
-                      <td>
-                        <span className={`chip ${m.tone}`}>{m.text}</span>
-                      </td>
-                      <td>
-                        {progress === "candidate_pending" && row.balance.state === "no_recorded_evidence" ? (
-                          <span className="chip processing"><span className="processing-dot" aria-hidden="true" />Awaiting candidate check</span>
-                        ) : (
-                          <span className={`chip ${b.tone}`}>{b.text}</span>
-                        )}
-                      </td>
-                      <td>
-                        {row.experiments.map((e, i) => (
-                          <div key={i} style={{ marginBottom: 3 }}>
-                            <span className={`chip ${e.execution === "completed" ? "" : "warn"}`}>
-                              {e.label}: {e.execution.replace(/_/g, " ")}
-                            </span>
-                          </div>
-                        ))}
-                        {progress === "candidate_pending" && (
-                          <span className="chip processing"><span className="processing-dot" aria-hidden="true" />Selection pending</span>
-                        )}
-                        {progress === "fork_pending" && (
-                          <span className="chip processing"><span className="processing-dot" aria-hidden="true" />Fork test queued / running</span>
-                        )}
-                        {row.experiments.length === 0 && progress === null && (
-                          <span className="chip warn">
-                            {row.forkGap?.state === "unlinkable" ? "Coverage not establishable" : "No test run"}
-                          </span>
-                        )}
-                      </td>
-                      {/* Subordinate: muted, right-aligned, never a sort key above evidence. */}
-                      <td className="mono muted" style={{ textAlign: "right" }}>
-                        {row.mobula.state === "observed" ? usd(row.mobula.valuationUsd) : "—"}
-                      </td>
-                      <td className="coverage-action-cell">
-                        <button
-                          className="link small"
-                          type="button"
-                          aria-expanded={isOpen}
-                          onClick={() => setOpen(isOpen ? null : row.identity.key)}
-                        >
-                          {isOpen ? "Hide evidence" : "View evidence"}
-                        </button>
-                      </td>
-                    </tr>
-                    {isOpen && (
-                      <tr className="coverage-detail-row">
-                        <td colSpan={6}>
-                          <div className="coverage-detail-wrap">
-                            <RowDetail row={row} />
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <>
+          {tested.length > 0 ? (
+            <CoverageTable rows={tested} p={p} open={open} setOpen={setOpen} />
+          ) : (
+            <div className="empty">
+              No asset here was part of a fork experiment. That is a statement about what this run tested, not about
+              these assets — every one of them is listed below.
+            </div>
+          )}
+
+          {untested.length > 0 && (
+            <details className="fold inline-fold" style={{ marginTop: 14 }}>
+              <summary>
+                <span>{untested.length} asset(s) with no fork experiment</span>
+                <span className="fold-hint">
+                  listed, balances where we have them — but nothing was executed against them
+                </span>
+                <span
+                  className="why-hint"
+                  tabIndex={0}
+                  role="note"
+                  aria-label={UNTESTED_WHY}
+                  title={UNTESTED_WHY}
+                >
+                  Why?
+                </span>
+              </summary>
+              <div className="fold-body">
+                <p className="note" style={{ marginTop: 0 }}>{UNTESTED_WHY}</p>
+                <CoverageTable rows={untested} p={p} open={open} setOpen={setOpen} />
+              </div>
+            </details>
+          )}
+        </>
       )}
 
       <div className="banner info" style={{ marginTop: 14 }}>
