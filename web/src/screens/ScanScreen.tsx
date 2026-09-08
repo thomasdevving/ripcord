@@ -2,13 +2,21 @@
  * The scan form, on its own page. The home screen states the thesis and offers
  * one button; everything that configures a run lives here.
  *
- * Two details that look cosmetic and are not:
- *  - THE BLOCK IS ALWAYS VISIBLE, including when a preset filled it in. The Comet
- *    preset pins a historical block, and an experiment run there is not a
- *    measurement of mainnet today.
- *  - PRESETS CARRY NO EXPECTED RESULT — an address, a block, a suggested mode and
- *    a reason to look. Anything else shown before the run would be a claim the
- *    run has not yet supported.
+ * THE BLOCK IS NOT A CHOICE. Every run measures the chain as it is when the
+ * run is requested: the latest block is resolved ONCE, at submit, and then
+ * pinned for every phase of the analysis — reads, fork, differential. That is
+ * the important half and it is unchanged. What went away is the option to enter
+ * a historical block, which mostly served the demo and made the first decision
+ * on the form one that nobody arriving with an address wants to make.
+ *
+ * The consequence, stated rather than glossed: a run here is no longer directly
+ * comparable to the committed calibration reports, which are pinned at block
+ * 25,800,000. Those remain readable under Reports; they are simply a different
+ * moment. The CLI still takes --block for anyone reproducing one of them.
+ *
+ * PRESETS CARRY NO EXPECTED RESULT — an address, a suggested mode and a reason
+ * to look. Anything else shown before the run would be a claim the run has not
+ * yet supported.
  *
  * WHAT TO RUN IS A LIST, NOT A DROPDOWN. The three modes differ in what they
  * actually DO — one reads, one forks, one forks twice — and each carries a
@@ -44,22 +52,14 @@ const MODE_LABELS: Record<RunMode, { label: string; detail: string }> = {
 export function ScanScreen({ config }: { config: ConfigResponse | null }): ReactElement {
   const [address, setAddress] = useState("");
   const [mode, setMode] = useState<RunMode>("scan_withdrawal_test");
-  const [blockMode, setBlockMode] = useState<"pinned" | "latest">("pinned");
-  const [block, setBlock] = useState("");
-  const [advanced, setAdvanced] = useState(false);
   const [refreshAssetContext, setRefreshAssetContext] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<{ message: string; hint: string | null } | null>(null);
   const addressInputRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    if (config && block === "") setBlock(config.defaultBlock);
-  }, [config, block]);
-
   const liveDisabled = config ? !config.liveRuns.enabled : true;
   const addressValid = ADDRESS_RE.test(address.trim());
-  const blockValid = blockMode === "latest" || /^\d+$/.test(block.trim());
-  const canSubmit = !submitting && !liveDisabled && addressValid && blockValid;
+  const canSubmit = !submitting && !liveDisabled && addressValid;
   const isMobulaTarget =
     address.trim().toLowerCase() === MOBULA_SECOND_LAYER_TARGET.address.toLowerCase();
   const mobulaSecondLayerAvailable = isMobulaTarget && mode !== "scan" && !liveDisabled;
@@ -83,7 +83,7 @@ export function ScanScreen({ config }: { config: ConfigResponse | null }): React
     setError(null);
     try {
       const fingerprint = JSON.stringify([
-        address.trim().toLowerCase(), blockMode, block.trim(), mode, refreshAssetContext,
+        address.trim().toLowerCase(), mode, refreshAssetContext,
       ]);
       let intent: { fingerprint: string; idempotencyKey: string; controlToken: string } | null = null;
       try { intent = JSON.parse(sessionStorage.getItem("ripcord-submit-intent") ?? "null"); } catch { /* no valid saved intent */ }
@@ -96,7 +96,9 @@ export function ScanScreen({ config }: { config: ConfigResponse | null }): React
         controlToken: intent.controlToken,
         address: address.trim(),
         chainId: 1,
-        block: blockMode === "latest" ? "latest" : block.trim(),
+        // Resolved once by the server and pinned for the whole run; the worker,
+        // the fork and the differential never see the string "latest".
+        block: "latest",
         mode,
         refreshAssetContext,
       });
@@ -195,56 +197,18 @@ export function ScanScreen({ config }: { config: ConfigResponse | null }): React
           )}
         </div>
 
-        {/* The pinned block is stated OUTSIDE the advanced section on purpose:
-            it changes what the result means, so it must never be something the
-            reader has to go looking for. */}
-        <div className="banner info" style={{ display: "flex", gap: 14, alignItems: "baseline", flexWrap: "wrap" }}>
-          <span>
-            <strong>Pinned block:</strong>{" "}
-            <span className="mono">{blockMode === "latest" ? "resolved once at start, then fixed" : block || "—"}</span>
-          </span>
-          {blockMode === "pinned" && config && block === config.defaultBlock && (
-            <span className="muted small">
-              This is a historical block. The result describes the chain at that block, not mainnet right now.
-            </span>
-          )}
-          <button className="link small" type="button" onClick={() => setAdvanced((v) => !v)} aria-expanded={advanced}>
-            {advanced ? "Hide advanced" : "Change block"}
-          </button>
-        </div>
-
-        {advanced && (
-          <div className="card" style={{ marginBottom: 14, background: "var(--plane)" }}>
-            <h3>Advanced</h3>
-            <div className="row">
-              <div className="field" style={{ marginBottom: 0 }}>
-                <label htmlFor="blockmode">Block selection</label>
-                <select id="blockmode" value={blockMode} onChange={(e) => setBlockMode(e.target.value as "pinned" | "latest")}>
-                  <option value="pinned">Specific block number</option>
-                  <option value="latest">Latest block (resolved once, then pinned)</option>
-                </select>
-              </div>
-              {blockMode === "pinned" && (
-                <div className="field" style={{ marginBottom: 0 }}>
-                  <label htmlFor="block">Block number</label>
-                  <input
-                    id="block"
-                    className="mono"
-                    type="text"
-                    inputMode="numeric"
-                    value={block}
-                    onChange={(e) => setBlock(e.target.value)}
-                    aria-invalid={!blockValid}
-                  />
-                </div>
-              )}
-            </div>
-            <p className="note small" style={{ marginBottom: 0, marginTop: 10 }}>
-              Every phase of the run uses the same chain, the same block number and the same block identity. "Latest" is
-              resolved once at the start and then fixed, so a multi-minute analysis cannot drift across blocks.
-            </p>
+        {/* Still stated, and still outside any fold: the pin is what makes the
+            result mean one moment rather than an average of several, and a
+            reader should not have to go looking for that. It is now a fact
+            about the run instead of a decision to make. */}
+        <div className="banner info">
+          <strong>This run measures the chain as it is now.</strong>
+          <div className="small" style={{ marginTop: 4 }}>
+            The latest block is resolved once, when you start the run, and then held fixed for every phase — the reads,
+            the fork and the differential all describe that one block, so a multi-minute analysis cannot drift across
+            several. The report records which block it was.
           </div>
-        )}
+        </div>
 
         <div className="field asset-analysis-choice">
           <span className="label-text" id="asset-analysis-label">
@@ -342,8 +306,6 @@ export function ScanScreen({ config }: { config: ConfigResponse | null }): React
                 className="preset-btn"
                 onClick={() => {
                   setAddress(preset.address);
-                  setBlock(preset.block);
-                  setBlockMode("pinned");
                   if (availableModes.includes(preset.suggestedMode)) setMode(preset.suggestedMode);
                   const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
                   addressInputRef.current?.scrollIntoView({ block: "center", behavior: smooth ? "smooth" : "auto" });
@@ -353,7 +315,7 @@ export function ScanScreen({ config }: { config: ConfigResponse | null }): React
                 <strong>{preset.label}</strong>
                 <span>{preset.note}</span>
                 <span className="addr" style={{ display: "block", marginTop: 6 }}>
-                  {preset.address} · block {preset.block}
+                  {preset.address}
                 </span>
               </button>
             ))}

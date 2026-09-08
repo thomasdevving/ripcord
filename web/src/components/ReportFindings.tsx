@@ -14,6 +14,7 @@
  * is a fact about the list.
  */
 import { deriveReportFindings, noFindingsNote, type ReportFinding, type FindingTab } from "@shared/findings";
+import { WhyHint } from "./WhyHint.js";
 import type { Report } from "../report-types.js";
 import type { ReactElement } from "react";
 
@@ -40,9 +41,7 @@ function Group({
             "Demonstrated" reading as a severity rating — so it is also printed
             in the fold at the top of this card, where it cannot be missed by
             someone who never hovers. */}
-        <span className="finding-why" tabIndex={0} role="note" aria-label={gloss} title={gloss}>
-          Why?
-        </span>
+        <WhyHint text={gloss} />
       </h3>
       <ul className="finding-list">
         {findings.map((finding) => (

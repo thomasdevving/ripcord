@@ -1665,11 +1665,12 @@ details.fold.inline-fold .fold-body { padding: 12px 14px 14px; }
    Focusable, so the explanation is reachable without a pointer; the same text
    is always available in full somewhere unfolded, because a tooltip is not a
    place to keep something a reader must not miss. */
-.finding-why,
 .why-hint {
-  /* Resets, not decoration: both hints sit inside uppercase, letter-spaced
+  /* Resets, not decoration: these hints sit inside uppercase, letter-spaced
      mono headings and table cells, and inheriting that turned a quiet aside
      into a shouted "WHY?". */
+  position: relative;
+  display: inline-block;
   font: 400 11px/1 var(--sans);
   text-transform: none;
   letter-spacing: 0;
@@ -1678,10 +1679,46 @@ details.fold.inline-fold .fold-body { padding: 12px 14px 14px; }
   cursor: help;
   margin-left: 6px;
 }
-.finding-why:hover,
-.finding-why:focus-visible,
 .why-hint:hover,
 .why-hint:focus-visible { color: var(--text-primary); }
+
+/* The bubble. Hidden by `visibility` rather than `display` so it can carry a
+   transition and stay in the accessibility tree for `aria-describedby`. */
+.why-bubble {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 8px);
+  left: 0;
+  width: max-content;
+  max-width: 42ch;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+  text-align: left;
+  white-space: normal;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 110ms ease;
+  pointer-events: none;
+}
+.why-hint:hover > .why-bubble,
+.why-hint:focus-visible > .why-bubble,
+.why-hint:focus-within > .why-bubble {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Near the right edge the bubble would run off the page. */
+.why-hint.align-right > .why-bubble { left: auto; right: 0; }
+
+@media print {
+  .why-bubble { display: none !important; }
+}
 
 /* Printing opens every fold. A printed report that carried only the sections
    someone happened to have expanded would be a different document each time,
@@ -1923,3 +1960,13 @@ details.fold.inline-fold .fold-body { padding: 12px 14px 14px; }
 }
 
 
+
+/* The asset table's label legend: a status chip and what it actually claims. */
+.label-legend { margin: 0; display: grid; gap: 12px; }
+.label-legend > div { display: grid; grid-template-columns: minmax(0, 15rem) minmax(0, 1fr); gap: 14px; align-items: baseline; }
+.label-legend dt { margin: 0; }
+.label-legend dd { margin: 0; max-width: 74ch; }
+
+@media (max-width: 720px) {
+  .label-legend > div { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+}

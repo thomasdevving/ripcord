@@ -25,6 +25,7 @@ import type {
 } from "@shared/coverage";
 import type { EnrichedAssessment } from "@shared/enriched";
 import { CopyButton } from "./CopyButton.js";
+import { WhyHint } from "./WhyHint.js";
 import { EnrichedAssessmentPanel } from "./EnrichedAssessment.js";
 
 /**
@@ -386,10 +387,11 @@ function CoverageTable({
                           </div>
                         </td>
                         <td>
-                          <span className={`chip ${m.tone}`} title={m.why}>{m.text}</span>{" "}
-                          <span className="why-hint" tabIndex={0} role="note" aria-label={m.why} title={m.why}>
-                            Why?
-                          </span>
+                          {/* No hint here: its bubble would be clipped by the
+                              table's own horizontal scroll container, and twelve
+                              copies of four explanations reads worse than the
+                              legend above the table. */}
+                          <span className={`chip ${m.tone}`}>{m.text}</span>
                         </td>
                         <td>
                           {progress === "candidate_pending" && row.balance.state === "no_recorded_evidence" ? (
@@ -623,6 +625,38 @@ export function AssetCoveragePanel({
         </div>
       )}
 
+      {/* THE COLUMN LABELS, EXPLAINED ONCE. "Not in the provider's list" is the
+          clearest case of a label that is exact and says nothing: it names a
+          negative result about a third-party inventory that is capped and
+          floored, and nothing in the cell tells a reader that absence from it
+          is NOT evidence the target holds none. A legend rather than a tooltip
+          per row, because the table scrolls horizontally and would clip a
+          bubble — and because four explanations printed twelve times is a
+          worse way to say it. */}
+      <details className="fold inline-fold">
+        <summary>
+          <span>What the labels mean</span>
+          <span className="fold-hint">each column is a separate observation, never a rung on one ladder</span>
+        </summary>
+        <div className="fold-body">
+          <dl className="label-legend">
+            {(["observed", "not_listed", "chain_unclear", "unavailable"] as const).map((state) => {
+              const label = mobulaLabel({ state, note: "" } as MobulaObservation);
+              return (
+                <div key={state}>
+                  <dt><span className={`chip ${label.tone}`}>{label.text}</span></dt>
+                  <dd className="note small">{label.why}</dd>
+                </div>
+              );
+            })}
+            <div>
+              <dt><span className="chip warn">No test run</span></dt>
+              <dd className="note small">{UNTESTED_WHY}</dd>
+            </div>
+          </dl>
+        </div>
+      </details>
+
       {/* TESTED FIRST, UNTESTED BEHIND A FOLD — and the fold is labelled with
           what it holds, never hidden. The table used to open with whichever
           assets the vendor happened to list first, most of them carrying "No
@@ -653,15 +687,7 @@ export function AssetCoveragePanel({
                 <span className="fold-hint">
                   listed, balances where we have them — but nothing was executed against them
                 </span>
-                <span
-                  className="why-hint"
-                  tabIndex={0}
-                  role="note"
-                  aria-label={UNTESTED_WHY}
-                  title={UNTESTED_WHY}
-                >
-                  Why?
-                </span>
+<WhyHint text={UNTESTED_WHY} />
               </summary>
               <div className="fold-body">
                 <p className="note" style={{ marginTop: 0 }}>{UNTESTED_WHY}</p>
