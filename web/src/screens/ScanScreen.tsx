@@ -197,19 +197,6 @@ export function ScanScreen({ config }: { config: ConfigResponse | null }): React
           )}
         </div>
 
-        {/* Still stated, and still outside any fold: the pin is what makes the
-            result mean one moment rather than an average of several, and a
-            reader should not have to go looking for that. It is now a fact
-            about the run instead of a decision to make. */}
-        <div className="banner info">
-          <strong>This run measures the chain as it is now.</strong>
-          <div className="small" style={{ marginTop: 4 }}>
-            The latest block is resolved once, when you start the run, and then held fixed for every phase — the reads,
-            the fork and the differential all describe that one block, so a multi-minute analysis cannot drift across
-            several. The report records which block it was.
-          </div>
-        </div>
-
         <div className="field asset-analysis-choice">
           <span className="label-text" id="asset-analysis-label">
             Analysis layer
