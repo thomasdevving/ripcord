@@ -1,6 +1,7 @@
 import type { Report } from "../src/report/schema.js";
 import type { StructuralSnapshot } from "./shared/dto.js";
 import { TransportObserver } from "./jobs/observer.js";
+import { buildEvidenceIndex } from "../src/report/evidenceIndex.js";
 export function reportStructure(report: Report): StructuralSnapshot | null {
   if (!report.target?.address || !report.proxy || !report.authority) return null;
   const observer = new TransportObserver(report.target.address, () => undefined);
@@ -30,23 +31,43 @@ export function reportStructure(report: Report): StructuralSnapshot | null {
     });
   }
   const snapshot = observer.snapshot();
-  // Collect only evidence entries, not arbitrary findings. This runs after the
+
+  // Evidence is indexed ONCE and attached by reference. This runs after the
   // report publication gate, so public report evidence may be inspected here.
-  const evidence: unknown[] = [];
-  const visit = (value: unknown): void => {
-    if (!value || typeof value !== "object") return;
-    const v = value as Record<string, unknown>;
-    if (v.kind && v.params && "rawValue" in v && "block" in v) { evidence.push(v); return; }
-    for (const child of Object.values(v)) visit(child);
-  };
-  visit(report);
+  //
+  // The previous shape serialised every entry for every node and asked whether
+  // the node's address appeared anywhere in the resulting string — quadratic in
+  // (nodes x evidence x size), and not actually a statement about relevance: an
+  // address can sit inside unrelated calldata, while an ABI-encoded address in a
+  // 32-byte storage word does not contain its 40-character form at all. So the
+  // old rule over-attached and under-attached at the same time, silently. See
+  // src/report/evidenceIndex.ts for how an entry now NAMES an address.
+  const index = buildEvidenceIndex(report);
+  const inlined = new Set<string>();
   for (const node of snapshot.nodes) {
-    const unique = new Map<string, unknown>();
-    for (const entry of evidence) {
-      const text = JSON.stringify(entry);
-      if (text.toLowerCase().includes(node.address.toLowerCase())) unique.set(text, entry);
-    }
-    node.evidence = [...unique.values()];
+    const all = index.idsFor(node.address);
+    node.evidenceTotal = all.length;
+    node.evidenceIds = all.slice(0, EVIDENCE_INLINE_LIMIT);
+    for (const id of node.evidenceIds) inlined.add(id);
   }
+  // One shared table holding ONLY what the nodes reference, so an entry relevant
+  // to five nodes is transported once and an entry relevant to none is not
+  // transported at all. The remainder is served on demand — see the evidence
+  // route in server/routes.ts.
+  snapshot.evidence = Object.fromEntries(
+    index.entries.filter(({ id }) => inlined.has(id)).map(({ id, evidence }) => [id, evidence]),
+  );
+  snapshot.evidenceInlineLimit = EVIDENCE_INLINE_LIMIT;
   return snapshot;
 }
+
+/**
+ * How many evidence entries a node inlines.
+ *
+ * Chosen against the corpus rather than by feel: the Aave ACL Manager report's
+ * single node is named by 1,518 log-scan reads, and inlining them made the graph
+ * payload larger than the useful part of the report. Fifty is more than enough
+ * to see what kind of reads support a node; the exact count is always reported
+ * beside it, and the full set is one request away.
+ */
+const EVIDENCE_INLINE_LIMIT = 50;

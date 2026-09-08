@@ -93,6 +93,7 @@ describe("detectCapabilities — proxy resolution", () => {
     const detection = await detectCapabilities(chain, proxyAddress, proxy, null, []);
 
     expect(detection.result.dispatcherRecognized).toBe(true);
+    expect(detection.result.selectorAnalyzer).toEqual({ name: "evmole", version: "0.9.3" });
     expect(detection.result.scannedAddress?.toLowerCase()).toBe(implAddress.toLowerCase());
     // Every finding must also report the implementation as its scannedAddress.
     for (const finding of detection.result.findings) {

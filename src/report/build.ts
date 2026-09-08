@@ -6,12 +6,13 @@
  */
 import { keccak256, type Hex } from "viem";
 import type { ChainReader } from "../chain/client.js";
-import { detectProxy } from "../detect/proxy.js";
-import { detectOwnership } from "../detect/ownership.js";
-import { detectAccessControl } from "../detect/accessControl.js";
+import { AnalysisBudget, type BudgetLimits } from "../chain/budget.js";
+import { BudgetedChainReader } from "../chain/budgetedReader.js";
+import { factsFor } from "../detect/facts.js";
 import { collectPowerHolders } from "../detect/accounts.js";
 import { resolveAuthorityGraph, type AuthoritySeed } from "../detect/authority.js";
 import { detectCapabilities } from "../detect/capabilities.js";
+import { selectorAnalyzer } from "../detect/dispatcher.js";
 import { detectDependencies } from "../detect/dependencies.js";
 import { analyseExitWindow } from "../detect/exitWindow.js";
 import { detectAuthorityIndirection } from "../detect/authorityIndirection.js";
@@ -25,6 +26,7 @@ import {
   reportSchema,
   schemaVersion,
   rulesetVersion,
+  isUnresolvedTermination,
   type AuthorityIndirection,
   type AuthorityResolution,
   type CapabilitiesResult,
@@ -143,17 +145,33 @@ export function assessDisclosure(chainId: number, capabilities: CapabilitiesResu
  *   back. A report built with an observer is byte-identical to one built
  *   without, which `test/observer.test.ts` asserts directly.
  */
-export async function buildReport(chain: ChainReader, target: Hex, observer?: RunObserver): Promise<Report> {
+export async function buildReport(
+  reader: ChainReader,
+  target: Hex,
+  observer?: RunObserver,
+  limits?: BudgetLimits,
+): Promise<Report> {
   const unknowns: UnknownEntry[] = [];
   const errors: ErrorEntry[] = [];
 
-  const { code, evidence: codeEvidence } = await chain.getCode(target);
+  // THE ANALYSIS SCOPE. Two things are scoped to exactly one report here, and
+  // both are the reason they are created at this line rather than where a chain
+  // is constructed: the resource budget (bounding what THIS report may spend,
+  // not what a connection may) and — keyed on the wrapped reader — the shared
+  // fact layer, so a contract reached twice by two stages is analysed once.
+  // Wrapping is transparent: the decorator returns the inner reader's values
+  // unchanged and can only refuse a read once the ceiling is met.
+  const budget = new AnalysisBudget(limits);
+  const chain = new BudgetedChainReader(reader, budget);
+  const facts = factsFor(chain);
+
+  const { code, evidence: codeEvidence } = await facts.code(target);
   const bytecodeSize = code ? (code.length - 2) / 2 : 0;
   const bytecodeHash = code ? keccak256(code) : null;
 
   const proxy = await runStage(
     "proxy",
-    () => detectProxy(chain, target),
+    () => facts.proxy(target),
     errors,
     () => ({
       pattern: "unknown" as const,
@@ -185,7 +203,7 @@ export async function buildReport(chain: ChainReader, target: Hex, observer?: Ru
   // uninitialized) storage instead.
   const ownership = await runStage(
     "ownership",
-    () => detectOwnership(chain, target),
+    () => facts.ownership(target),
     errors,
     () => ({
       owner: { address: null, source: "detection failed, see errors[]", evidence: [] },
@@ -204,7 +222,7 @@ export async function buildReport(chain: ChainReader, target: Hex, observer?: Ru
 
   const accessControlDetection = await runStage(
     "accessControl",
-    () => detectAccessControl(chain, target),
+    () => facts.accessControl(target),
     errors,
     () => ({ result: { detected: false, method: "not_applicable" as const, roles: [], reconstruction: null }, unknowns: [] }),
     observer,
@@ -246,6 +264,7 @@ export async function buildReport(chain: ChainReader, target: Hex, observer?: Ru
     () => ({
       result: {
         taxonomyVersion,
+        selectorAnalyzer,
         dispatcherRecognized: false,
         scannedAddress: null,
         probedAddress: target,
@@ -328,7 +347,7 @@ export async function buildReport(chain: ChainReader, target: Hex, observer?: Ru
       // resolved the controller. Saying "completed" would present "we stopped
       // looking" as "we found the end" — KNOWN EDGES #10 and #17.
       outcome:
-        resolution && resolution.paths.some((p) => p.terminationReason === "max_depth" || p.terminationReason === "no_authority_found")
+        resolution && resolution.paths.some((p) => isUnresolvedTermination(p.terminationReason))
           ? "inconclusive"
           : "completed",
       detail: resolution
@@ -337,7 +356,7 @@ export async function buildReport(chain: ChainReader, target: Hex, observer?: Ru
       metrics: {
         paths: resolution?.paths.length ?? 0,
         cycles: resolution?.cyclesDetected.length ?? 0,
-        unresolved: resolution?.paths.filter((p) => p.terminationReason === "max_depth" || p.terminationReason === "no_authority_found").length ?? 0,
+        unresolved: resolution?.paths.filter((p) => isUnresolvedTermination(p.terminationReason)).length ?? 0,
       },
     }),
   );
@@ -417,7 +436,17 @@ export async function buildReport(chain: ChainReader, target: Hex, observer?: Ru
   // stage read from errors[] rather than from the fallback value it was replaced
   // by. This is what stops the minimum-notice arithmetic being computed over a
   // route set that was never fully seen.
+  // Snapshotted, because the witness is CONSUMED by the exit window below and a
+  // boundary met after that point could not have been taken into account. The
+  // invariant that no such boundary exists is asserted after both stages rather
+  // than assumed — see the check before the report is assembled.
+  const budgetExhaustionsAtWitness = budget.exhausted;
+
   const enumeration = deriveEnumerationCompleteness({
+    // Resource boundaries this run met, judged as gaps of the same kind as a
+    // truncated role scan — see chain/budget.ts on why a budget may only ever
+    // push a verdict toward caution.
+    budgetExhaustions: budgetExhaustionsAtWitness,
     accessControl: accessControlDetection.result,
     authorityResolution,
     dependencies: dependencyDetection.result,
@@ -520,6 +549,28 @@ export async function buildReport(chain: ChainReader, target: Hex, observer?: Ru
     });
   }
 
+  // THE ORDERING INVARIANT behind the enumeration witness.
+  //
+  // The witness above was derived from the boundaries met UP TO that point, and
+  // the exit window then consumed it — a reassuring window variant literally
+  // cannot be constructed without it. Every budget dimension that DEGRADES
+  // rather than throwing (log requests, authority nodes, role members) is spent
+  // by stages that run earlier, so a later boundary is impossible today. If that
+  // ever stops being true, the window would carry a witness that was already
+  // stale when it was handed over, and the report would assert a route set it
+  // did not see — so this is asserted, not assumed.
+  //
+  // A throw, for the same reason a schema failure throws: an internally
+  // inconsistent report is a Ripcord bug, not a fact about the target, and
+  // publishing one would be worse than producing none. (`chainReads` exhaustion
+  // cannot reach here: it throws inside the stage, which becomes an errors[]
+  // entry the witness already counts.)
+  if (budget.exhausted.length !== budgetExhaustionsAtWitness.length) {
+    throw new Error(
+      `Ripcord met a resource boundary AFTER the enumeration witness was derived and handed to the exit window — the window was assessed against a stale witness. This is a Ripcord ordering bug, not a target problem. Boundaries at witness time: ${budgetExhaustionsAtWitness.length}; now: ${budget.exhausted.map((e) => `${e.dimension}@${e.where}`).join(", ")}`,
+    );
+  }
+
   const blockHash = await runStage(
     "block",
     () => chain.getBlockHash(),
@@ -554,6 +605,7 @@ export async function buildReport(chain: ChainReader, target: Hex, observer?: Ru
     proof: null,
     authorityIndirection,
     enumeration,
+    budget: budget.snapshot(),
     exitWindow: exitWindowDetection.result,
     // The fork exit-restriction engine runs in a separate pass (like the proof
     // engine) via `ripcord restrict`, which merges its result and re-composes

@@ -1,14 +1,14 @@
 /**
  * Orchestrates capability detection for a single address: resolve the
  * correct bytecode to scan (the implementation, for a proxy), extract its
- * selector set via the reachability-limited dispatcher walk, match against
+ * selector set via static bytecode analysis, match against
  * the versioned taxonomy, and probe each match's guard. Weakest-link
  * provenance is enforced structurally by GuardStatus (schema.ts) and by
  * routing "no auth-shaped revert observed" out of `findings` entirely.
  */
 import type { Hex } from "viem";
 import type { ChainReader, Evidence } from "../chain/client.js";
-import { extractDispatcherSelectors } from "./dispatcher.js";
+import { extractDispatcherSelectors, selectorAnalyzer } from "./dispatcher.js";
 import { lookupTaxonomy, taxonomyVersion } from "./taxonomy.js";
 import { probeGuard, type GuardProbeContext } from "./guardProbe.js";
 import type {
@@ -56,6 +56,7 @@ export async function detectCapabilities(
 
   const empty = (scannedAddress: Hex | null, dispatcherRecognized: boolean): CapabilitiesResult => ({
     taxonomyVersion,
+    selectorAnalyzer,
     dispatcherRecognized,
     scannedAddress,
     probedAddress: target,
@@ -105,7 +106,13 @@ export async function detectCapabilities(
     kind: "bytecode",
     params: { address: scannedAddress, purpose: "dispatcher_selector_extraction" },
     rawValue: dispatcherResult.recognized
-      ? { selectorCount: dispatcherResult.selectors.length, pivotComparisonCount: dispatcherResult.pivotComparisonCount }
+      ? {
+          analyzer: dispatcherResult.analyzer,
+          analyzerVersion: dispatcherResult.analyzerVersion,
+          selectorCount: dispatcherResult.selectors.length,
+          abiSelectorCount: dispatcherResult.abiSelectorCount,
+          fallbackSelectorCount: dispatcherResult.fallbackSelectorCount,
+        }
       : { recognized: false, reason: dispatcherResult.reason },
     block: chain.blockNumber.toString(),
   });
@@ -178,6 +185,7 @@ export async function detectCapabilities(
   return {
     result: {
       taxonomyVersion,
+      selectorAnalyzer,
       dispatcherRecognized: true,
       scannedAddress,
       probedAddress: target,

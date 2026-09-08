@@ -262,10 +262,12 @@ describe("post-analysis asset-context bounds", () => {
     // than being refused — proof the slot was returned, not leaked.
     expect((await load("rep_one"))?.status).toBe("unavailable");
     expect((await load("rep_two"))?.status).toBe("unavailable");
-    expect(started.length).toBe(2);
-    // The second vendor call began only after the first run had been cancelled
-    // and unwound, never concurrently with it.
-    expect(started[1]! - started[0]!).toBeGreaterThanOrEqual(70);
+    // Each refresh deliberately starts two holdings calls together: filtered
+    // presentation and unfiltered same-chain discovery.
+    expect(started.length).toBe(4);
+    // The second refresh's pair began only after the first pair had been
+    // cancelled and unwound, never concurrently with the previous job.
+    expect(Math.min(...started.slice(2)) - Math.max(...started.slice(0, 2))).toBeGreaterThanOrEqual(70);
     await service.shutdown();
   }, 15_000);
 

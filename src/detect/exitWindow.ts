@@ -27,7 +27,7 @@ import { TIMELOCK_SELECTORS } from "../chain/constants.js";
 import { ERROR_STRING_SELECTOR, PROBE_ADDRESSES, parseAuthShape } from "./guardProbe.js";
 import { terminalNodeOf } from "./authority.js";
 import { detectProxy } from "./proxy.js";
-import { extractDispatcherSelectors } from "./dispatcher.js";
+import { factsFor } from "./facts.js";
 import { enumerationSiteKey, gapSubject, witnessOf } from "../report/enumeration.js";
 import type {
   AuthorityIndirection,
@@ -165,12 +165,13 @@ export async function analyseTimelockBinding(
   }
 
   // Which mutator does this contract actually expose?
-  const { code, evidence: codeEvidence } = await chain.getCode(address);
+  const facts = factsFor(chain);
+  const { evidence: codeEvidence } = await facts.code(address);
   evidence.push(codeEvidence);
   let mutator: { signature: string; selector: Hex } | null = null;
   let dispatcherRecognized = false;
-  if (code) {
-    const dispatch = extractDispatcherSelectors(code);
+  {
+    const dispatch = await facts.selectors(address);
     if (dispatch.recognized) {
       dispatcherRecognized = true;
       const selectors = new Set(dispatch.selectors.map((s) => s.toLowerCase()));

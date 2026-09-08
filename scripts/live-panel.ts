@@ -158,8 +158,8 @@ export function renderLivePanel(live: Sidecar | null): string {
         .join("")}</ul>`
     : `<p class="lv-note">Nothing was withheld: every holding the vendor returned is shown above.</p>`;
 
-  const endpointNote = `<p class="lv-note">Endpoints answered — holdings: ${live.endpoints.holdings ? "yes" : "no"},
-    price: ${live.endpoints.price ? "yes" : "no"}, metadata: ${live.endpoints.metadata ? "yes" : "no"}.
+  const endpointNote = `<p class="lv-note">Endpoints answered — filtered holdings: ${live.endpoints.holdings ? "yes" : "no"},
+    unfiltered same-chain discovery: ${live.endpoints.discovery ? "yes" : "no"}, price: ${live.endpoints.price ? "yes" : "no"}.
     ${live.notes.length ? escapeHtml(live.notes.join("; ")) + "." : ""}</p>`;
 
   return panelShell(

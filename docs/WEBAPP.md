@@ -422,9 +422,10 @@ Ripcord analysis and a default-off **Ripcord + Mobula 2nd layer**. The second is
 currently enabled only for the Compound III cUSDCv3 target in a withdrawal-test
 mode, and the API enforces the same address/mode restriction. Opting in discloses
 that target contract address to Mobula after the core report has passed the
-publication gate. `server/asset-context.ts` then selects up to 64 unique
-same-chain ERC20 identities from the complete response — independent of the
-UI's $1 floor and top-12 cap — and verifies them with `getCode` and `balanceOf(target)` at the
+publication gate. `server/asset-context.ts` then selects up to 64 unique ERC20
+identities from a separate unfiltered same-chain response — independent of the
+UI's $1 floor, top-12 cap and presentation filters — and verifies them with
+`getCode` and `balanceOf(target)` at the
 already-pinned block, checks the report's block hash around the pass, and stores
 a separate report-keyed artifact. Native, other/unclear-chain, malformed,
 duplicate and beyond-cap entries are itemised rather than silently dropped. The coverage endpoint polls this artifact

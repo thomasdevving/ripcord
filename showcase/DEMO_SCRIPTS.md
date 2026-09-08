@@ -1,4 +1,10 @@
-# Ripcord — complete video and live-demo scripts
+# Ripcord — video and IRL live-demo scripts
+
+> **Top 10 showcase:** the current stage deck is now self-contained and does
+> not use a live demo. Its up-to-date 5:05 read-aloud text is embedded per slide
+> in `index.html` and can be shown during rehearsal with `N`. Section 2 below is
+> retained as the completed IRL-judging/live-product script, not as the current
+> showcase plan.
 
 Both scripts use Compound III's Ethereum USDC market:
 
@@ -287,7 +293,7 @@ verification, supported fork scenarios, counts and one expanded asset row.]
 >
 > That is Ripcord.”
 
-## 2. Live showcase script — approximately 5:30
+## 2. IRL live-product script — approximately 5:30 (archived)
 
 For the live version, prepare three tabs: the deck, **New analysis** already
 filled with the Compound address, and a completed live Compound report whose
@@ -438,7 +444,7 @@ pass** at the top of that section.]
 - If Mobula is pending or unavailable: “The deterministic report completed. The
   optional vendor-backed layer failed separately, so it makes no claim and does
   not affect the verdict.”
-- If the network fails entirely: return to slide 3 and press `B`, or play the
+- If the network fails entirely: return to slide 4 and press `B`, or play the
   recorded MP4.
 - Never describe `no_effect`, `unresolved` or `unavailable` as safe.
 

@@ -86,10 +86,163 @@ describe("failure is a panel state, never an exception and never a blank", () =>
     const e = await buildLiveExposure("0xabc", 1);
     expect(e.status).toBe("ok");
     expect(e.holdings).toHaveLength(1);
-    expect(e.endpoints).toEqual({ holdings: true, price: false, metadata: false });
+    expect(e.endpoints).toEqual({ holdings: true, discovery: true, price: false });
     // Degradation is recorded, not silent.
     expect(e.notes.join(" ")).toMatch(/price enrichment unavailable/);
-    expect(e.notes.join(" ")).toMatch(/metadata unavailable/);
+  });
+});
+
+describe("candidate discovery is separate from presentation", () => {
+  it("disables vendor filters on the report chain without making the cross-chain panel noisy", async () => {
+    const holdingsUrls: string[] = [];
+    stubFetch((url) => {
+      if (url.includes("/wallet/holdings")) {
+        holdingsUrls.push(url);
+        const query = new URL(url).searchParams;
+        if (query.get("fetchAllChains") === "true") {
+          return { body: holdingsBody([erc20("0xshown", "SHOWN", 10, 1000)], 1000) };
+        }
+        return {
+          body: holdingsBody([
+            erc20("0xshown", "SHOWN", 10, 1000),
+            erc20("0xilliquid", "ILLIQUID", 1, 0),
+          ], 1000),
+        };
+      }
+      if (url.includes("/token/price")) {
+        return { body: { payload: [{ address: "0xshown", chainId: "evm:1", priceUSD: 100, liquidityUSD: 1e9 }] } };
+      }
+      throw new Error(`unexpected URL ${url}`);
+    });
+
+    const e = await buildLiveExposure("0xabc", 1);
+    expect(e.holdings.map((holding) => holding.address)).toEqual(["0xshown"]);
+    expect(e.candidateHoldings?.map((holding) => holding.address)).toEqual(["0xshown", "0xilliquid"]);
+    expect(e.candidateDiscovery).toMatchObject({
+      scope: "evm:1",
+      status: "unfiltered_response",
+      holdingsCount: 2,
+    });
+
+    const discoveryUrl = holdingsUrls.find((url) => new URL(url).searchParams.get("blockchains") === "evm:1");
+    expect(discoveryUrl).toBeDefined();
+    const discovery = new URL(discoveryUrl!).searchParams;
+    expect(discovery.get("fetchAllChains")).toBeNull();
+    expect(discovery.get("unlistedAssets")).toBe("true");
+    expect(discovery.get("accuracy")).toBe("maximum");
+    expect(discovery.get("filterSpam")).toBe("false");
+    expect(discovery.get("minLiquidity")).toBe("0");
+  });
+
+  it("falls back loudly to filtered identities when the discovery request fails", async () => {
+    stubFetch((url) => {
+      if (url.includes("/wallet/holdings")) {
+        const query = new URL(url).searchParams;
+        return query.get("fetchAllChains") === "true"
+          ? { body: holdingsBody([erc20("0xshown", "SHOWN", 10, 1000)], 1000) }
+          : { status: 400, body: {} };
+      }
+      if (url.includes("/token/price")) return { body: { payload: [] } };
+      throw new Error(`unexpected URL ${url}`);
+    });
+
+    const e = await buildLiveExposure("0xabc", 1);
+    expect(e.status).toBe("ok");
+    expect(e.endpoints.discovery).toBe(false);
+    expect(e.candidateDiscovery?.status).toBe("filtered_fallback");
+    expect(e.candidateHoldings?.map((holding) => holding.address)).toEqual(["0xshown"]);
+    expect(e.notes.join(" ")).toMatch(/fell back to the filtered presentation response/);
+  });
+
+  it("preserves candidate discovery when only the presentation request fails", async () => {
+    stubFetch((url) => {
+      if (url.includes("/wallet/holdings")) {
+        const query = new URL(url).searchParams;
+        return query.get("fetchAllChains") === "true"
+          ? { status: 400, body: {} }
+          : { body: holdingsBody([erc20("0xcandidate", "CANDIDATE", 1, 0)], 0) };
+      }
+      throw new Error(`unexpected URL ${url}`);
+    });
+
+    const e = await buildLiveExposure("0xabc", 1);
+    expect(e.status).toBe("unavailable");
+    expect(e.endpoints).toEqual({ holdings: false, discovery: true, price: false });
+    expect(e.candidateDiscovery).toMatchObject({
+      scope: "evm:1",
+      status: "unfiltered_response",
+      holdingsCount: 1,
+    });
+    expect(e.candidateHoldings?.map((holding) => holding.address)).toEqual(["0xcandidate"]);
+  });
+});
+
+describe("v2 price enrichment replaces deprecated v1 metadata", () => {
+  it("uses batch-price names and logos and never calls multi-metadata", async () => {
+    const urls: string[] = [];
+    stubFetch((url) => {
+      urls.push(url);
+      if (url.includes("/wallet/holdings")) {
+        return { body: holdingsBody([erc20("0xaaa", "holding symbol", 10, 1000)], 1000) };
+      }
+      if (url.includes("/token/price")) {
+        return {
+          body: {
+            payload: [{
+              address: "0xaaa",
+              chainId: "evm:1",
+              name: "Price endpoint name",
+              symbol: "PRICE",
+              logo: "https://cdn.example/token.png",
+              priceUSD: 100,
+              liquidityUSD: 1e9,
+            }],
+          },
+        };
+      }
+      throw new Error(`unexpected URL ${url}`);
+    });
+
+    const e = await buildLiveExposure("0xabc", 1);
+    expect(e.holdings[0]).toMatchObject({
+      unverifiedName: "Price endpoint name",
+      unverifiedSymbol: "PRICE",
+      logo: "https://cdn.example/token.png",
+    });
+    expect(urls.some((url) => url.includes("multi-metadata"))).toBe(false);
+    expect(e.endpoints.metadata).toBeUndefined();
+  });
+
+  it("accepts the currently documented Usd field casing without losing value", async () => {
+    stubFetch((url) => {
+      if (url.includes("/wallet/holdings")) {
+        return {
+          body: {
+            data: {
+              totalWalletBalanceUsd: 100,
+              holdings: [{
+                token: { address: "0xaaa", chainId: "evm:1", symbol: "AAA", name: "AAA" },
+                amount: 10,
+                amountUsd: 100,
+                crossChainBalances: {
+                  "evm:1": { chainId: "evm:1", address: "0xaaa", amount: 10, amountUsd: 100 },
+                },
+              }],
+            },
+          },
+        };
+      }
+      if (url.includes("/token/price")) {
+        return { body: { payload: [{ address: "0xaaa", chainId: "evm:1", priceUSD: 10, liquidityUSD: 1e9 }] } };
+      }
+      throw new Error(`unexpected URL ${url}`);
+    });
+
+    const e = await buildLiveExposure("0xabc", 1);
+    expect(e.vendorReportedTotalUsd).toBe(100);
+    expect(e.exposureUsd).toBe(100);
+    expect(e.candidateHoldings?.[0]?.holdingsQuoteUsd).toBe(100);
+    expect(e.holdings[0]?.chains).toEqual([{ chainId: "evm:1", chainName: "Ethereum", amountUSD: 100 }]);
   });
 });
 

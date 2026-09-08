@@ -1,9 +1,14 @@
-# Ripcord — Top 10 Showcase deck
+# Ripcord — showcase deck
 
-`index.html` is the offline-first stage deck for the 5–6 minute Top 10
-Showcase. It uses only local CSS, JavaScript and the bundled Ripcord logo. There
-are no font, analytics or asset requests. The report button is the only external
-link.
+`index.html` is the offline-first stage deck for a 5–6 minute showcase. The
+presentation is intentionally self-contained: it does **not** switch to a live
+demo. Instead, one completed Compound III report is decomposed into readable
+slides showing recognition, authority reconstruction, enforced notice, the fork
+differential and the final Exit Window.
+
+The deck uses only local CSS, JavaScript and the bundled Ripcord logo. There are
+no font, analytics or asset requests. The links on the closing slide are the
+only external navigation.
 
 ## Present
 
@@ -15,53 +20,61 @@ Open `index.html` in Chrome or Safari, then use:
 | `←`, click left | Previous slide |
 | `F` | Fullscreen |
 | `N` | Toggle speaker notes |
-| `B` | Enter/leave the three-slide demo backup |
+| `B` | Enter/leave the three-slide Q&A appendix |
 | `Home` / `End` | First/last slide |
 
 `N` is intended for rehearsal. With a mirrored projector the notes are visible
 to the audience too; close them before going fullscreen on stage.
 
-The normal sequence contains seven slides. At slide 3, switch to the real
-Ripcord site, select the opt-in Mobula second layer for Compound III, start the
-analysis and then use the completed Compound report for the explanation. Spend
-roughly 2:50 on the product. Return to slide 4 for the technical process.
+## Main sequence
 
-The exact read-aloud scripts and failure fallbacks for the recorded backup and
-the live product demo are in [`DEMO_SCRIPTS.md`](DEMO_SCRIPTS.md).
+The eleven main slides form one continuous story:
 
-If the live product fails, return to slide 3 and press `B`. The backup sequence
-shows the authority map, fork differential and zero-second verdict at projector
-scale. Press `B` after the third backup slide to resume at the process slide.
+1. the sovereignty question;
+2. the three questions to answer before deploying capital into DeFi;
+3. the three report outputs;
+4. the reconstructed power map;
+5. bytecode signature matching and fork behaviour verification, with shortened production code;
+6. evidence that the two-day timelock is binding;
+7. why the fork is necessary and the A/B/C withdrawal differential;
+8. the zero-second effective Exit Window;
+9. Mobula-proposed assets and their value for broader coverage;
+10. the post-hackathon roadmap, clearly separated from shipped functionality;
+11. the closing question.
 
-## Demo URL
+Speaker notes contain a compact read-aloud narrative and target timestamps. The
+deck should land around 5:05 at a calm pace. Do not compensate for nerves by
+explaining every label on each slide; the slide itself now carries the product
+demonstration.
 
-The `Open report` button defaults to the published static Compound report. To
-point it at a different deployment without editing the deck, append a URL-encoded
-`demo` query parameter:
+## Q&A appendix
 
-```text
-index.html?demo=https%3A%2F%2Fexample.com%2Freport%2Fcompound-comet-cusdcv3
-```
+Press `B` from any main slide to open three hardcoded evidence slides:
 
-For the actual showcase, keep these browser tabs open before going on stage:
+1. the `$540.6M` upgrade drain proof, with the required two-day-timelock caveat;
+2. the exact boundary between demonstrated capability and Safe impersonation;
+3. the present recognition, adapter and liquidity limitations.
 
-1. this deck;
-2. the new-analysis screen;
-3. the completed Compound III report;
-4. the local backup recording.
+These are deliberately outside the main sequence. The drain figure is a strong
+technical answer when a judge asks what upgrade authority means in practice,
+but it distracts from the simpler zero-second guardian result if introduced
+without that question. The limitations slide is useful when judges probe
+generality or false confidence.
+
+Press `B` again to return to the main slide from which the appendix was opened.
 
 ## Timing
 
 | Segment | Target |
 | --- | ---: |
-| Hook + product | 1:00 |
-| Live product demo | 2:50 |
-| Process | 0:35 |
-| Mobula implementation | 0:45 |
-| Roadmap + close | 0:35 |
-| **Total** | **5:45** |
+| Hook + problem + product | 1:20 |
+| Function recognition | 0:45 |
+| Power map + binding notice | 0:55 |
+| Why fork + differential + verdict | 1:00 |
+| Mobula + roadmap + close | 1:05 |
+| **Total** | **5:05** |
 
-Rehearse toward 5:20–5:30; the remaining time is stage/AV buffer.
+Rehearse toward 4:55–5:05; the remaining time is stage and AV buffer.
 
 ## PDF backup
 
@@ -72,15 +85,18 @@ Use the browser's Print command and select **Save as PDF** with:
 - margins set to none;
 - scale set to 100%.
 
-Print CSS exports the seven main slides and leaves out presenter controls and
-the demo-backup sequence. Save the PDF and the entire `showcase` folder on the
-USB drive. The folder is self-contained.
+Print CSS exports the eleven main slides and leaves out presenter controls and
+the Q&A appendix. Save both the PDF and the entire `showcase` folder on the USB
+drive. The folder is self-contained.
 
 ## Stage checklist
 
 - Disable notifications and automatic sleep.
-- Use 16:9 mirroring, not an extended desktop you have not rehearsed.
-- Set the live site to 125–150% browser zoom.
-- Start the analysis once, then move immediately to the completed report.
-- Keep the backup MP4 as a separate, directly playable file.
-- Do not depend on the live analysis finishing before the conclusion.
+- Use 16:9 mirroring and test the projector before presenting.
+- Open the deck locally; no network is required for the presentation.
+- Keep the production site, repository and calibration report bookmarked for
+  questions, but do not leave the deck during the prepared pitch.
+- Rehearse the transition from the Power Map directly into the fork: discovery
+  identifies a possible route; matched execution establishes its consequence.
+- Never describe an unmatched selector, unsupported adapter or no-effect result
+  as safe.

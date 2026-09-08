@@ -107,3 +107,121 @@ describe("cache miss/hit shape equivalence", () => {
     expect(normalizeToCachedShape({ a: 1, b: undefined })).toEqual({ a: 1 });
   });
 });
+
+/**
+ * IN-FLIGHT COALESCING.
+ *
+ * The disk cache makes a REPEATED read free; it did nothing about a
+ * SIMULTANEOUS one. Two callers asking the identical pinned question before
+ * either has written the entry both miss, and both go to the provider — the cost
+ * of a fact scaling with how many detectors happen to want it.
+ *
+ * The property that has to hold is the one the whole cache rests on: a caller
+ * must not be able to tell how its value was obtained. So a joined read is
+ * checked to be equal to, and independent of, the leader's value, and a failure
+ * is checked to reach every joiner rather than being swallowed for the late one.
+ */
+describe("in-flight coalescing", () => {
+  const key = (method: string): CacheKey => ({ chainId: 1, blockNumber: 100n, method, params: { a: 1 } });
+
+  async function tmpCache(enabled = true) {
+    const dir = await mkdtemp(join(tmpdir(), "ripcord-coalesce-"));
+    return new DiskCache(dir, enabled);
+  }
+
+  it("issues ONE fetch for concurrent identical reads", async () => {
+    const cache = await tmpCache();
+    let fetches = 0;
+    const fetch = async () => {
+      fetches++;
+      await new Promise((r) => setTimeout(r, 5));
+      return { value: 42 };
+    };
+    const [a, b, c] = await Promise.all([
+      cache.wrap(key("call"), fetch),
+      cache.wrap(key("call"), fetch),
+      cache.wrap(key("call"), fetch),
+    ]);
+    expect(fetches).toBe(1);
+    expect(a.value).toEqual(b.value);
+    expect(b.value).toEqual(c.value);
+    expect(cache.coalesced).toBe(2);
+  });
+
+  it("still issues separate fetches for DIFFERENT reads", async () => {
+    const cache = await tmpCache();
+    let fetches = 0;
+    const fetch = async () => { fetches++; return { value: 1 }; };
+    await Promise.all([cache.wrap(key("call"), fetch), cache.wrap(key("getCode"), fetch)]);
+    expect(fetches).toBe(2);
+    expect(cache.coalesced).toBe(0);
+  });
+
+  it("gives every joiner its OWN object graph, exactly as a disk hit would", async () => {
+    // A disk hit parses a fresh object per caller. Handing several callers one
+    // shared reference would make a joined read behave differently from a
+    // cached one — the miss/hit divergence normalizeToCachedShape exists to
+    // prevent, reintroduced one layer up.
+    const cache = await tmpCache();
+    const fetch = async () => {
+      await new Promise((r) => setTimeout(r, 5));
+      return { nested: { list: [1, 2, 3] } };
+    };
+    const [a, b] = await Promise.all([cache.wrap(key("call"), fetch), cache.wrap(key("call"), fetch)]);
+    expect(a.value).toEqual(b.value);
+    expect(a.value).not.toBe(b.value);
+    (a.value as { nested: { list: number[] } }).nested.list.push(4);
+    expect((b.value as { nested: { list: number[] } }).nested.list).toEqual([1, 2, 3]);
+  });
+
+  it("propagates a failure to every joiner — nobody gets a default", async () => {
+    const cache = await tmpCache();
+    let fetches = 0;
+    const fetch = async () => {
+      fetches++;
+      await new Promise((r) => setTimeout(r, 5));
+      throw new Error("provider exploded");
+    };
+    const results = await Promise.allSettled([
+      cache.wrap(key("call"), fetch),
+      cache.wrap(key("call"), fetch),
+    ]);
+    expect(fetches).toBe(1);
+    expect(results.every((r) => r.status === "rejected")).toBe(true);
+    expect((results[0] as PromiseRejectedResult).reason.message).toBe("provider exploded");
+  });
+
+  it("releases the slot after a failure, so a retry is a real attempt", async () => {
+    const cache = await tmpCache();
+    let fetches = 0;
+    const failing = async () => { fetches++; throw new Error("nope"); };
+    await expect(cache.wrap(key("call"), failing)).rejects.toThrow("nope");
+    await expect(cache.wrap(key("call"), failing)).rejects.toThrow("nope");
+    expect(fetches).toBe(2);
+  });
+
+  it("coalesces with caching DISABLED too, so --no-cache takes the same path", async () => {
+    const cache = await tmpCache(false);
+    let fetches = 0;
+    const fetch = async () => { fetches++; await new Promise((r) => setTimeout(r, 5)); return { value: 7 }; };
+    const [a, b] = await Promise.all([cache.wrap(key("call"), fetch), cache.wrap(key("call"), fetch)]);
+    expect(fetches).toBe(1);
+    expect(a.value).toEqual(b.value);
+  });
+
+  it("a joined read carries the same bigint-normalized shape a disk hit would", async () => {
+    const cache = await tmpCache();
+    const fetch = async () => {
+      await new Promise((r) => setTimeout(r, 5));
+      return { blockNumber: 12345n };
+    };
+    const [a, b] = await Promise.all([cache.wrap(key("getLogs"), fetch), cache.wrap(key("getLogs"), fetch)]);
+    // KNOWN EDGE #23: a miss must not hand back a raw bigint where a hit yields
+    // a string. That has to survive the coalescing path as well.
+    expect(a.value).toEqual({ blockNumber: "12345" });
+    expect(b.value).toEqual({ blockNumber: "12345" });
+    const warm = await cache.wrap(key("getLogs"), fetch);
+    expect(warm.value).toEqual(a.value);
+    expect(warm.fromCache).toBe(true);
+  });
+});

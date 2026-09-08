@@ -32,7 +32,7 @@ import type {
   TimeToExit,
   UnknownEntry,
 } from "../report/schema.js";
-import { extractDispatcherSelectors } from "./dispatcher.js";
+import { factsFor } from "./facts.js";
 
 /** Bump whenever the tables or composition rules below change. Folded into report.rulesetVersion. */
 export const exitPatternsVersion = "0.1.0";
@@ -136,26 +136,26 @@ export async function analyseTimeToExit(
   const unmeasuredLegs: { name: string; reason: string }[] = [];
 
   // The selector set of whatever code actually runs for this address — the
-  // implementation for a proxy, exactly as capability detection resolves it.
-  // Reused (not recomputed) so the two can never disagree about what the
-  // contract exposes.
+  // implementation for a proxy, exactly as capability detection resolves it,
+  // which is why the ADDRESS comes from `capabilities.scannedAddress` rather
+  // than being re-derived here.
+  //
+  // The set itself now genuinely comes from the shared fact layer. The comment
+  // that stood here said "Reused (not recomputed)" directly above code that
+  // re-fetched the bytecode and re-ran the analyser over it — documentation
+  // contradicting its own implementation, and the reuse it claimed is what
+  // guarantees this stage and capability detection cannot disagree about what
+  // the contract exposes. `factsFor` keys on the address, so they now share one
+  // analysis by construction instead of by coincidence.
   const selectorSet = new Set<string>();
-  let dispatcherRecognized: boolean;
   const scanAddress = (args.capabilities.scannedAddress ?? target) as Hex;
-  {
-    const { code, evidence: codeEvidence } = await chain.getCode(scanAddress);
-    evidence.push(codeEvidence);
-    if (code) {
-      const dispatch = extractDispatcherSelectors(code);
-      if (dispatch.recognized) {
-        dispatcherRecognized = true;
-        for (const s of dispatch.selectors) selectorSet.add(s.toLowerCase());
-      } else {
-        dispatcherRecognized = false;
-      }
-    } else {
-      dispatcherRecognized = false;
-    }
+  const facts = factsFor(chain);
+  const { evidence: codeEvidence } = await facts.code(scanAddress);
+  evidence.push(codeEvidence);
+  const dispatch = await facts.selectors(scanAddress);
+  const dispatcherRecognized = dispatch.recognized;
+  if (dispatch.recognized) {
+    for (const s of dispatch.selectors) selectorSet.add(s.toLowerCase());
   }
 
   // --- 1. Cooldown / claim-window accessors. ---

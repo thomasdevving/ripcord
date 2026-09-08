@@ -102,6 +102,7 @@ const derive = (over: Parameters<typeof deriveEnumerationCompleteness>[0] | Reco
     authorityResolution: res([]),
     dependencies: noDeps(),
     errors: [],
+    budgetExhaustions: [],
     // Default to a surface that was fully evaluated with nobody privileged over
     // it, so these cases isolate the property each one is actually about.
     capabilities: evaluatedSurface(),

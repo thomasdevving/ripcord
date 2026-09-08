@@ -18,11 +18,9 @@
 import { decodeFunctionResult, encodeFunctionData, type Hex } from "viem";
 import type { ChainReader, Evidence } from "../chain/client.js";
 import { TIMELOCK_SELECTORS } from "../chain/constants.js";
+import { budgetOf } from "../chain/budgetedReader.js";
 import { classifyAccount } from "./accounts.js";
-import { detectOwnership } from "./ownership.js";
-import { detectProxy } from "./proxy.js";
-import { detectAccessControl } from "./accessControl.js";
-import { extractDispatcherSelectors } from "./dispatcher.js";
+import { factsFor } from "./facts.js";
 import type {
   AuthorityNode,
   AuthorityPath,
@@ -147,16 +145,15 @@ export async function detectTimelock(
   // timelock's OWN bytecode. Evidence-backed, and honestly `null` when the
   // dispatcher can't be recognised rather than a guessed false.
   let adminCanShortenDelay: boolean | null = null;
-  const { code, evidence: codeEvidence } = await chain.getCode(address);
+  const facts = factsFor(chain);
+  const { evidence: codeEvidence } = await facts.code(address);
   evidence.push(codeEvidence);
-  if (code) {
-    const dispatch = extractDispatcherSelectors(code);
-    if (dispatch.recognized) {
-      const selset = new Set(dispatch.selectors.map((s) => s.toLowerCase()));
-      adminCanShortenDelay =
-        selset.has(TIMELOCK_SELECTORS.updateDelay.toLowerCase()) ||
-        selset.has(TIMELOCK_SELECTORS.setDelay.toLowerCase());
-    }
+  const dispatch = await facts.selectors(address);
+  if (dispatch.recognized) {
+    const selset = new Set(dispatch.selectors.map((s) => s.toLowerCase()));
+    adminCanShortenDelay =
+      selset.has(TIMELOCK_SELECTORS.updateDelay.toLowerCase()) ||
+      selset.has(TIMELOCK_SELECTORS.setDelay.toLowerCase());
   }
 
   // cancellers/executors, best-effort from the reconstructed role set. Null
@@ -196,6 +193,7 @@ async function resolveNode(
 ): Promise<AuthorityNode> {
   const lower = address.toLowerCase();
   const confidence = confidenceForDepth(depth);
+  const facts = factsFor(chain);
 
   const base = (
     type: AuthorityNode["type"],
@@ -233,6 +231,29 @@ async function resolveNode(
     });
   }
 
+  // THE NODE BUDGET. The depth cap bounds how FAR a branch travels; nothing
+  // bounded how MANY branches exist. A contract with fifty role members, each of
+  // which is a contract with fifty of its own, is three legal hops and thousands
+  // of classifications — the cost of a report decided by the target's shape.
+  // Refusing the node is recorded as its own termination reason rather than as
+  // "no authority found", so "we stopped" never reads as "we searched".
+  const budget = budgetOf(chain);
+  if (
+    budget &&
+    !budget.spend(
+      "authorityNodes",
+      1,
+      "authorityResolution",
+      "the recursion stopped and the unvisited node is recorded with terminationReason=budget_exhausted, which the exit window treats as an unresolved authority contributing no notice",
+    )
+  ) {
+    unknownsOut.push({
+      field: `authorityResolution[${address}]`,
+      reason: `the report-wide authority-node budget (${budget.limits.authorityNodes}) was reached before this address was classified — it is UNRESOLVED, not clean, and the route through it imposes an unknown notice`,
+    });
+    return base("contract", "budget_exhausted", { type: "contract", evidence: [] });
+  }
+
   const classified = await classifyAccount(chain, address, [relation]);
   const evidence = [...classified.evidence];
 
@@ -253,7 +274,7 @@ async function resolveNode(
   // no authority found". The ChainReadError now propagates to build.ts's
   // runStage("authorityResolution") and lands in errors[], while
   // detectAccessControl's own unknowns[] are threaded UP namespaced by address.
-  const accessControl = await detectAccessControl(chain, address);
+  const accessControl = await facts.accessControl(address);
   for (const u of accessControl.unknowns) {
     unknownsOut.push({ field: `authorityResolution[${address}].${u.field}`, reason: u.reason });
   }
@@ -285,8 +306,8 @@ async function resolveNode(
 
   // Resolve this contract's OWN ownership/proxy authorities and recurse.
   const [ownership, proxy] = await Promise.all([
-    detectOwnership(chain, address),
-    detectProxy(chain, address),
+    facts.ownership(address),
+    facts.proxy(address),
   ]);
 
   const seeds = collectSeeds({

@@ -37,6 +37,15 @@ export function DetailPanel({
     );
   }
 
+  // Nodes carry ids into the snapshot's shared evidence table, so an entry
+  // relevant to several nodes is transported once. A missing table means the
+  // detail has not been assembled yet (a live run streams structure before the
+  // report exists) — which is NOT the same as "this node has no evidence", so
+  // it falls through to the same "not available yet" line as an empty list.
+  const resolvedEvidence = (node.evidenceIds ?? [])
+    .map((id) => snapshot?.evidence?.[id])
+    .filter((entry): entry is unknown => entry !== undefined);
+
   const incoming = snapshot?.edges.filter((e) => e.to.toLowerCase() === node.address.toLowerCase()) ?? [];
   const outgoing = snapshot?.edges.filter((e) => e.from.toLowerCase() === node.address.toLowerCase()) ?? [];
 
@@ -140,7 +149,7 @@ export function DetailPanel({
           </ul>
         </>
       )}
-      {node.evidence?.length ? <details><summary>Recorded reads ({node.evidence.length})</summary><pre>{JSON.stringify(node.evidence, null, 2)}</pre></details> : <p className="note small">Exact reads become available after the report passes publication review.</p>}
+      {resolvedEvidence.length ? <details><summary>Recorded reads ({resolvedEvidence.length})</summary><pre>{JSON.stringify(resolvedEvidence, null, 2)}</pre></details> : <p className="note small">Exact reads become available after the report passes publication review.</p>}
     </section>
   );
 }

@@ -25,6 +25,7 @@ import { isTerminal, phasesForMode } from "../shared/dto.js";
 import { JobStore, type JobRecord, type StoredReportMeta } from "./store.js";
 import { isWorkerMessage, type StartMessage, type WorkerMessage } from "./protocol.js";
 import type { Report } from "../../src/report/schema.js";
+import { createInstanceIdentity, HEARTBEAT_INTERVAL_MS, LEASE_DURATION_MS, type InstanceIdentity } from "./lease.js";
 
 /** How many events per job stay in memory for reconnect replay. Beyond this a client is given a fresh snapshot. */
 const EVENT_HISTORY_LIMIT = 2000;
@@ -177,10 +178,47 @@ export class JobManager {
 
   // --- lifecycle -------------------------------------------------------------
 
-  async init(): Promise<{ recovered: number }> {
-    const recovered = await this.store.recoverInterruptedJobs();
-    return { recovered };
+  /**
+   * This process's durable identity. Every claim, heartbeat and release is
+   * stamped with it, which is what lets recovery tell "my own crashed run" from
+   * "a peer that is still working" — see jobs/lease.ts.
+   */
+  readonly identity: InstanceIdentity = createInstanceIdentity();
+  private readonly heartbeats = new Map<string, NodeJS.Timeout>();
+
+  async init(): Promise<{ recovered: number; skippedLive: number; instanceId: string }> {
+    // Recovery is now SCOPED BY LEASE. It used to interrupt every persisted
+    // in-flight job at boot, which meant a second instance starting up declared
+    // the first one's live work dead while it was still running.
+    const { recovered, skippedLive } = await this.store.recoverInterruptedJobs(this.identity);
+    this.startReaper();
+    return { recovered, skippedLive, instanceId: this.identity.instanceId };
   }
+
+  /**
+   * Sweeps leases that expire AFTER boot.
+   *
+   * Boot-time recovery only sees the world as it was at boot. A peer that dies
+   * an hour later leaves a job that nothing would ever move off `running` —
+   * visible to a browser as work still happening, forever. The sweep runs at
+   * half the lease duration so an expiry is noticed within one lease at worst.
+   *
+   * It cannot touch this instance's own running jobs: they are heartbeated, so
+   * their leases are never expired while the worker lives. `unref` so it never
+   * holds the process open.
+   */
+  private startReaper(): void {
+    if (this.reaper) return;
+    this.reaper = setInterval(() => {
+      if (this.shuttingDown) return;
+      void this.store.recoverInterruptedJobs(this.identity).then(({ recovered }) => {
+        if (recovered > 0) console.warn(`[ripcord] reclaimed ${recovered} job(s) whose ownership lease expired`);
+      }).catch(() => undefined);
+    }, Math.max(1000, Math.floor(LEASE_DURATION_MS / 2)));
+    this.reaper.unref?.();
+  }
+
+  private reaper: NodeJS.Timeout | null = null;
 
   /**
    * Stops everything, in the order that matters: refuse new work, then kill
@@ -189,6 +227,8 @@ export class JobManager {
    */
   async shutdown(): Promise<void> {
     this.shuttingDown = true;
+    if (this.reaper) { clearInterval(this.reaper); this.reaper = null; }
+    for (const jobId of [...this.heartbeats.keys()]) this.stopHeartbeat(jobId);
     await this.admissionTail;
     await this.creationTail;
     await Promise.all([...this.jobs.keys()].map((id) => this.finish(id, "interrupted", { message: "The service is shutting down.", hint: "Start a new run once it is back." })));
@@ -251,13 +291,54 @@ export class JobManager {
     catch (err) { this.jobs.delete(jobId); throw err; }
     this.queue.push(jobId);
     this.emit(jobId, { type: "job.state", state: "queued", queuePosition: this.queuePosition(jobId), message: null });
-    await this.persist(this.jobs.get(jobId)!);
+    const accepted = this.jobs.get(jobId)!;
+    await this.persist(accepted);
+    // Recorded here, beside the persist, so the index and the store are updated
+    // by the same code path that accepts a job.
+    this.rememberIdempotencyKey(accepted.record);
     this.pump();
     return { record, controlToken, deduplicated: false };
   }
 
+  /**
+   * Idempotency keys, indexed rather than scanned.
+   *
+   * This lookup used to read and parse EVERY stored job on every submission, so
+   * the cost of accepting a job grew with how many had ever been accepted —
+   * retention kept that bounded, but bounded-by-cleanup is not the same as
+   * cheap, and it is the first thing to bite when retention is widened. The
+   * index is built once, lazily, from the same source the scan used, and
+   * maintained on every create.
+   *
+   * Rebuilt from the store rather than assumed empty on boot: a key used before
+   * a restart must still deduplicate, otherwise a retried submission after a
+   * deploy silently starts a second run of the same analysis.
+   */
+  private idempotencyIndex: Map<string, JobRecord> | null = null;
+
+  private async idempotency(): Promise<Map<string, JobRecord>> {
+    if (this.idempotencyIndex) return this.idempotencyIndex;
+    const index = new Map<string, JobRecord>();
+    for (const record of await this.store.listJobs()) {
+      if (record.idempotencyKey) index.set(record.idempotencyKey, record);
+    }
+    // Live records win: an in-flight job is the more current view of a key.
+    for (const live of this.jobs.values()) {
+      if (live.record.idempotencyKey) index.set(live.record.idempotencyKey, live.record);
+    }
+    this.idempotencyIndex = index;
+    return index;
+  }
+
+  /** Called on every accepted job so the index never goes stale between builds. */
+  private rememberIdempotencyKey(record: JobRecord): void {
+    if (!record.idempotencyKey) return;
+    this.idempotencyIndex?.set(record.idempotencyKey, record);
+  }
+
   private async findByIdempotencyKey(key: string, req: CreateJobRequest): Promise<JobRecord | null> {
-    for (const r of [...[...this.jobs.values()].map(live => live.record), ...await this.store.listJobs()]) {
+    const existing = (await this.idempotency()).get(key);
+    for (const r of existing ? [existing] : []) {
       if (r.idempotencyKey !== key) continue;
       const sameBlock = req.block === "latest" ? r.blockSource === "resolved_latest" : r.block === canonicalBlock(req.block);
       if (
@@ -309,10 +390,30 @@ export class JobManager {
       return;
     }
 
+    // The LOCAL admission slot is reserved synchronously, before any await.
+    // `maxActiveJobs` is what stops N anvil forks at once, and a slot taken one
+    // microtask later is a slot two pumps can both believe is free.
+    this.running.add(record.jobId);
+
+    // OWNERSHIP BEFORE WORK, and it is a different question from the local slot:
+    // a job that cannot be claimed is one another LIVE instance already holds,
+    // so this process must not start a second worker on it — two workers on one
+    // job write the same report id from two processes. `finish` releases the
+    // slot reserved above.
+    const claimed = await this.store.claimJob(record.jobId, this.identity);
+    if (!claimed) {
+      await this.finish(record.jobId, "interrupted", {
+        message: "Another instance already holds this analysis.",
+        hint: "Watch the existing run, or start a new one. Nothing about the contract follows from this.",
+      });
+      return;
+    }
+    record.lease = claimed.lease ?? null;
+
     record.state = "running";
     record.startedAt = new Date().toISOString();
-    this.running.add(record.jobId);
     await this.persist(this.jobs.get(record.jobId)!);
+    this.startHeartbeat(record.jobId);
     if (this.shuttingDown || isTerminal(record.state)) return;
     this.emit(record.jobId, { type: "job.state", state: "running", queuePosition: null, message: null });
 
@@ -552,6 +653,39 @@ export class JobManager {
    * what makes "the worker is always killed" a property of the code rather than
    * a checklist item repeated at five call sites.
    */
+  /**
+   * Renews this job's lease while the worker is alive.
+   *
+   * A heartbeat that FAILS is not ignored: it means the claim is gone — expired
+   * under a stall, or reclaimed by a peer — and continuing would put two workers
+   * on one job. The run is ended rather than allowed to finish and write a
+   * report it no longer owns.
+   *
+   * `unref` so a pending timer never holds the process open during shutdown.
+   */
+  private startHeartbeat(jobId: string): void {
+    this.stopHeartbeat(jobId);
+    const timer = setInterval(() => {
+      void this.store.heartbeat(jobId, this.identity).then((held) => {
+        if (held || this.shuttingDown) return;
+        void this.finish(jobId, "interrupted", {
+          message: "This analysis lost its ownership lease and was stopped so two workers could not run it at once.",
+          hint: "Start a new run. Nothing about the contract follows from an interrupted job.",
+        });
+      }).catch(() => undefined);
+    }, HEARTBEAT_INTERVAL_MS);
+    timer.unref?.();
+    this.heartbeats.set(jobId, timer);
+  }
+
+  private stopHeartbeat(jobId: string): void {
+    const timer = this.heartbeats.get(jobId);
+    if (timer) {
+      clearInterval(timer);
+      this.heartbeats.delete(jobId);
+    }
+  }
+
   private finish(jobId: string, state: JobState, error: { message: string; hint: string | null } | null): Promise<void> {
     const live = this.jobs.get(jobId);
     if (!live) return Promise.resolve();
@@ -603,6 +737,12 @@ export class JobManager {
     });
 
     await stopWorkerGroup(live.child);
+    // The claim ends with the work, in the one function every terminal
+    // transition routes through — which is what makes "a finished job is never
+    // left looking owned" a property of the code rather than a checklist item.
+    this.stopHeartbeat(jobId);
+    live.record.lease = null;
+    await this.store.releaseJob(jobId, this.identity).catch(() => undefined);
     this.running.delete(jobId);
     const queueIndex = this.queue.indexOf(jobId);
     if (queueIndex !== -1) this.queue.splice(queueIndex, 1);

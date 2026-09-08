@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { toFunctionSelector, type Hex } from "viem";
-import { extractDispatcherSelectors } from "../src/detect/dispatcher.js";
+import { extractDispatcherSelectors, selectorAnalyzer } from "../src/detect/dispatcher.js";
 import { Asm } from "./helpers/asm.js";
 
 function loadFixture(name: string): Hex {
@@ -46,6 +46,15 @@ function revertStub(asm: Asm): Asm {
   return asm.push1(0x00).dup1().revert_();
 }
 
+describe("selector analyser provenance", () => {
+  it("matches the exact runtime dependency version", () => {
+    const pkg = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf8")) as {
+      dependencies?: Record<string, string>;
+    };
+    expect(selectorAnalyzer).toEqual({ name: "evmole", version: pkg.dependencies?.evmole });
+  });
+});
+
 describe("extractDispatcherSelectors — hand-crafted shapes", () => {
   it("recognizes an old-style (DIV) linear dispatcher and extracts only EQ-compared selectors", () => {
     const asm = new Asm();
@@ -60,7 +69,8 @@ describe("extractDispatcherSelectors — hand-crafted shapes", () => {
     expect(result.recognized).toBe(true);
     if (!result.recognized) return;
     expect(result.selectors).toEqual(["0xaaaaaaaa", "0xbbbbbbbb"]);
-    expect(result.pivotComparisonCount).toBe(0);
+    expect(result.abiSelectorCount).toBe(2);
+    expect(result.fallbackSelectorCount).toBe(0);
   });
 
   it("recognizes a modern (SHR) linear dispatcher", () => {
@@ -91,7 +101,7 @@ describe("extractDispatcherSelectors — hand-crafted shapes", () => {
     expect(result.selectors).toEqual(["0x05d2035b", "0x06fdde03"]);
   });
 
-  it("recognizes a binary-search dispatcher: GT pivots are counted but never treated as selectors", () => {
+  it("recognizes a binary-search dispatcher without treating GT pivots as selectors", () => {
     const asm = new Asm();
     loadSelectorModern(asm);
     // pivot splits the space; the pivot value itself (0x50000000) is not a real function.
@@ -114,14 +124,14 @@ describe("extractDispatcherSelectors — hand-crafted shapes", () => {
     if (!result.recognized) return;
     expect(result.selectors).toEqual(["0x10000000", "0x20000000", "0x60000000", "0x70000000"]);
     expect(result.selectors).not.toContain("0x50000000");
-    expect(result.pivotComparisonCount).toBe(1);
+    expect(result.abiSelectorCount).toBe(4);
+    expect(result.fallbackSelectorCount).toBe(0);
   });
 
   it("extracts selectors correctly past a receive()-shaped empty-calldata guard", () => {
-    // Ripcord does not report on fallback/receive presence (see KNOWN EDGES:
-    // proving a fallback body exists needs the CFG analysis we deliberately
-    // don't do). What matters here is that the empty-calldata guard sitting
-    // in front of the dispatcher doesn't derail selector extraction.
+    // Ripcord does not report generic fallback/receive presence. What matters
+    // here is that the empty-calldata guard in front of the dispatcher does not
+    // derail selector extraction.
     const asm = new Asm();
     asm.calldatasize().iszero().push2Label("receive").jumpi();
     loadSelectorModern(asm);
@@ -136,9 +146,8 @@ describe("extractDispatcherSelectors — hand-crafted shapes", () => {
     expect(result.selectors).toEqual(["0x12345678"]);
   });
 
-  it("returns recognized:false for bytecode with no CALLDATALOAD-based selector-load shape", () => {
-    // A trivial contract that just returns immediately — no dispatcher at all
-    // (e.g. what a hand-written-assembly or Vyper contract might look like).
+  it("returns recognized:false when analysis recovers no dispatched selectors", () => {
+    // A trivial contract that just returns immediately — no dispatcher at all.
     const asm = new Asm();
     asm.push1(0x00).push1(0x00).return_();
 
@@ -153,8 +162,7 @@ describe("extractDispatcherSelectors — hand-crafted shapes", () => {
     // but it sits after the parent's own REVERT stub with no real JUMPDEST
     // pointing into it, exactly as a CODECOPY'd data blob would. A linear
     // walk (day 1's `containsOpcode` approach) would misread it as this
-    // contract's own dispatch branch; the reachability-limited walk here
-    // must not.
+    // contract's own dispatch branch; static analysis must not.
     const asm = new Asm();
     loadSelectorModern(asm);
     eqBranch(asm, 0xaaaaaaaa, "fn_a");
@@ -171,6 +179,24 @@ describe("extractDispatcherSelectors — hand-crafted shapes", () => {
     const combined = (parentHex + childHex.slice(2)) as Hex;
 
     const result = extractDispatcherSelectors(combined);
+    expect(result.recognized).toBe(true);
+    if (!result.recognized) return;
+    expect(result.selectors).toEqual(["0xaaaaaaaa"]);
+    expect(result.selectors).not.toContain("0xdeadbeef");
+  });
+
+  it("REGRESSION: a reachable bytes4 comparison inside a function body is not misclassified as another function selector", () => {
+    const asm = new Asm();
+    loadSelectorModern(asm);
+    eqBranch(asm, 0xaaaaaaaa, "fn_a");
+    revertStub(asm);
+
+    // This has the same local opcode window as a dispatch branch, but it is
+    // ordinary function logic reached after the real dispatch decision.
+    asm.label("fn_a").push4(0xdeadbeef).eq().push2Label("body_branch").jumpi().stop();
+    asm.label("body_branch").stop();
+
+    const result = extractDispatcherSelectors(asm.assemble());
     expect(result.recognized).toBe(true);
     if (!result.recognized) return;
     expect(result.selectors).toEqual(["0xaaaaaaaa"]);
@@ -312,7 +338,6 @@ describe("extractDispatcherSelectors — real mainnet fixtures", () => {
     const result = extractDispatcherSelectors(loadFixture("usdc-impl"));
     expect(result.recognized).toBe(true);
     if (!result.recognized) return;
-    expect(result.pivotComparisonCount).toBeGreaterThan(0); // confirms this fixture actually exercises binary-search dispatch
     expect(new Set(result.selectors)).toEqual(expected);
   });
 

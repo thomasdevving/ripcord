@@ -22,8 +22,10 @@ they are stated once here rather than repeated.
 None. There is no account, no login, no telemetry, no analytics and no crash
 reporting. The pinned analyser contacts only the RPC endpoint you configure;
 `prove` and `restrict` also make the local `anvil` process read that same endpoint.
-The optional, explicitly separate live-exposure fetcher contacts Mobula's holdings,
-price and metadata endpoints. It is never called by the CLI or a rendered page,
+The optional, explicitly separate live-exposure fetcher contacts Mobula's holdings
+and price endpoints. A separately invoked engineering audit can send a report's
+public contract address to Mobula's token-security endpoint. Neither path is
+called by the pinned CLI or a rendered page,
 and `pnpm verify:boundary` proves it cannot enter the pinned verdict. See
 [`docs/MOBULA.md`](MOBULA.md) for the complete endpoint and metadata account.
 
@@ -35,9 +37,8 @@ which contract addresses you are analysing and at which block — which is
 inherent to reading a chain you do not run yourself, and is stated in the
 README's trust assumptions rather than glossed over. Ripcord adds nothing to
 those requests: no identifiers, no headers, no user agent beyond the default.
-If the optional live fetcher is run, Mobula additionally receives the public
-contract addresses whose holdings and metadata are requested; no user identity is
-sent.
+If the optional live fetcher or security audit is run, Mobula additionally
+receives the public contract addresses being queried; no user identity is sent.
 
 **Is any of the data you analyse personal?**
 Ripcord reads public on-chain state: contract code, storage slots, event logs,
@@ -96,9 +97,9 @@ a guaranteed teardown (SIGTERM, then a SIGKILL backstop). It never touches
 mainnet; the fork is the only execution surface.
 
 **What secrets exist, and how are they handled?**
-Two optional configuration secrets can exist: the RPC URL, which usually embeds
-an API key, and `MOBULA_API_KEY` for a higher third-party rate limit (the Mobula
-endpoints also work keyless). Both live in `.env`, which is gitignored from the
+Two optional-feature configuration secrets can exist: the RPC URL, which usually
+embeds an API key, and `MOBULA_API_KEY` for authenticated Mobula production
+requests. Both live in `.env`, which is gitignored from the
 first commit, with `.env.example` shipping placeholders only. The RPC URL is
 **never logged**: `describeProvider()`
 (`src/chain/rpcPreflight.ts`) deliberately prints the URL's **host only** —

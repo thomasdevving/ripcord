@@ -18,12 +18,19 @@
  *  3. FILTERING MUST BE ITEMISED. Withholding silently is the same failure as an
  *     unlabelled partial scan, so `withheld` has a bucket per reason.
  */
-import { fetchHoldings, fetchPrices, fetchMetadata, chainName, isNativeAsset, tokenKey } from "./mobula.js";
+import {
+  fetchDiscoveryHoldings,
+  fetchPresentationHoldings,
+  fetchPrices,
+  chainName,
+  isNativeAsset,
+  tokenKey,
+} from "./mobula.js";
 import type { MobulaHolding } from "./mobula.js";
 import { MAJOR_TOKENS } from "../chain/majorTokens.js";
 
 /** Bump when the shape, the valuation rules, or the withholding rules change. */
-export const liveLayerVersion = "0.5.0";
+export const liveLayerVersion = "0.6.0";
 
 /** Holdings worth less than this are withheld from the page (and counted). */
 export const DISPLAY_FLOOR_USD = 1;
@@ -163,11 +170,30 @@ export interface LiveExposure {
   holdings: LiveHolding[];
   /** All vendor-proposed identities, before the independent discovery cap. */
   candidateHoldings?: LiveCandidateHolding[];
+  /**
+   * Provenance for the SEPARATE candidate query. `unfiltered_response` means
+   * the requested vendor filters were disabled; it never claims the vendor's
+   * index itself is complete.
+   */
+  candidateDiscovery?: {
+    scope: string;
+    strategy: "unfiltered_same_chain";
+    status: "unfiltered_response" | "filtered_fallback" | "unavailable";
+    holdingsCount: number | null;
+    note: string;
+  };
   withheld: WithheldBucket[];
   floorUsd: number;
   cap: number;
   /** Which Mobula endpoints answered, so a partial panel is legible as partial. */
-  endpoints: { holdings: boolean; price: boolean; metadata: boolean };
+  endpoints: {
+    holdings: boolean;
+    /** Optional only so old committed sidecars remain readable. */
+    discovery?: boolean;
+    price: boolean;
+    /** Legacy v1 endpoint marker retained only for old sidecar compatibility. */
+    metadata?: boolean;
+  };
   /**
    * How much of `exposureUsd` rests on its single largest holding — the check
    * the valuation bases cannot make. A vendor's price and liquidity figures can
@@ -186,13 +212,44 @@ function curatedAddresses(chainId: number): Set<string> {
 }
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+const holdingUsd = (holding: MobulaHolding): number | null =>
+  num(holding.amountUSD) ?? num(holding.amountUsd);
+const chainBalanceUsd = (balance: { amountUSD?: number; amountUsd?: number }): number | null =>
+  num(balance.amountUSD) ?? num(balance.amountUsd);
+
+function chainBalancesOf(holding: MobulaHolding): Record<string, { amountUSD?: number; amountUsd?: number }> {
+  if (holding.chainBalances) return holding.chainBalances;
+  if (holding.crossChainBalances) return holding.crossChainBalances;
+  return Object.fromEntries(
+    (holding.contractBalances ?? [])
+      .filter((balance): balance is typeof balance & { chainId: string } => typeof balance.chainId === "string")
+      .map((balance) => [balance.chainId, balance]),
+  );
+}
 
 /**
  * An unavailable panel is a first-class result, not an exception and not a
  * blank. Every field a caller might read is present and explicitly empty, so a
  * renderer cannot accidentally paint "we could not ask" as "holds nothing".
  */
-function unavailable(target: string, chainId: number, reason: string): LiveExposure {
+function candidateHoldingsFrom(holdings: MobulaHolding[]): LiveCandidateHolding[] {
+  return holdings.map((holding) => ({
+    chainId: holding.token?.chainId ?? null,
+    address: holding.token?.address ?? null,
+    isNative: isNativeAsset(holding.token?.address),
+    unverifiedSymbol: holding.token?.symbol ?? "",
+    unverifiedName: holding.token?.name ?? "",
+    holdingsQuoteUsd: holdingUsd(holding),
+  }));
+}
+
+function unavailable(
+  target: string,
+  chainId: number,
+  reason: string,
+  discoveryHoldings?: MobulaHolding[],
+): LiveExposure {
+  const discoveryAvailable = discoveryHoldings !== undefined;
   return {
     liveLayerVersion,
     fetchedAt: new Date().toISOString(),
@@ -207,12 +264,21 @@ function unavailable(target: string, chainId: number, reason: string): LiveExpos
     chainCount: null,
     chains: [],
     holdings: [],
-    candidateHoldings: [],
+    candidateHoldings: candidateHoldingsFrom(discoveryHoldings ?? []),
+    candidateDiscovery: {
+      scope: `evm:${chainId}`,
+      strategy: "unfiltered_same_chain",
+      status: discoveryAvailable ? "unfiltered_response" : "unavailable",
+      holdingsCount: discoveryAvailable ? discoveryHoldings.length : null,
+      note: discoveryAvailable
+        ? "The presentation query was unavailable, but candidate discovery independently returned an unfiltered same-chain inventory. The live panel remains unavailable; pinned candidate verification may still proceed."
+        : "No candidate inventory was usable because both holdings purposes were unavailable.",
+    },
     withheld: [],
     concentration: null,
     floorUsd: DISPLAY_FLOOR_USD,
     cap: DISPLAY_CAP,
-    endpoints: { holdings: false, price: false, metadata: false },
+    endpoints: { holdings: false, discovery: discoveryAvailable, price: false },
     notes: [],
   };
 }
@@ -271,20 +337,50 @@ export async function buildLiveExposure(
   const fetchedAt = new Date().toISOString();
   const notes: string[] = [];
 
-  // --- endpoint 1: holdings. The only failure that is fatal to the panel,
-  // because there is nothing to price or name without it.
-  const holdingsRes = await fetchHoldings(target, { ...(opts.signal ? { signal: opts.signal } : {}) });
-  if (!holdingsRes.ok) return unavailable(target, chainId, holdingsRes.reason);
+  // --- endpoint 1a/1b: two holdings queries with two different jobs.
+  // Presentation is filtered and cross-chain. Candidate discovery is
+  // same-chain and deliberately disables vendor-side exclusion. They run
+  // concurrently so the safer discovery path does not double the wall time of
+  // the slowest live request.
+  const requestOpts = opts.signal ? { signal: opts.signal } : {};
+  const [holdingsRes, discoveryRes] = await Promise.all([
+    fetchPresentationHoldings(target, requestOpts),
+    fetchDiscoveryHoldings(target, chainId, requestOpts),
+  ]);
+
+  const unfilteredDiscovery =
+    discoveryRes.ok && Array.isArray(discoveryRes.data.data?.holdings)
+      ? discoveryRes.data.data.holdings
+      : undefined;
+
+  // Presentation holdings are the only failure fatal to the PANEL, because
+  // there is nothing to price or render without them. It is not fatal to the
+  // independently fetched candidate inventory.
+  if (!holdingsRes.ok) return unavailable(target, chainId, holdingsRes.reason, unfilteredDiscovery);
 
   const payload = holdingsRes.data.data;
   if (!payload || !Array.isArray(payload.holdings)) {
-    return unavailable(target, chainId, "holdings: response contained no holdings array");
+    return unavailable(target, chainId, "holdings: response contained no holdings array", unfilteredDiscovery);
   }
 
   const all = payload.holdings;
   const curated = curatedAddresses(chainId);
 
-  const usdOf = (h: MobulaHolding) => num(h.amountUSD) ?? 0;
+  let discoveryHoldings = all;
+  let discoveryStatus: NonNullable<LiveExposure["candidateDiscovery"]>["status"] = "filtered_fallback";
+  if (unfilteredDiscovery) {
+    discoveryHoldings = unfilteredDiscovery;
+    discoveryStatus = "unfiltered_response";
+  } else {
+    const reason = discoveryRes.ok
+      ? "response contained no holdings array"
+      : discoveryRes.reason;
+    notes.push(
+      `unfiltered same-chain discovery unavailable — ${reason}; candidate identities fell back to the filtered presentation response`,
+    );
+  }
+
+  const usdOf = (h: MobulaHolding) => holdingUsd(h) ?? 0;
   const sorted = [...all].sort((a, b) => usdOf(b) - usdOf(a));
   const aboveFloor = sorted.filter((h) => usdOf(h) >= DISPLAY_FLOOR_USD);
   const belowFloor = sorted.filter((h) => usdOf(h) < DISPLAY_FLOOR_USD);
@@ -292,17 +388,10 @@ export async function buildLiveExposure(
   const cappedOut = aboveFloor.slice(DISPLAY_CAP);
 
   // Candidate discovery deliberately consumes ALL identities, not `shown`.
-  // No price or metadata endpoint is needed to decide whether an address can
+  // No price endpoint is needed to decide whether an address can
   // be verified on-chain, and an unpriced new collateral is exactly the asset
   // a display-floor-derived security pass used to miss.
-  const candidateHoldings: LiveCandidateHolding[] = all.map((h) => ({
-    chainId: h.token?.chainId ?? null,
-    address: h.token?.address ?? null,
-    isNative: isNativeAsset(h.token?.address),
-    unverifiedSymbol: h.token?.symbol ?? "",
-    unverifiedName: h.token?.name ?? "",
-    holdingsQuoteUsd: num(h.amountUSD),
-  }));
+  const candidateHoldings = candidateHoldingsFrom(discoveryHoldings);
 
   // --- endpoint 2: batch price, for the ERC20s being shown. The native
   // sentinel is deliberately NOT sent: it is not a contract, and because the
@@ -315,7 +404,16 @@ export async function buildLiveExposure(
 
   const priceRes = await fetchPrices(erc20Items, { ...(opts.signal ? { signal: opts.signal } : {}) });
   // Keyed by (chainId, address) — never by address alone. See tokenKey().
-  const priceBy = new Map<string, { priceUSD: number | null; liquidityUSD: number | null; logo: string | null }>();
+  const priceBy = new Map<
+    string,
+    {
+      priceUSD: number | null;
+      liquidityUSD: number | null;
+      name: string | null;
+      symbol: string | null;
+      logo: string | null;
+    }
+  >();
   if (priceRes.ok) {
     for (const p of priceRes.data.payload ?? []) {
       if (!p.address) continue;
@@ -326,6 +424,8 @@ export async function buildLiveExposure(
       priceBy.set(tokenKey(p.chainId, p.address), {
         priceUSD: num(p.priceUSD),
         liquidityUSD: num(p.liquidityUSD),
+        name: p.name ?? null,
+        symbol: p.symbol ?? null,
         logo: p.logo ?? null,
       });
     }
@@ -333,34 +433,13 @@ export async function buildLiveExposure(
     notes.push(`price enrichment unavailable — ${priceRes.reason}`);
   }
 
-  // --- endpoint 3: metadata, for display names and logos. ERC20s only, same
-  // reason as above.
-  const metaRes = await fetchMetadata(erc20Items, { ...(opts.signal ? { signal: opts.signal } : {}) });
-  const metaBy = new Map<string, { name: string | null; logo: string | null }>();
-  if (metaRes.ok) {
-    for (const entry of metaRes.data.data ?? []) {
-      const d = entry?.data;
-      if (!d) continue;
-      const chains = d.blockchains ?? [];
-      (d.contracts ?? []).forEach((c, i) => {
-        // Mobula returns contracts and blockchains as parallel arrays; pairing
-        // by index is what keeps a multi-chain token's entries distinct.
-        metaBy.set(tokenKey(chains[i] ?? null, c), { name: d.name ?? null, logo: d.logo ?? null });
-        metaBy.set(tokenKey("?", c), { name: d.name ?? null, logo: d.logo ?? null });
-      });
-    }
-  } else {
-    notes.push(`metadata unavailable — ${metaRes.reason}`);
-  }
-
   const holdings: LiveHolding[] = shown.map((h) => {
     const addr = h.token?.address ?? null;
     const cid = h.token?.chainId ?? null;
     const native = isNativeAsset(addr);
     const price = priceBy.get(tokenKey(cid, addr));
-    const meta = metaBy.get(tokenKey(cid, addr)) ?? metaBy.get(tokenKey("?", addr ?? ""));
 
-    const holdingsQuote = num(h.amountUSD);
+    const holdingsQuote = holdingUsd(h);
     const amount = num(h.amount);
     // The second quote is RECOMPUTED from the independent unit price, so
     // corroboration compares two derivations rather than one number to itself.
@@ -371,18 +450,18 @@ export async function buildLiveExposure(
       chainId: cid,
       address: addr,
       isNative: native,
-      unverifiedSymbol: h.token?.symbol ?? "",
-      unverifiedName: meta?.name ?? h.token?.name ?? "",
-      logo: meta?.logo ?? price?.logo ?? h.token?.logo ?? null,
+      unverifiedSymbol: price?.symbol ?? h.token?.symbol ?? "",
+      unverifiedName: price?.name ?? h.token?.name ?? "",
+      logo: price?.logo ?? h.token?.logo ?? null,
       amount,
       valuation: valuate(holdingsQuote, priceQuote, liquidity, native),
       holdingsQuoteUsd: holdingsQuote,
       priceQuoteUsd: priceQuote,
       liquidityUsd: liquidity,
-      chains: Object.entries(h.chainBalances ?? {}).map(([id, b]) => ({
+      chains: Object.entries(chainBalancesOf(h)).map(([id, b]) => ({
         chainId: id,
         chainName: chainName(id),
-        amountUSD: num(b?.amountUSD),
+        amountUSD: chainBalanceUsd(b),
       })),
       // A native asset is outside the curated list by definition — MAJOR_TOKENS
       // holds ERC20 contract addresses and native ETH has none.
@@ -409,7 +488,7 @@ export async function buildLiveExposure(
       : null;
 
   const chainSet = new Set<string>();
-  for (const h of all) for (const id of Object.keys(h.chainBalances ?? {})) chainSet.add(id);
+  for (const h of all) for (const id of Object.keys(chainBalancesOf(h))) chainSet.add(id);
 
   // One bucket per REASON. Empty buckets are dropped so the panel stays short,
   // but a non-zero count is always shown — see problem 3 in the header.
@@ -438,17 +517,27 @@ export async function buildLiveExposure(
     reason: null,
     exposureUsd,
     countedHoldings: counted.length,
-    vendorReportedTotalUsd: num(payload.totalWalletBalanceUSD),
+    vendorReportedTotalUsd: num(payload.totalWalletBalanceUSD) ?? num(payload.totalWalletBalanceUsd),
     holdingsCount: all.length,
     chainCount: chainSet.size,
     chains: [...chainSet].sort(),
     holdings,
     candidateHoldings,
+    candidateDiscovery: {
+      scope: `evm:${chainId}`,
+      strategy: "unfiltered_same_chain",
+      status: discoveryStatus,
+      holdingsCount: discoveryHoldings.length,
+      note:
+        discoveryStatus === "unfiltered_response"
+          ? "Mobula was queried for the analysed chain with unlisted assets included, maximum accuracy, spam filtering disabled and no liquidity floor. Ripcord still independently verifies selected identities at the pinned block."
+          : "The unfiltered query failed, so candidate identities came from the filtered presentation response and may omit assets.",
+    },
     withheld,
     concentration,
     floorUsd: DISPLAY_FLOOR_USD,
     cap: DISPLAY_CAP,
-    endpoints: { holdings: true, price: priceRes.ok, metadata: metaRes.ok },
+    endpoints: { holdings: true, discovery: discoveryStatus === "unfiltered_response", price: priceRes.ok },
     notes,
   };
 }

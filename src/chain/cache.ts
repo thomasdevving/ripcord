@@ -80,6 +80,20 @@ export function normalizeToCachedShape<T>(value: T): T {
 
 export class DiskCache {
   hits = 0;
+  /**
+   * How many callers were served by joining a read that was ALREADY in flight
+   * rather than issuing their own. Reported for capacity measurement (see
+   * docs/BASELINES.md); it can never change a value, only how many times one
+   * was fetched.
+   */
+  coalesced = 0;
+  /**
+   * Reads currently in flight, keyed by the SAME fingerprint the on-disk entry
+   * uses. See `wrap`: this is what stops two concurrent callers asking a
+   * provider the identical pinned question twice.
+   */
+  private readonly inflight = new Map<string, Promise<{ value: unknown; fromCache: boolean }>>();
+
   constructor(
     private readonly cacheDir: string,
     private readonly enabled: boolean,
@@ -138,10 +152,45 @@ export class DiskCache {
    * caching is DISABLED so `--no-cache` cannot take a different code path.
    */
   async wrap<T>(key: CacheKey, fetchFn: () => Promise<T>): Promise<{ value: T; fromCache: boolean }> {
-    const cached = await this.get<T>(key);
-    if (cached.hit) { this.hits++; return { value: cached.value, fromCache: true }; }
-    const value = await fetchFn();
-    await this.set(key, value);
-    return { value: normalizeToCachedShape(value), fromCache: false };
+    const fingerprint = cacheKeyFingerprint(key);
+
+    // IN-FLIGHT COALESCING. Without it two concurrent callers asking the
+    // identical pinned question both miss (neither has written the entry yet)
+    // and both hit the provider — the cost of a read scaling with how many
+    // detectors happen to want it rather than with how many distinct facts the
+    // report needs. Joining an in-flight read cannot change a value: the key is
+    // the same fingerprint the disk entry uses, so the two callers were asking
+    // for the same bytes by construction, and a rejection propagates to every
+    // joiner unchanged rather than being swallowed for the late ones.
+    const existing = this.inflight.get(fingerprint);
+    if (existing) {
+      this.coalesced++;
+      const shared = await existing;
+      // Each joiner gets its OWN object graph. A cache HIT parses a fresh
+      // object per caller, so handing several callers one shared reference
+      // would make a joined read behave differently from a disk read — the
+      // exact miss/hit divergence `normalizeToCachedShape` exists to prevent.
+      return { value: normalizeToCachedShape(shared.value as T), fromCache: shared.fromCache };
+    }
+
+    // The leader resolves the caller-ready value exactly as it always did — a
+    // disk hit is handed back untouched (JSON.parse already produced the cached
+    // shape) and only a miss is normalized. Re-normalizing a hit would be a
+    // no-op that costs a full round-trip of every log evidence array.
+    const run = (async (): Promise<{ value: unknown; fromCache: boolean }> => {
+      const cached = await this.get<T>(key);
+      if (cached.hit) { this.hits++; return { value: cached.value, fromCache: true }; }
+      const value = await fetchFn();
+      await this.set(key, value);
+      return { value: normalizeToCachedShape(value), fromCache: false };
+    })();
+
+    this.inflight.set(fingerprint, run);
+    try {
+      const settled = await run;
+      return { value: settled.value as T, fromCache: settled.fromCache };
+    } finally {
+      this.inflight.delete(fingerprint);
+    }
   }
 }

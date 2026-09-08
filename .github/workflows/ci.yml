@@ -27,6 +27,11 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
 
+      # The test suite protects semantics; this snapshot protects two growth
+      # surfaces that otherwise change invisibly: selector coverage and report
+      # evidence size. Updating it is an explicit calibration decision.
+      - run: pnpm verify:report-baseline
+
       # The rendered calibration pages are checked against the pinned reports
       # they came from: every headline figure must still resolve to the same
       # value at the same JSON path, and the honesty properties (an undetermined

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { encodeAbiParameters, toFunctionSelector, type Hex } from "viem";
 import { resolveAuthorityGraph, detectTimelock, confidenceForDepth } from "../src/detect/authority.js";
 import type { ChainReader, Evidence } from "../src/chain/client.js";
+import { AnalysisBudget, DEFAULT_BUDGET_LIMITS } from "../src/chain/budget.js";
+import { BudgetedChainReader } from "../src/chain/budgetedReader.js";
 import type { RoleEntry } from "../src/report/schema.js";
 
 const OWNER_SEL = toFunctionSelector("owner()");
@@ -186,5 +188,96 @@ describe("confidence degrades with depth", () => {
     expect(confidenceForDepth(2)).toBe("medium");
     expect(confidenceForDepth(3)).toBe("low");
     expect(confidenceForDepth(4)).toBe("low");
+  });
+});
+
+/**
+ * THE AUTHORITY-NODE CEILING.
+ *
+ * The depth cap bounds how FAR a branch travels; nothing bounded how MANY
+ * branches exist. A contract with fifty role members, each of which is a
+ * contract with fifty of its own, is three perfectly legal hops and thousands of
+ * classifications — so the cost of a report was decided by the shape of the
+ * target rather than by Ripcord.
+ *
+ * The whole risk of adding this ceiling is that an unvisited node looks exactly
+ * like a resolved one. So: its own termination reason (never folded into
+ * `no_authority_found`, which means "we searched and found nothing"), a
+ * `contract` type so the exit window routes it to the unresolved branch, an
+ * explicit unknowns entry, and a recorded exhaustion that withholds the
+ * enumeration witness.
+ */
+describe("the authority recursion is bounded by node count, and says where it stopped", () => {
+  /** A chain of owners N hops long: 1 -> 2 -> 3 -> ... */
+  function ownerChain(length: number): Record<string, FakeContract> {
+    const contracts: Record<string, FakeContract> = {};
+    for (let i = 1; i <= length; i++) contracts[addr(i).toLowerCase()] = { owner: addr(i + 1) };
+    return contracts;
+  }
+
+  it("resolves normally when the budget is not the binding constraint", async () => {
+    const budget = new AnalysisBudget({ ...DEFAULT_BUDGET_LIMITS, authorityNodes: 50 });
+    const chain = new BudgetedChainReader(fakeChain(ownerChain(3)), budget);
+    const { resolution } = await resolveAuthorityGraph(chain, [{ address: addr(1), relation: "owner" }]);
+    expect(budget.exhausted).toHaveLength(0);
+    expect(resolution.paths[0]!.terminationReason).not.toBe("budget_exhausted");
+  });
+
+  it("stops at the ceiling with its own termination reason, not with 'no authority found'", async () => {
+    const budget = new AnalysisBudget({ ...DEFAULT_BUDGET_LIMITS, authorityNodes: 2 });
+    const chain = new BudgetedChainReader(fakeChain(ownerChain(4)), budget);
+    const { resolution, unknowns } = await resolveAuthorityGraph(chain, [{ address: addr(1), relation: "owner" }]);
+
+    const stopped = (function find(n: (typeof resolution.roots)[number]): typeof n | null {
+      if (n.terminationReason === "budget_exhausted") return n;
+      for (const c of n.children) { const hit = find(c); if (hit) return hit; }
+      return null;
+    })(resolution.roots[0]!);
+
+    expect(stopped, "expected a node terminated by the budget").not.toBeNull();
+    // A `contract` type is what routes it to the exit window's
+    // `unresolved_authority` branch — an eoa/safe/timelock type there would
+    // have it contribute a notice figure it never earned.
+    expect(stopped!.type).toBe("contract");
+    expect(stopped!.children).toEqual([]);
+    // "We stopped" must be visible as itself, not inferred from empty children.
+    expect(unknowns.some((u) => /authority-node budget/.test(u.reason) && /UNRESOLVED, not clean/.test(u.reason))).toBe(true);
+    expect(budget.exhausted.some((e) => e.dimension === "authorityNodes")).toBe(true);
+  });
+
+  it("charges each visited node exactly once, whatever its type", async () => {
+    const budget = new AnalysisBudget({ ...DEFAULT_BUDGET_LIMITS, authorityNodes: 50 });
+    const chain = new BudgetedChainReader(fakeChain(ownerChain(3)), budget);
+    await resolveAuthorityGraph(chain, [{ address: addr(1), relation: "owner" }]);
+    // Three visits, because MAX_AUTHORITY_DEPTH stops at addr(3) — the node
+    // budget counts what the recursion ENTERED, so it never charges for a hop
+    // the depth cap already refused.
+    expect(budget.consumed("authorityNodes")).toBe(3);
+  });
+
+  it("resolves a shared contract ONCE even when two roots point at it", async () => {
+    // Two seeds converging on one address: the memoized fact layer means the
+    // second arrival reuses the first's proxy/ownership/role analysis instead of
+    // re-running an event scan. The RESULT must be unchanged — both roots still
+    // resolve, and the shared node still appears on both branches.
+    const contracts: Record<string, FakeContract> = {
+      [addr(1).toLowerCase()]: { owner: addr(9) },
+      [addr(2).toLowerCase()]: { owner: addr(9) },
+      [addr(9).toLowerCase()]: { owner: addr(10) },
+    };
+    const budget = new AnalysisBudget();
+    const chain = new BudgetedChainReader(fakeChain(contracts), budget);
+    const { resolution } = await resolveAuthorityGraph(chain, [
+      { address: addr(1), relation: "owner" },
+      { address: addr(2), relation: "proxyAdmin" },
+    ]);
+    expect(resolution.roots).toHaveLength(2);
+    for (const root of resolution.roots) {
+      expect(root.children[0]!.address.toLowerCase()).toBe(addr(9).toLowerCase());
+      expect(root.children[0]!.children[0]!.address.toLowerCase()).toBe(addr(10).toLowerCase());
+    }
+    // Both branches genuinely walked the shared node, so it is charged on both —
+    // the budget counts VISITS, which is what bounds a wide graph.
+    expect(budget.consumed("authorityNodes")).toBe(6);
   });
 });

@@ -35,6 +35,7 @@ import {
   type ErrorEntry,
   type OwnerField,
   type ProxyResult,
+  type BudgetExhaustionRecord,
 } from "./schema.js";
 
 export { enumerationSiteKey };
@@ -163,6 +164,17 @@ function judgeCapabilitySurface(args: {
  * dependency token, and the stages themselves.
  */
 export function deriveEnumerationCompleteness(args: {
+  /**
+   * Every report-wide resource boundary this run met (chain/budget.ts).
+   *
+   * A budget that stops work produces a result indistinguishable, in isolation,
+   * from a contract that simply had less to find — so an exhaustion is a gap of
+   * exactly the same kind as a truncated role scan, and it belongs in the same
+   * witness. An empty array is the ordinary case and means nothing ran out; it
+   * is not read as "no budget applied", because a run with no budget at all
+   * truncated nothing and has nothing to declare.
+   */
+  budgetExhaustions: BudgetExhaustionRecord[];
   accessControl: AccessControlResult | null;
   authorityResolution: AuthorityResolution | null;
   dependencies: DependencyGraph | null;
@@ -195,6 +207,16 @@ export function deriveEnumerationCompleteness(args: {
         reason: `the ${stage} stage failed (${e.message}), so its result is a fallback rather than an observation — nothing it reports can establish completeness`,
       });
     }
+  }
+
+  for (const exhaustion of args.budgetExhaustions) {
+    gaps.push({
+      where: `budget:${exhaustion.dimension}`,
+      // Keyed by DIMENSION, not by the site that met it: two contracts running
+      // into the same ceiling are one fact about this analysis's reach.
+      site: { kind: "budget", id: exhaustion.dimension },
+      reason: `the report-wide ${exhaustion.dimension} budget (${exhaustion.limit}) was reached at ${exhaustion.where} while ${exhaustion.requested} was needed — ${exhaustion.consequence}. What lies beyond that boundary was not examined, so nothing there can be reported as absent.`,
+    });
   }
 
   const targetGap = judgeAccessControl("target", { kind: "target", id: "" }, args.accessControl);
@@ -262,6 +284,8 @@ export function gapSubject(site: EnumerationSite): string {
       return "the privileged-surface evaluation";
     case "stage":
       return "a stage that failed";
+    case "budget":
+      return "a report-wide resource budget that was reached";
     case "dependency":
       return "dependency role enumeration";
     default:

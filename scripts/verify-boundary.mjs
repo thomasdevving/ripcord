@@ -100,6 +100,7 @@ if (refs === 0) pass(`no Mobula hostname, module or env var referenced in the pi
 const REPORTS = process.argv[2] ?? "calibration/reports";
 const LIVE_FIELDS = [
   "liveLayerVersion",
+  "mobulaSecurityAuditVersion",
   "fetchedAt",
   "vendorReportedTotalUsd",
   "exposureUsd",

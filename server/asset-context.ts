@@ -1,9 +1,10 @@
 /**
  * POST-ANALYSIS ASSET CONTEXT.
  *
- * Mobula proposes asset identities from its complete holdings response at the
- * wall-clock time of a run. Independently of the UI floor/cap, Ripcord selects a
- * bounded same-chain ERC20 set and asks a pinned question for each candidate:
+ * Mobula proposes asset identities from a separate unfiltered same-chain
+ * holdings response at the wall-clock time of a run. Independently of the UI
+ * floor/cap and presentation filters, Ripcord selects a bounded ERC20 set and
+ * asks a pinned question for each candidate:
  * did this exact token contract report a balance for the analysed target at the
  * report's block?
  *
@@ -19,6 +20,7 @@ import { PinnedChain, type ChainReader, type Evidence } from "../src/chain/clien
 import { MAJOR_TOKENS } from "../src/chain/majorTokens.js";
 import { buildLiveExposure, type LiveCandidateHolding, type LiveExposure } from "../src/live/exposure.js";
 import { assetScenarioCandidateCap, runAssetExitScenarios, type AssetScenarioBatch } from "../src/fork/assetScenarios.js";
+import { supportsAssetScenarios } from "../src/fork/adapters/index.js";
 import type { ForkHandle } from "../src/fork/anvil.js";
 import type { Report } from "../src/report/schema.js";
 import type { ServerConfig } from "./config.js";
@@ -651,7 +653,8 @@ export class AssetContextService {
       return;
     }
 
-    if (exposure.status !== "ok") {
+    const candidateDiscoveryAvailable = exposure.candidateDiscovery?.status === "unfiltered_response";
+    if (exposure.status !== "ok" && !candidateDiscoveryAvailable) {
       await this.saveFrom(run, {
         ...pending,
         completedAt: new Date().toISOString(),
@@ -662,7 +665,7 @@ export class AssetContextService {
           : pending.forkScenarios,
         counts: { ...emptyCounts(), displayed: exposure.holdings.length },
         notes: [
-          `Mobula refresh was unavailable: ${exposure.reason ?? "no reason returned"}. No candidate verification was attempted.`,
+          `Mobula candidate discovery was unavailable: ${exposure.reason ?? "no reason returned"}. No candidate verification was attempted.`,
         ],
       });
       return;
@@ -721,7 +724,7 @@ export class AssetContextService {
           failed,
         },
         notes: [
-          `Mobula proposed identities from its complete fresh holdings response. Ripcord independently selected and verified up to ${assetScenarioCandidateCap} unique same-chain ERC20 candidates at the report's pinned block; UI display floors and caps do not control discovery.`,
+          `Mobula proposed identities from a separate unfiltered same-chain holdings response. Ripcord independently selected and verified up to ${assetScenarioCandidateCap} unique ERC20 candidates at the report's pinned block; UI display floors, caps and presentation filters do not control discovery.`,
           "This sidecar can expand asset coverage, but it cannot change the report, its verdict, or any fork-experiment claim.",
           selection.withheld.length === 0
             ? "No proposed identity was withheld from pinned candidate verification."
@@ -733,14 +736,19 @@ export class AssetContextService {
       if (!(await this.saveFrom(run, verifiedContext))) return;
       if (!pending.forkScenarios.requested || abandoned()) return;
 
-      if (report.exitRestriction?.exitAction.interfaceName !== "compound-comet-base") {
+      // Asked through the adapter registry rather than compared against a
+      // hardcoded interface id. This file used to carry its own copy of that
+      // string, which made it a second place to edit when adding a protocol and
+      // a second place that could disagree with the engine about what is
+      // supported.
+      if (!supportsAssetScenarios(report.exitRestriction?.exitAction.interfaceName)) {
         await this.saveFrom(run, {
           ...verifiedContext,
           forkScenarios: {
             requested: true,
             status: "unavailable",
             batch: null,
-            note: "No supported Compound III exit interface was established by the primary report, so per-asset fork calls were refused rather than guessed.",
+            note: "The primary report established no exit interface whose archetype the per-asset scenario layer can extend, so per-asset fork calls were refused rather than guessed.",
           },
         });
         return;

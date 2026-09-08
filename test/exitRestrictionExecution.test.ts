@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { decodeFunctionData, type Hex } from "viem";
-import { COMET_PAUSED_ERROR, cometAbi, SELECTORS } from "../src/fork/exitActions.js";
+import { COMET_PAUSED_ERROR, cometAbi, COMET_SELECTORS as SELECTORS } from "../src/fork/adapters/comet.js";
 import { runExitRestrictionEngine } from "../src/fork/exitRestriction.js";
 import { applyExitRestriction } from "../src/report/applyExitRestriction.js";
 import { composeVerdict } from "../src/report/verdict.js";
@@ -58,12 +58,12 @@ beforeEach(() => {
       let gasUsed = 40000n;
       const sel = tx.data?.slice(0, 10);
       if (sel === "0xa9059cbb" && !config.fundNoop) state.tokens += 100_000_000_000n;
-      if (sel === SELECTORS.cometSupply && !config.supplyNoop) { state.tokens -= 50_000_000_000n; state.principal = 50_000_000_000n; }
-      if (sel === SELECTORS.cometPause) {
+      if (sel === SELECTORS.supply && !config.supplyNoop) { state.tokens -= 50_000_000_000n; state.principal = 50_000_000_000n; }
+      if (sel === SELECTORS.pause) {
         if (config.pauseRevert) status = "reverted";
         else { state.mutation = true; state.paused = !config.pauseNoop; }
       }
-      if (sel === SELECTORS.cometWithdraw) {
+      if (sel === SELECTORS.withdraw) {
         if ((!state.mutation && config.baselineRevert) || (state.mutation && (!config.ignorePause || config.unrelatedRevert))) {
           status = "reverted";
           revertData = state.paused && !config.unrelatedRevert ? COMET_PAUSED_ERROR : "0x";
@@ -93,7 +93,7 @@ describe("the actual engine's fork execution and failure paths", () => {
     expect(er.outcome).toBe("restrictor_found");
     expect(er.baseline.note).toContain("50000000000 base-token units received");
     expect(restrictorRoute?.noticeSeconds).toBe("0");
-    const pauseTx = h.fork.sendFrom.mock.calls.find(([, tx]) => tx.data?.startsWith(SELECTORS.cometPause))![1];
+    const pauseTx = h.fork.sendFrom.mock.calls.find(([, tx]) => tx.data?.startsWith(SELECTORS.pause))![1];
     expect(decodeFunctionData({ abi: cometAbi, data: pauseTx.data }).args).toEqual([false, true, true, false, false]);
     expect(er.baseline.evidence.some((e) => e.params.action === "guardian pause withdraw")).toBe(false);
     expect(er.candidates[0]?.evidence.filter((e) => e.params.read === "isWithdrawPaused()").map((e) => e.rawValue)).toEqual([false, true]);

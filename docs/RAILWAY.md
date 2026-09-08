@@ -51,7 +51,7 @@ nothing here is read at build time, and the image builds with no RPC key at all.
 | `RIPCORD_MAX_QUEUED_JOBS` | `3` | |
 | `RIPCORD_JOB_TIMEOUT_MS` | `600000` | An operational **maximum**, not an expected duration. See §6. |
 | `RIPCORD_DEFAULT_BLOCK` | `25800000` | The block the Comet preset pins. Visibly historical, and the UI says so. |
-| `MOBULA_API_KEY` | *optional* | Only for the separate live-exposure layer. Its absence never blocks a scan or a fork run. |
+| `MOBULA_API_KEY` | *optional feature* | Required for fresh Mobula production calls; its absence never blocks the pinned scan or primary fork run. |
 
 `RIPCORD_*` are conventions introduced by this webapp. They are not Railway
 features and not pre-existing Ripcord CLI flags.

@@ -24,16 +24,20 @@
 export type MobulaResult<T> = { ok: true; data: T } | { ok: false; reason: string };
 
 /**
- * Hosts, established by probing rather than from the docs — the documentation
- * places the v2 endpoints on `api.mobula.io`, where they 404. Verified live
- * 2026-09-02: `api.mobula.io/api/2/wallet/holdings` returns
- * `{"statusCode":404}`, the same path on `genius-api.mobula.io` returns data.
- * The v1 metadata endpoint is the other way round and lives on `api.mobula.io`.
+ * Hosts, established per endpoint rather than assuming every v2 route is
+ * deployed behind the same gateway. The holdings/price routes were verified on
+ * `genius-api.mobula.io` on 2026-09-02, while the newer token-security route is
+ * documented and deployed on the production API gateway.
  */
-const V2_HOST = "https://genius-api.mobula.io";
-const V1_HOST = "https://api.mobula.io";
+const PORTFOLIO_V2_HOST = "https://genius-api.mobula.io";
+const API_HOST = "https://api.mobula.io";
 
-/** Both hosts answer keyless at a reduced rate limit, so the key is optional everywhere. */
+/**
+ * Keep authentication optional at the transport boundary so every failure is
+ * returned as a MobulaResult. Production calls are authenticated; if no key is
+ * configured the vendor rejection is returned explicitly rather than becoming
+ * an import-time configuration failure.
+ */
 function authHeaders(): Record<string, string> {
   const key = process.env.MOBULA_API_KEY?.trim();
   return key ? { Authorization: key } : {};
@@ -98,8 +102,8 @@ const sleep = (ms: number, signal?: AbortSignal) =>
  * Retry policy is asymmetric on purpose, the same shape as `withTransientRetry`
  * in the pinned path but with far less at stake: a 429/5xx or a network error is
  * retried with backoff, a 4xx is returned immediately because retrying a bad
- * request just wastes the rate limit. The keyless tier returns HTTP 503 under a
- * burst, which is what a full 22-target run is. The worst case of a wrong call
+ * request just wastes the rate limit. The vendor can return HTTP 503 under a
+ * full-corpus burst. The worst case of a wrong call
  * here is a slower "live data unavailable", never a wrong fact.
  */
 async function request<T>(
@@ -163,7 +167,10 @@ export interface MobulaChainBalance {
   address?: string;
   amount?: number;
   amountUSD?: number;
+  /** Current public docs spell this `Usd`; retained beside observed legacy `USD`. */
+  amountUsd?: number;
   priceUSD?: number;
+  priceUsd?: number;
   decimals?: number;
 }
 
@@ -180,46 +187,93 @@ export interface MobulaHolding {
   };
   amount?: number;
   amountUSD?: number;
+  amountUsd?: number;
   allocation?: number;
   chainBalances?: Record<string, MobulaChainBalance>;
+  crossChainBalances?: Record<string, MobulaChainBalance>;
+  contractBalances?: MobulaChainBalance[];
 }
 
 export interface MobulaHoldingsResponse {
   data?: {
     totalWalletBalanceUSD?: number;
+    totalWalletBalanceUsd?: number;
     wallets?: string[];
     holdings?: MobulaHolding[];
   };
 }
 
 /**
- * GET /api/2/wallet/holdings — what this address holds RIGHT NOW, across chains.
+ * GET /api/2/wallet/holdings — what this address holds RIGHT NOW.
  *
  * `fetchAllChains` is what makes this multi-chain rather than a second opinion on
  * mainnet: without it Mobula answers over a premium subset. Verified live on
  * Lido's withdrawal queue, which spans 8 distinct `evm:*` chains.
  *
- * `filterSpam`/`minLiquidity` are passed because they help, but are NOT relied
- * on — airdropped phishing tokens survive both. The real filtering is a value
- * floor applied in exposure.ts, where it can be disclosed on the page instead of
- * happening invisibly here.
+ * The two public wrappers deliberately express different policies: the panel's
+ * cross-chain presentation request uses vendor filters, while candidate
+ * discovery disables those filters and scopes itself to the report's chain.
  */
-export async function fetchHoldings(
+async function fetchHoldings(
   wallet: string,
-  opts: { minLiquidityUSD?: number; signal?: AbortSignal } = {},
+  params: Record<string, string>,
+  opts: { signal?: AbortSignal } = {},
 ): Promise<MobulaResult<MobulaHoldingsResponse>> {
-  const q = new URLSearchParams({
-    wallet,
-    fetchAllChains: "true",
-    filterSpam: "true",
-    minLiquidity: String(opts.minLiquidityUSD ?? 10_000),
-  });
+  const q = new URLSearchParams({ wallet, ...params });
   return request<MobulaHoldingsResponse>(
-    `${V2_HOST}/api/2/wallet/holdings?${q}`,
+    `${PORTFOLIO_V2_HOST}/api/2/wallet/holdings?${q}`,
     { method: "GET" },
     "holdings",
     HOLDINGS_TIMEOUT_MS,
     opts.signal,
+  );
+}
+
+/**
+ * The filtered, cross-chain portfolio used for the human-facing live panel.
+ * These filters are PRESENTATION choices and must never define which assets
+ * the security discovery pass is allowed to investigate.
+ */
+export async function fetchPresentationHoldings(
+  wallet: string,
+  opts: { minLiquidityUSD?: number; signal?: AbortSignal } = {},
+): Promise<MobulaResult<MobulaHoldingsResponse>> {
+  return fetchHoldings(
+    wallet,
+    {
+      fetchAllChains: "true",
+      filterSpam: "true",
+      minLiquidity: String(opts.minLiquidityUSD ?? 10_000),
+    },
+    opts.signal ? { signal: opts.signal } : {},
+  );
+}
+
+/**
+ * Same-chain candidate discovery with every vendor-side exclusion disabled.
+ *
+ * A spam classifier or liquidity floor is useful for rendering a compact
+ * portfolio and dangerous for security discovery: a legitimate illiquid or
+ * unlisted asset would disappear before Ripcord could independently check its
+ * code and balance at the pinned block. The report chain keeps the expensive
+ * maximum-accuracy query bounded to the only identities the post-analysis
+ * verifier can use.
+ */
+export async function fetchDiscoveryHoldings(
+  wallet: string,
+  chainId: number,
+  opts: { signal?: AbortSignal } = {},
+): Promise<MobulaResult<MobulaHoldingsResponse>> {
+  return fetchHoldings(
+    wallet,
+    {
+      blockchains: `evm:${chainId}`,
+      unlistedAssets: "true",
+      accuracy: "maximum",
+      filterSpam: "false",
+      minLiquidity: "0",
+    },
+    opts,
   );
 }
 
@@ -257,7 +311,7 @@ export async function fetchPrices(
 ): Promise<MobulaResult<MobulaPriceResponse>> {
   if (items.length === 0) return { ok: true, data: { payload: [] } };
   return request<MobulaPriceResponse>(
-    `${V2_HOST}/api/2/token/price`,
+    `${PORTFOLIO_V2_HOST}/api/2/token/price`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -269,45 +323,44 @@ export async function fetchPrices(
   );
 }
 
-// --- endpoint 3: batch metadata ---------------------------------------------
+// --- endpoint 3: token security ---------------------------------------------
 
-export interface MobulaMetadataEntry {
-  data?: {
-    id?: number | null;
-    name?: string;
-    symbol?: string;
-    logo?: string | null;
-    website?: string | null;
-    decimals?: number[];
-    contracts?: string[];
-    blockchains?: string[];
-  };
+export interface MobulaTokenSecurity {
+  address?: string;
+  chainId?: string;
+  isMintable?: boolean | null;
+  transferPausable?: boolean | null;
+  isBlacklisted?: boolean | null;
+  isWhitelisted?: boolean | null;
+  balanceMutable?: boolean | null;
+  modifyableTax?: boolean | null;
+  selfDestruct?: boolean | null;
+  isHoneypot?: boolean | null;
+  staticAnalysisStatus?: string | null;
+  staticAnalysisDate?: string | null;
 }
 
-export interface MobulaMetadataResponse {
-  data?: MobulaMetadataEntry[];
+export interface MobulaTokenSecurityResponse {
+  data?: MobulaTokenSecurity;
 }
 
 /**
- * GET /api/1/multi-metadata — names and logos for the tokens found above.
- *
- * The readability layer. A holdings row reading `0x2260fac5…` is useless to the
- * non-crypto-native reader this panel is partly for; "Wrapped Bitcoin" with a
- * logo is not. Note this is the v1 host — see the host comment at the top.
+ * An EXTERNAL comparison signal for the standalone differential audit. It is
+ * intentionally not called by `buildLiveExposure`, and nothing in the pinned
+ * detector imports this module. Mobula combines third-party services, RPC reads
+ * and source analysis; its booleans are hypotheses to compare, never findings
+ * Ripcord is allowed to adopt.
  */
-export async function fetchMetadata(
-  assets: { address: string; blockchain: string }[],
+export async function fetchTokenSecurity(
+  address: string,
+  blockchain: string,
   opts: { signal?: AbortSignal } = {},
-): Promise<MobulaResult<MobulaMetadataResponse>> {
-  if (assets.length === 0) return { ok: true, data: { data: [] } };
-  const q = new URLSearchParams({
-    assets: assets.map((a) => a.address).join(","),
-    blockchains: assets.map((a) => a.blockchain).join(","),
-  });
-  return request<MobulaMetadataResponse>(
-    `${V1_HOST}/api/1/multi-metadata?${q}`,
+): Promise<MobulaResult<MobulaTokenSecurityResponse>> {
+  const q = new URLSearchParams({ blockchain, address });
+  return request<MobulaTokenSecurityResponse>(
+    `${API_HOST}/api/2/token/security?${q}`,
     { method: "GET" },
-    "metadata",
+    "token security",
     DEFAULT_TIMEOUT_MS,
     opts.signal,
   );

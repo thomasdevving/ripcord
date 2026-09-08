@@ -9,7 +9,9 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { toFunctionSelector } from "viem";
-import { identifyExitInterface, SELECTORS } from "../src/fork/exitActions.js";
+import { identifyAdapter } from "../src/fork/adapters/index.js";
+import { COMET_PAUSED_ERROR, COMET_SELECTORS as SELECTORS } from "../src/fork/adapters/comet.js";
+import { FIAT_TOKEN_SELECTORS } from "../src/fork/adapters/fiatToken.js";
 import { applyExitRestriction, type ExitRestrictionResult } from "../src/report/applyExitRestriction.js";
 import { composeVerdict } from "../src/report/verdict.js";
 import { classifyCandidateEvaluation, runExitRestrictionEngine } from "../src/fork/exitRestriction.js";
@@ -52,7 +54,7 @@ function timeToExit(overrides: Partial<TimeToExit> = {}): TimeToExit {
 }
 function exitRestriction(overrides: Partial<ExitRestriction> = {}): ExitRestriction {
   const cleanCandidate: ExitRestriction["candidates"][number] = {
-    selector: SELECTORS.cometPause,
+    selector: SELECTORS.pause,
     signature: "pause(bool,bool,bool,bool,bool)",
     category: "ACCESS_RESTRICTION",
     guardingParty: "0x000000000000000000000000000000000000dEaD",
@@ -68,7 +70,7 @@ function exitRestriction(overrides: Partial<ExitRestriction> = {}): ExitRestrict
     attempted: true,
     archetype: "test",
     outcome: "no_direct_restriction_found",
-    exitAction: { status: "identified", interfaceName: "compound-comet-base", signature: "withdraw(address,uint256)", selector: SELECTORS.cometWithdraw, confidence: "high", note: "", evidence: [] },
+    exitAction: { status: "identified", interfaceName: "compound-comet-base", signature: "withdraw(address,uint256)", selector: SELECTORS.withdraw, confidence: "high", note: "", evidence: [] },
     baseline: { status: "established", holder: "0x000000000000000000000000000000000000abc1", holderSource: "funded", note: "", evidence: [] },
     candidates: [cleanCandidate],
     restrictors: [],
@@ -87,33 +89,50 @@ function exitRestriction(overrides: Partial<ExitRestriction> = {}): ExitRestrict
 
 describe("exit-action identification", () => {
   it("matches the Comet base interface only when the full fingerprint is present", () => {
-    const full = [SELECTORS.cometSupply, SELECTORS.cometBaseToken, SELECTORS.cometIsWithdrawPaused, "0xdeadbeef"];
-    expect(identifyExitInterface(full)?.id).toBe("compound-comet-base");
+    const full = [SELECTORS.supply, SELECTORS.baseToken, SELECTORS.isWithdrawPaused, "0xdeadbeef"];
+    expect(identifyAdapter(full, 1)?.adapter.id).toBe("compound-comet-base");
     // A partial fingerprint is NOT a match — testing a guessed exit is the risk.
-    expect(identifyExitInterface([SELECTORS.cometSupply, SELECTORS.cometBaseToken])).toBeNull();
-    expect(identifyExitInterface(["0x11111111", "0x22222222"])).toBeNull();
+    expect(identifyAdapter([SELECTORS.supply, SELECTORS.baseToken], 1)).toBeNull();
+    expect(identifyAdapter(["0x11111111", "0x22222222"], 1)).toBeNull();
   });
 
   it("is case-insensitive on selector hex", () => {
-    const upper = [SELECTORS.cometSupply.toUpperCase(), SELECTORS.cometBaseToken.toUpperCase(), SELECTORS.cometIsWithdrawPaused.toUpperCase()];
-    expect(identifyExitInterface(upper)?.id).toBe("compound-comet-base");
+    const upper = [SELECTORS.supply.toUpperCase(), SELECTORS.baseToken.toUpperCase(), SELECTORS.isWithdrawPaused.toUpperCase()];
+    expect(identifyAdapter(upper, 1)?.adapter.id).toBe("compound-comet-base");
   });
 });
 
 describe("exit-action selectors are derived, not hand-copied", () => {
-  const cases: [keyof typeof SELECTORS, string][] = [
-    ["cometSupply", "supply(address,uint256)"],
-    ["cometWithdraw", "withdraw(address,uint256)"],
-    ["cometBaseToken", "baseToken()"],
-    ["cometIsWithdrawPaused", "isWithdrawPaused()"],
-    ["cometPauseGuardian", "pauseGuardian()"],
-    ["cometPause", "pause(bool,bool,bool,bool,bool)"],
+  const cometCases: [keyof typeof SELECTORS, string][] = [
+    ["supply", "supply(address,uint256)"],
+    ["withdraw", "withdraw(address,uint256)"],
+    ["baseToken", "baseToken()"],
+    ["isWithdrawPaused", "isWithdrawPaused()"],
+    ["pauseGuardian", "pauseGuardian()"],
+    ["pause", "pause(bool,bool,bool,bool,bool)"],
   ];
-  for (const [key, sig] of cases) {
-    it(`${key} === selector(${sig})`, () => {
+  for (const [key, sig] of cometCases) {
+    it(`comet.${key} === selector(${sig})`, () => {
       expect(SELECTORS[key]).toBe(toFunctionSelector(sig));
     });
   }
+
+  const fiatCases: [keyof typeof FIAT_TOKEN_SELECTORS, string][] = [
+    ["blacklist", "blacklist(address)"],
+    ["unBlacklist", "unBlacklist(address)"],
+    ["isBlacklisted", "isBlacklisted(address)"],
+    ["blacklister", "blacklister()"],
+    ["transfer", "transfer(address,uint256)"],
+  ];
+  for (const [key, sig] of fiatCases) {
+    it(`fiatToken.${key} === selector(${sig})`, () => {
+      expect(FIAT_TOKEN_SELECTORS[key]).toBe(toFunctionSelector(sig));
+    });
+  }
+
+  it("Comet's Paused() error selector is derived", () => {
+    expect(COMET_PAUSED_ERROR).toBe(toFunctionSelector("Paused()"));
+  });
 });
 
 describe("verdict: a fork-confirmed restrictor collapses the window", () => {
@@ -138,7 +157,7 @@ describe("verdict: a fork-confirmed restrictor collapses the window", () => {
   const er = exitRestriction({
     outcome: "restrictor_found",
     restrictionState: "restrictable",
-    restrictors: [{ selector: SELECTORS.cometPause, signature: "pause(bool,bool,bool,bool,bool)", category: "ACCESS_RESTRICTION", guardingParty: "0x000000000000000000000000000000000000dEaD", guardingPartyType: "safe", args: "withdraw-pause = true", result: "restrictor", noticeSeconds: "0", detail: "confirmed", evidence: [] }],
+    restrictors: [{ selector: SELECTORS.pause, signature: "pause(bool,bool,bool,bool,bool)", category: "ACCESS_RESTRICTION", guardingParty: "0x000000000000000000000000000000000000dEaD", guardingPartyType: "safe", args: "withdraw-pause = true", result: "restrictor", noticeSeconds: "0", detail: "confirmed", evidence: [] }],
     candidates: [],
   });
 
@@ -301,7 +320,7 @@ describe("applyExitRestriction merges into a real report and re-composes", () =>
       restrictionState: "restrictable",
     };
     const result: ExitRestrictionResult = {
-      exitRestriction: exitRestriction({ outcome: "restrictor_found", restrictionState: "restrictable", restrictors: [{ selector: SELECTORS.cometPause, signature: "pause(bool,bool,bool,bool,bool)", category: "ACCESS_RESTRICTION", guardingParty: "0x000000000000000000000000000000000000dEaD", guardingPartyType: "safe", args: "withdraw-pause = true", result: "restrictor", noticeSeconds: "0", detail: "confirmed", evidence: [] }] }),
+      exitRestriction: exitRestriction({ outcome: "restrictor_found", restrictionState: "restrictable", restrictors: [{ selector: SELECTORS.pause, signature: "pause(bool,bool,bool,bool,bool)", category: "ACCESS_RESTRICTION", guardingParty: "0x000000000000000000000000000000000000dEaD", guardingPartyType: "safe", args: "withdraw-pause = true", result: "restrictor", noticeSeconds: "0", detail: "confirmed", evidence: [] }] }),
       restrictorRoute: route,
     };
     const merged = applyExitRestriction(base, result);

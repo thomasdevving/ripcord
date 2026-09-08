@@ -11,11 +11,17 @@ import { buildLiveExposure } from "../src/live/exposure.js";
 import { inlineLogo } from "../src/live/logos.js";
 import type { Report } from "../src/report/schema.js";
 
+try {
+  process.loadEnvFile(".env");
+} catch (error) {
+  if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+}
+
 async function main(): Promise<void> {
   const inDir = process.argv[2] ?? "calibration/reports";
   const outDir = process.argv[3] ?? "calibration/live";
   const includeAll = process.argv.includes("--all");
-  // Resumable by default. The keyless tier rate-limits a full sweep into 503s,
+  // Resumable by default. The vendor can rate-limit a full sweep into 503s,
   // and a target that failed for that reason is not a fact about the target —
   // so a re-run retries only what is still missing and the set converges.
   // `--refetch` forces every target to be pulled again.
@@ -27,7 +33,7 @@ async function main(): Promise<void> {
   let failed = 0;
   let first = true;
 
-  // The keyless tier rate-limits a burst into HTTP 503s. Targets are walked
+  // The vendor can rate-limit a burst into HTTP 503s. Targets are walked
   // sequentially with a pause between them rather than fanned out: this is a
   // build step nobody is waiting on, and a slow complete run beats a fast run
   // full of "unavailable" panels.

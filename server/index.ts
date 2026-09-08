@@ -93,7 +93,7 @@ async function main(): Promise<void> {
   const manager = new JobManager(config, store, resolveWorkerPath(), ({ reportId, report, meta }) =>
     assetContext.start(reportId, report, modeRunsFork(meta.mode)),
   );
-  const { recovered } = await manager.init();
+  const { recovered, skippedLive, instanceId } = await manager.init();
 
   // anvil's absence is reported, not fatal. Fork modes disappear from
   // /api/config's availableModes and the UI stops offering them.
@@ -145,7 +145,12 @@ async function main(): Promise<void> {
       `  fork sandbox : ${anvil.available ? anvil.version : "unavailable (scan mode only)"}`,
       `  saved reports: ${indexed.indexed} calibration report(s) indexed, ${indexed.blocked} withheld by the disclosure gate`,
       `  asset coverage: ${sidecars} Mobula snapshot(s) indexed by (chain, target)`,
-      `  recovered    : ${recovered} interrupted job(s) from a previous run`,
+      `  instance     : ${instanceId}`,
+      `  recovered    : ${recovered} abandoned job(s) whose ownership lease had expired`,
+      // Printed even when zero: it is the difference between "there was nothing
+      // to recover" and "another instance is holding work", and an operator
+      // starting a second replica needs to see which.
+      `  left running : ${skippedLive} job(s) still held by a live lease (another instance is working on them)`,
       `  asset recovery: ${recoveredAssetContexts} interrupted asset-context refresh(es) marked unavailable`,
     ].join("\n"),
   );

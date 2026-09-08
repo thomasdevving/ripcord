@@ -27,3 +27,11 @@ dist-web/
 # on purpose: they are the day-5 evidence, and they let anyone re-render or
 # re-check the numbers without an RPC key. Nothing here is regenerated at view
 # time.
+
+# Stray tsc output (server/ + src/ compiled). Regenerable and referenced by
+# nothing — same reasoning as dist/, dist-web/ and dist-server/ above.
+dist-measure/
+
+# Local Claude Code workspace: per-user settings and a vendored skill bundle.
+# The shared equivalents that collaborators need live in .github/.
+.claude/

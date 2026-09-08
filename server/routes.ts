@@ -29,6 +29,8 @@ import type { LiveExposure } from "../src/live/exposure.js";
 import { validateCreateJob } from "./validate.js";
 import { classify } from "./sanitize.js";
 import { schemaVersion, rulesetVersion } from "../src/report/schema.js";
+import { selectorAnalyzer } from "../src/detect/dispatcher.js";
+import { buildEvidenceIndex } from "../src/report/evidenceIndex.js";
 import type { ApiError, ConfigResponse, CreateJobResponse, JobEvent, PresetDescriptor } from "./shared/dto.js";
 
 export interface RouteDeps {
@@ -101,7 +103,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
       providerHost: providerHostFor(config, 1),
       anvil,
       presets: presets(config.defaultBlock),
-      engine: { schemaVersion, rulesetVersion },
+      engine: { schemaVersion, rulesetVersion, selectorAnalyzer },
     };
     return reply.send(body);
   });
@@ -322,6 +324,41 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
       // ABOUT the report and the sidecar together, and it must always be
       // readable beside the untouched verdict rather than in place of it.
       enriched: buildEnrichedAssessment(report, assetContext),
+    });
+  });
+
+  /**
+   * EVIDENCE ON DEMAND.
+   *
+   * The power map inlines a bounded prefix of the reads behind each node
+   * (`evidenceInlineLimit`) because a role scan on a range-capped provider names
+   * its target in well over a thousand log reads, and shipping those to draw one
+   * box is a download rather than a detail view. This is where the rest lives.
+   *
+   * Behind `loadPublishable` like every other report transport: evidence is the
+   * most detailed thing a report holds, and a blocked report must not leak it
+   * through a side door that the HTML and JSON routes are gated against.
+   */
+  app.get("/api/reports/:id/evidence", async (req: FastifyRequest<{ Params: { id: string }; Querystring: { address?: string } }>, reply) => {
+    const loaded = await reports.loadPublishable(req.params.id);
+    if (!loaded.ok) {
+      if (loaded.reason === "blocked") return reply.status(451).send({ blocked: true, message: BLOCKED_MESSAGE });
+      return sendError(reply, 404, { code: "not_found", message: "No such report.", hint: null });
+    }
+    const address = req.query.address;
+    if (address !== undefined && !/^0x[0-9a-fA-F]{40}$/.test(address)) {
+      return sendError(reply, 400, { code: "invalid_address", message: "address must be a 20-byte hex address.", hint: null });
+    }
+    const index = buildEvidenceIndex(loaded.value.report);
+    const ids = address ? index.idsFor(address) : index.entries.map((e) => e.id);
+    return reply.send({
+      id: loaded.value.id,
+      address: address ?? null,
+      total: ids.length,
+      // Deduplicated: an entry relevant to several nodes is sent once, and the
+      // id is the same stable content hash the graph references.
+      evidence: ids.map((entryId) => ({ id: entryId, evidence: index.get(entryId) })),
+      distinctInReport: index.stats.distinct,
     });
   });
 

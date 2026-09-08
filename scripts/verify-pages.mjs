@@ -248,7 +248,30 @@ function incompleteSites(report) {
   for (const e of report.errors ?? []) {
     if (["accessControl", "authorityResolution", "dependencies"].includes(e.stage)) out.push(`stage:${e.stage} failed`);
   }
+
+  // REPORT-WIDE RESOURCE BOUNDARIES. Derived here from the budget block for the
+  // same reason every other dimension is derived here: if this file read
+  // src/report/enumeration.ts it would be checking a derivation against itself.
+  // Deduped by dimension, matching how the witness keys the site.
+  //
+  // A report with NO budget block predates schema 0.15.0 and ran unbounded, so
+  // it truncated nothing and has no boundary to declare — checked separately
+  // below, where a MISSING block on a 0.15.0+ report is an error rather than a
+  // silent pass.
+  for (const dimension of new Set((report.budget?.exhausted ?? []).map((e) => e.dimension))) {
+    out.push(`budget:${dimension} exhausted`);
+  }
   return out;
+}
+
+/** Numeric comparison of an "a.b.c" version against a floor. */
+function atLeastVersion(version, floor) {
+  const a = String(version ?? "0").split(".").map((n) => Number(n) || 0);
+  const b = floor.split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
+  }
+  return true;
 }
 
 console.log("\n--- report-level invariant: enumeration completeness reaches the verdict ---");
@@ -259,6 +282,16 @@ for (const file of readdirSync(reportsDir).filter((f) => f.endsWith(".json")).so
   reportsChecked++;
 
   const sites = incompleteSites(report);
+
+  // A report generated under the budgeted engine must SHOW its accounting. An
+  // absent block on such a report would make "nothing was exhausted" and "we
+  // never counted" the same sentence, which is the shape of every conflation
+  // this checker exists to catch.
+  if (atLeastVersion(report.schemaVersion, "0.15.0") && !report.budget) {
+    console.log(`${label}`);
+    fail(`schemaVersion ${report.schemaVersion} carries no budget block — resource accounting is required from 0.15.0`);
+  }
+
   const verdictStatus = report.verdict?.status;
   const windowStatus = report.exitWindow?.assessment?.status;
 

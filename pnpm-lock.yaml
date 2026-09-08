@@ -14,6 +14,9 @@ importers:
       commander:
         specifier: ^12.1.0
         version: 12.1.0
+      evmole:
+        specifier: 0.9.3
+        version: 0.9.3
       fastify:
         specifier: ^5.12.1
         version: 5.12.1
@@ -944,6 +947,11 @@ packages:
 
   eventemitter3@5.0.1:
     resolution: {integrity: sha512-GWkBvjiSZK87ELrYOSESUYeVIc9mvLLf/nXalMOS5dYrgZq9o5OVkbZAVM06CVxYsCwH9BDZFPlQTlPA1j4ahA==}
+
+  evmole@0.9.3:
+    resolution: {integrity: sha512-UhO5HMAoEPCupSxvBJPlm/L0Qk/KVJ/OJo3r4EyhXADIEHqU5aTkAzsBfzk4lXGjqxVnaYbh1GPSmZtmSHFnQQ==}
+    engines: {node: '>=22'}
+    hasBin: true
 
   expect-type@1.4.0:
     resolution: {integrity: sha512-KfYbmpRm0VbLjEvVa9yGwCi9GI34xvi7A/HXYWQO65CSD2u3MczUJSuwXKFIxlGsgBQizV9q5J9NHj4VG0n+pA==}
@@ -2167,6 +2175,8 @@ snapshots:
       '@types/estree': 1.0.9
 
   eventemitter3@5.0.1: {}
+
+  evmole@0.9.3: {}
 
   expect-type@1.4.0: {}
 

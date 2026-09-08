@@ -52,7 +52,53 @@ src/chain/
   cache.ts        DiskCache, keyed by (chainId, blockNumber, method, params).
                    No invalidation — a historical block never changes, so a
                    cache hit is permanently valid. This is what makes a warm
-                   rerun byte-identical and network-free.
+                   rerun byte-identical and network-free. `wrap` also COALESCES
+                   in-flight identical reads: two callers asking the same pinned
+                   question before either has written the entry both missed and
+                   both hit the provider, so the cost of a fact scaled with how
+                   many detectors wanted it. A joiner gets its OWN object graph
+                   (a disk hit parses a fresh one per caller, and a shared
+                   reference would make a joined read behave differently from a
+                   cached one) and a rejection reaches every joiner unchanged.
+                   `getLogs` entries are keyed by their INTERVAL (`toBlock`),
+                   not by the report's pinned block: a closed historical range is
+                   fully determined by (chain, address, event, from, to), and
+                   keying it under the pin made every identical interval a miss
+                   for the next report at a later block — re-fetching, for the
+                   most request-hungry read Ripcord performs, history already on
+                   disk. A `toBlock` beyond the pin throws.
+  budget.ts       (scalability pass) THE REPORT-WIDE BUDGET. Every individual
+                   limit was real and their COMPOSITION was not: the role scan's
+                   1500-request ceiling applies per contract and a report can
+                   reach many, the depth cap bounds how FAR the authority
+                   recursion travels rather than how many branches it visits, and
+                   the member-enumeration loop is driven by a count the analysed
+                   contract itself returns. Four dimensions — chainReads,
+                   logRequests, authorityNodes, roleMembers. TWO rules, neither
+                   negotiable: (1) every dimension counts LOGICAL work, never
+                   elapsed time and never network attempts, because a warm run
+                   makes zero network calls and a budget exhaustible by one run
+                   and not the other would make a report depend on whether
+                   someone had run it before (KNOWN EDGE #23); (2) exhaustion is
+                   never quiet and never clean — it is recorded, flows into the
+                   enumeration witness as a gap, and thereby makes the reassuring
+                   assessment variants unconstructable. A budget can only ever
+                   push a verdict toward caution. `spendOrThrow` for reads (no
+                   honest partial exists), `spend` for dimensions a detector can
+                   degrade around, `declareExhausted` for a boundary planned
+                   AROUND rather than run into.
+  budgetedReader.ts (scalability pass) A ChainReader decorator that spends one
+                   report's budget. A DECORATOR rather than a flag on PinnedChain
+                   because the budget is a property of one ANALYSIS, not of a
+                   connection: `buildReport` wraps its reader, which scopes the
+                   budget exactly to the report it bounds, needs no change to how
+                   a chain is constructed, and leaves every detector's signature
+                   alone. Pass-through in every other respect. Every method is
+                   `async` so a refusal REJECTS rather than throwing
+                   synchronously. `getLogs` spends two dimensions, which is what
+                   lets accessControl.ts ask what the report can still afford.
+                   The fork engines read the raw chain, deliberately outside this
+                   accounting.
   constants.ts    All storage slots (EIP-1967/1822/legacy-zos) and function
                    selectors, derived from preimages in code, not copied from
                    memory. test/constants.test.ts asserts derived == known-
@@ -79,6 +125,28 @@ src/chain/
                    silent allowlist — every clear is recorded and versioned.
 
 src/detect/
+  facts.ts        (scalability pass) THE SHARED FACT LAYER. The disk cache makes
+                   a repeated READ free and does nothing about a repeated
+                   DERIVATION: the authority recursion reaches the same contract
+                   once per branch pointing at it (a ProxyAdmin and a role both
+                   leading to one governor is ordinary), and four stages ask
+                   independently for the same address's code, selectors, proxy
+                   pattern and ownership. timeToExit.ts documented its selector
+                   set as "Reused (not recomputed)" directly above the code that
+                   re-fetched the bytecode and re-ran the analyser on it.
+                   Memoization is safe here for ONE reason: every entry is a pure
+                   function of (chain, pinned block, address), and the store is
+                   keyed on the READER — which already carries its block — so
+                   two readers at different blocks share nothing, by construction
+                   rather than by a composite key someone could get wrong. The
+                   PROMISE is memoized, not the value, so concurrent callers
+                   share one computation. Deliberately NOT memoized: capability
+                   detection (also a function of the proxy result, owner and role
+                   set), guard probing (a function of the probe sender), and
+                   every fork interaction — a key omitting one of those inputs
+                   would return a right-looking answer to a different question.
+                   Results are shared and therefore immutable; test/facts.test.ts
+                   pins that a memoized result is deep-equal to a fresh one.
   bytecode.ts     Dependency-free bytecode helpers: EIP-1167 clone matcher,
                    Solidity CBOR-metadata-trailer stripper, containsOpcode
                    (linear scan respecting PUSH1..PUSH32 immediate lengths).
@@ -104,26 +172,16 @@ src/detect/
                    dependencies.ts: dedupes every address found via owner/
                    pendingOwner/proxyAdmin/AccessControl roles/attributed
                    capability guards, classifies each once.
-  dispatcher.ts   (day 2) Dispatcher-based selector extraction. A minimal
-                   static-reachability walk (BFS from offset 0, following
-                   only JUMP/JUMPI targets pushed by a literal PUSH
-                   immediately beforehand, landing on a real JUMPDEST; a
-                   block ends at its first terminator with no fallthrough
-                   past it) — NOT a naive linear walk like bytecode.ts's
-                   containsOpcode. This is what makes CODECOPY'd child-
-                   contract creation bytecode (embedded via `new Foo(...)`)
-                   structurally unreachable rather than accidentally decoded
-                   as this contract's own dispatch branches — see KNOWN
-                   EDGES #1 and its regression tests. Confirms the CALLDATALOAD
-                   selector-load shape exists (modern SHR, old DIV in either
-                   push-order, see KNOWN EDGES) before trusting any
-                   comparisons; collects PUSH4 values compared via EQ as
-                   selectors, counts GT/LT binary-search pivots separately
-                   without treating them as selectors (verified empirically:
-                   solc's binary search always terminates each leaf in a
-                   real EQ check, so pivots are redundant, never load-bearing,
-                   for selector recovery). Returns `recognized: false` (never
-                   a guess) when no selector-load shape is found at all.
+  dispatcher.ts   (day 2, analyser replaced after review) Thin fail-closed
+                   adapter over EVMole's runtime-bytecode analysis. EVMole
+                   owns disassembly, control-flow recovery and calldata-flow
+                   analysis; Ripcord validates and normalizes its 4-byte
+                   selectors, includes both ABI and fallback-dispatched
+                   entries, records their counts separately, and returns
+                   `recognized:false` rather than interpreting an empty or
+                   failed analysis as proof of no callable surface. Regression
+                   tests cover embedded child initcode and reachable bytes4
+                   comparisons inside function bodies.
   taxonomy.ts     (day 2) Versioned DATA table: full function signature ->
                    {category, confidence}. Categories: CODE_CHANGE,
                    FUND_MOVEMENT, SUPPLY, ACCESS_RESTRICTION, ECONOMIC,
@@ -317,7 +375,48 @@ src/fork/
                    pattern, unresolved authority, or no holdings — never a
                    fabricated trace. Emits a reproduce command + a `cast run`
                    call-trace artifact. `ripcord prove <addr> --block` runs it.
-  exitActions.ts  (day 7) Versioned (`exitActionsVersion`) exit-action
+  adapters/       (scalability step 3) PROTOCOL ADAPTERS. `ExitInterface` used to
+                   describe a protocol (a fingerprint, an exit selector) and
+                   supply none of the behaviour needed to run an experiment on
+                   it, so the behaviour lived in the engine as an explicit branch
+                   (`if (iface.id !== "compound-comet-base")`), in the
+                   asset-context service (which re-checked the same id), and in a
+                   funding table keyed by bare token address. "Add one adapter"
+                   was not a thing anyone could do.
+                   types.ts   The contract. THE ADAPTER owns identification,
+                     protocol reads, position building, the exit, observation,
+                     the privileged mutation, and the SEMANTIC judgement of a
+                     post-mutation exit. THE EXECUTOR owns fork lifecycle,
+                     snapshot/revert isolation per candidate, the neutral control
+                     step, clock + starting-state equality between branches,
+                     ordered evidence, deadlines, and the fail-closed
+                     composition. Everything in the executor's half is a rail
+                     that stops a false-clean, so an adapter author cannot
+                     weaken one by forgetting it. `mutate()` returns TWO
+                     booleans — `executed` (the privileged call went through) and
+                     `transitioned` (the intended state change is observable) —
+                     because a call that succeeds while changing nothing
+                     establishes no cause, and collapsing them loses that.
+                   comet.ts   The reference adapter: a behaviour-preserving port
+                     of the live-validated cUSDCv3 differential.
+                   fiatToken.ts (step 3) THE SECOND PROTOCOL, chosen to be shaped
+                     as differently as possible: no approve, no supply, no
+                     position to unwind — for a token holder "leaving" is
+                     `transfer`, and the restriction is PER-ACCOUNT
+                     (`blacklist(holder)`) rather than a protocol-wide flag. That
+                     a FiatToken blacklister can freeze a holder is documented
+                     design (clearedRegistry.ts records it for USDC); reporting
+                     the CAPABILITY and its zero notice is capability-not-intent,
+                     the same statement the issuer's own docs make.
+                   funding.ts Whales keyed by (chainId, token). The old table was
+                     keyed by bare address — an address is not an identity across
+                     chains, and a funding table answering for the wrong one
+                     would seed a baseline from a contract nobody checked.
+                   index.ts   The registry, plus `validatedOn`: an adapter never
+                     exercised live on a chain does not decide a verdict there.
+                     The rule existed in prose ("each needing a live validation
+                     before it is trusted"); prose is not a gate.
+  exitActions.ts  (day 7; REPLACED by adapters/ in step 3) Versioned exit-action
                    identification table + base-token whales for fork funding.
                    The riskiest new false-clean is testing against the wrong exit
                    function, so an interface is matched only when a FINGERPRINT of
@@ -353,9 +452,10 @@ src/live/          (Mobula bounty) THE LIVE LAYER — deliberately OUTSIDE the
                    imports it, at any depth, and scripts/verify-boundary.mjs
                    fails CI if that ever changes (transitive import walk; it
                    prints the offending chain). Rationale in docs/MOBULA.md.
-  mobula.ts        Client for 3 REST endpoints: wallet/holdings (multi-chain,
-                   fetchAllChains), token/price (batch, second quote +
-                   liquidity), multi-metadata (names/logos). Returns a
+  mobula.ts        Client for 3 REST purposes: wallet/holdings (separate
+                   filtered presentation and unfiltered same-chain discovery),
+                   token/price (batch quote, liquidity + display metadata), and
+                   token/security (opt-in differential audit). Returns a
                    discriminated MobulaResult rather than throwing — a vendor
                    outage is not a fact about the contract and must never take
                    down a page whose verdict does not depend on it. NOT routed
@@ -365,7 +465,7 @@ src/live/          (Mobula bounty) THE LIVE LAYER — deliberately OUTSIDE the
                    0xeeee…eeee, which is THE SAME on every chain, so every
                    lookup is keyed by (chainId, address) — verified live on
                    cbETH, where an address-keyed map quoted ETH at BNB's price.
-  exposure.ts      Composes the three into one LiveExposure. Identity is
+  exposure.ts      Composes holdings and price into one LiveExposure. Identity is
                    (chainId, address); the vendor's name/symbol are stored as
                    `unverifiedSymbol`/`unverifiedName` because live wallet data
                    really does contain phishing lures as token names. Each
@@ -410,8 +510,9 @@ server/asset-context.ts
                    seals every run for the same reason.
                    Runs AFTER a publishable deterministic report is stored:
                    fetches a fresh Mobula snapshot, selects at most 64 unique
-                   valid same-chain ERC20 identities from the complete response
-                   independently of the top-12 UI subset, itemises every
+                   valid ERC20 identities from a separate unfiltered same-chain
+                   response independently of the top-12 UI subset and
+                   presentation filters, itemises every
                    exclusion, then uses PinnedChain to
                    verify code + balanceOf(target) at the report block and
                    rechecks the block hash. Stored by report id under
@@ -500,6 +601,33 @@ server/         (webapp) THE WEB ORCHESTRATION. Imports the engine functions
                    is absent from the listing (a row reading "withheld: X" is
                    itself a signal about X). Blocked reports are still STORED —
                    they are evidence — what changes is who may read them.
+  jobs/lease.ts    (scalability step 5) DURABLE JOB OWNERSHIP. The manager keeps
+                   its queue, running set and admission limits in process memory
+                   — correct for one instance, and DESTRUCTIVE for two:
+                   `recoverInterruptedJobs` marked every persisted `queued` or
+                   `running` job `interrupted` at boot, so a second instance
+                   starting up declared the first one's in-flight work dead while
+                   it was still running, and the browser watching it was told the
+                   analysis had failed. A job is now owned by an instance for a
+                   bounded LEASE, renewed by a heartbeat; recovery asks the
+                   precise question ("is this lease expired?") instead of the
+                   unanswerable one ("did anyone restart?"). Every ambiguous case
+                   resolves toward leaving the job alone, because refusing a
+                   claim costs a queued run while stealing a live one puts two
+                   workers on one analysis writing the same report id. An
+                   unparseable expiry counts as NOT expired for the same reason.
+                   A heartbeat that FAILS ends the run rather than letting it
+                   finish and write a report it no longer owns. A reaper sweeps
+                   leases that expire after boot, since boot-time recovery only
+                   sees the world as it was at boot. STATED LIMIT: compare-and-set
+                   here is read-then-write over atomic temp+rename, which holds on
+                   one volume and NOT across NFS clients or separate volumes —
+                   `claimJob`/`heartbeat`/`releaseJob` are the seam where a store
+                   with real conditional writes drops in, and every rule about who
+                   may run what lives in lease.ts above it. Set
+                   RIPCORD_INSTANCE_ID to a stable value per replica so a restart
+                   reclaims its own previous life immediately instead of waiting
+                   out the lease.
   jobs/store.ts    Atomic writes (temp + rename in the same directory), safe
                    id->path resolution, bounded retention. On boot, jobs left
                    `running` or `queued` become `interrupted` — never resumed,
@@ -593,6 +721,25 @@ web/            (webapp) React + Vite frontend. Computes NO risk conclusion:
                    Node builtin, or if a secret or engine call appears in the
                    BUILT bundle.
 
+src/report/evidenceIndex.ts
+                   (scalability step 4) EVIDENCE STORED ONCE AND REFERENCED. The
+                   pinned report stays self-contained — that is what makes one
+                   file a complete argument — and this is the TRANSPORT-side
+                   view of it: each distinct entry once under a stable
+                   content-derived id, with the addresses it actually names.
+                   THE LINKAGE IS THE OTHER HALF, and was the more serious
+                   problem: `reportStructure` attached evidence to a graph node
+                   by serialising every entry and asking whether the node's
+                   address appeared anywhere in the string. Quadratic (nodes x
+                   entries x size), and not a statement about relevance — it
+                   OVER-attached (an address inside unrelated calldata) and
+                   UNDER-attached (an ABI-encoded address lives in a 32-byte word
+                   and does not contain its own 40-character form) at the same
+                   time, silently. An entry now names an address only when it
+                   appears AS one: an exact 20-byte value, or a 32-byte word
+                   whose leading 12 bytes are zero. The zero address is excluded,
+                   because it is in every empty slot.
+
 src/report/observer.ts
                    (webapp) Optional, typed progress hooks on buildReport and
                    runExitRestrictionEngine. PURELY ADDITIVE: every hook is
@@ -670,6 +817,10 @@ only via delegatecall and is usually uninitialized.
   ruleset 0.4.0 on day 3 (recursive `authorityResolution` and the `proof`
   block added to the schema; timelock detection added to the ruleset). Bumped
   to schema 0.6.0 / ruleset 0.5.0 in the consolidation pass:
+  Bumped to schema/ruleset 0.15.0 in the scalability pass: `report.budget` and
+  the `budget` enumeration-site kind added to the schema; the report-wide budget,
+  the bounded member enumeration and the report-wide log ceiling added to the
+  ruleset, plus a `budget_exhausted` termination reason.
   `authority.accessControl.reconstruction` (partial-scan label) and
   `disclosure.cleared`/`clearedRegistryVersion` added to the schema; adaptive
   getLogs chunking and the cleared-dependency registry added to the ruleset;
@@ -785,6 +936,20 @@ only via delegatecall and is usually uninitialized.
   lower the minimum notice. And `verdict.missing[]` carries every gap on every
   branch, so no report can assert `missing: []` while one of its own
   reconstruction blocks says the role set may be incomplete.
+- **`report.budget` — the cost of a report is a property of Ripcord, not of the
+  address it was pointed at (scalability pass).** Nullable ONLY because reports
+  before schema 0.15.0 ran unbounded; a null means "this run had no budget",
+  never "this run stayed inside its limits", and it is not a gap either, because
+  an unbounded run truncated nothing. `limits` + `consumed` + `exhausted`.
+  `exhausted` is read by the enumeration witness, not merely displayed: a
+  boundary that stopped work makes the analysis incomplete, so `binding` and
+  `immutable_within_checks` become unconstructable exactly as they do for a
+  partial role scan. The direction is caution-only, like every other gap. The
+  ordering that makes this sound — every degradable dimension is spent by a stage
+  that runs BEFORE the witness is derived and handed to the exit window — is
+  ASSERTED in build.ts with a throw, not assumed: a window assessed against a
+  witness that was already stale is an internally inconsistent report, which is a
+  Ripcord bug in the same class as a report failing its own schema.
 - **Disclosure gate, enforced by the schema, not by discipline.** Every
   report carries a `disclosure` block: `publishable` is false whenever
   `needsManualVerification` is non-empty at the target OR anywhere in the
@@ -834,17 +999,17 @@ only via delegatecall and is usually uninitialized.
 
 ## KNOWN EDGES (running list of documented limitations)
 
-1. **Linear bytecode scan can't distinguish a contract's own code from an
-   embedded child contract's bytecode.** `containsOpcode`/dispatcher walking
-   is a linear walk (respecting PUSH-data lengths), not control-flow/
-   reachability analysis. A factory that deploys a child via `new
+1. **The proxy detector's linear opcode scan can't distinguish a contract's own
+   code from embedded child bytecode.** `containsOpcode` is a linear walk
+   (respecting PUSH-data lengths), not control-flow/reachability analysis. A
+   factory that deploys a child via `new
    Foo(...)` embeds the child's full initcode — including its real
    DELEGATECALL/selectors — inside the parent's own runtime bytecode.
    Demonstrated live: Aave's `PoolAddressesProvider` (not itself upgradeable)
    comes back `proxy.pattern: "unknown"` because it embeds
-   `InitializableImmutableAdminUpgradeabilityProxy`'s initcode. Day-2
-   dispatcher-based selector extraction is exposed to the same root cause —
-   see the day-2 regression test for a `new`-deploying contract.
+   `InitializableImmutableAdminUpgradeabilityProxy`'s initcode. Selector
+   extraction is no longer exposed to this local heuristic: EVMole owns its
+   calldata/control-flow analysis, with the Aave case retained as a regression.
 2. **AccessControl's reconstruction has gaps (event scan; partly resolved,
    consolidation pass).** Non-enumerable role membership is reconstructed by
    replaying `RoleGranted`/`RoleRevoked` from a binary-searched deployment
@@ -1557,6 +1722,130 @@ only via delegatecall and is usually uninitialized.
     Candidate coverage still includes only the registered Comet pause function.
     Present restrict as a bounded detector, not a calibrated absence detector.
 
+39. **[SCALABILITY PASS] The cost of a report was a property of the TARGET, and
+    is now bounded — but the bound is coarse, and one read path stays outside
+    it.** Every individual limit in the tool was real; their composition was not.
+    The role scan's 1500-request ceiling applies PER CONTRACT and a report can
+    reach a dozen AccessControl contracts through its authority graph and
+    dependency list, so the report's real log ceiling was however many such
+    contracts happened to be reachable. `MAX_AUTHORITY_DEPTH` bounds how FAR the
+    recursion travels, not how many branches exist: a contract with fifty role
+    members, each a contract with fifty of its own, is three perfectly legal hops
+    and thousands of classifications. And `getRoleMemberCount` returns a number
+    supplied by the CONTRACT UNDER ANALYSIS, which was then iterated — the loop
+    bound chosen by the subject.
+
+    Four dimensions now bound one report (chain/budget.ts), and the DEFAULTS ARE
+    DELIBERATELY LOOSE: measured against the committed corpus, the most expensive
+    of the 26 reports issues ~1,600 reads and ~1,590 log requests, visits 4
+    authority nodes and enumerates at most 3 members in a role, and every limit
+    sits far above that. The budget's job in this pass is to make the WORST case
+    finite and labelled, not to trim the ordinary one. Confirmed live: WETH9 and
+    Comet re-scan with identical verdicts, enumeration and errors, consuming 146
+    and 142 reads. Tightening a limit until it BINDS on an ordinary target is a
+    deliberate, measured change — see docs/BASELINES.md.
+
+    THE SAFETY ARGUMENT, and it is the only reason a stop-work mechanism belongs
+    in this tool at all: a truncated analysis produces a result shaped exactly
+    like a target with less to find. So an exhaustion is recorded, becomes an
+    enumeration gap, and withholds the witness that `binding` and
+    `immutable_within_checks` cannot be constructed without. A budget can move a
+    verdict toward caution and nowhere else. Determinism is preserved by counting
+    only LOGICAL work: a wall-clock or network-attempt budget would be exhausted
+    by a cold run and not a warm one, which is KNOWN EDGE #23 rebuilt inside its
+    own fix. There is deliberately no time budget.
+
+    RESIDUAL, three items:
+      - The FORK engines (proofEngine, exitRestriction, assetScenarios) read the
+        raw chain and are outside this accounting. They have their own bounds
+        (anvil lifecycle, gas caps, `deadlineAt`), but the two budgets are not
+        composed, so a `restrict` run's total cost is still the sum of two
+        separately-bounded things rather than one number.
+      - `probeMaxLogRange` spends the log budget like any other `getLogs` caller.
+        It is memoized per reader and costs ~22 requests against a default of
+        6,000, so it never binds in practice — but on a nearly-exhausted budget
+        the preflight, not the scan, is what fails. That failure is loud and
+        lands in errors[]; it is not a false clean. Verified that a budget
+        refusal is NOT a `ChainReadError`, so `probeMaxLogRange` cannot mistake
+        it for a provider range rejection and quietly chunk to a range the
+        endpoint never named.
+      - The limits are constants, not a function of the caller's appetite. The
+        webapp cannot yet offer "scan this deeply"; `buildReport` accepts an
+        override argument, and nothing calls it with one.
+
+    Found while fixing this: the role scan's chunk loop is INCLUSIVE at both
+    ends, so it fired `affordableChunks + 1` chunks — two requests more than it
+    had budgeted for. Harmless against the module's own 1500 (it spent 1502) and
+    not harmless against a report-wide budget with exactly that much left, where
+    the overshoot is a refused read in the middle of a scan that had already
+    planned around the limit. Fixed by covering `affordableChunks * chunkSpan -
+    1` blocks; the covered window is one chunk shorter and now matches the number
+    the partial-reconstruction note quotes.
+
+40. **[SCALABILITY PASS] Memoized derivations are shared objects, and nothing
+    enforces that they are treated as immutable.** `src/detect/facts.ts` hands
+    the same proxy/ownership/access-control result to every caller that asks for
+    an address, which is what removes the repeated event scan when two authority
+    branches converge. Every current consumer copies before it appends
+    (`[...classified.evidence]`, `unknowns.push(...detection.unknowns)`) and
+    test/facts.test.ts pins that a memoized result is deep-equal to a fresh one —
+    but a future detector that mutated a returned array in place would corrupt
+    every other consumer of that address, and neither tsc nor a test would
+    necessarily catch it. Freezing the results, or handing out copies, is
+    ordinary future work; the reason it was not done here is that a deep copy per
+    consumer would give back much of the cost the layer exists to remove, and
+    `readonly` types across these results is a wider refactor than this pass.
+
+41. **[SCALABILITY STEP 3] Protocol behaviour is now in adapters, and the second
+    adapter is validated by construction rather than by a live run.** The
+    executor contains no protocol branch: `src/fork/adapters/` owns
+    identification, position setup, baseline exit, privileged mutation,
+    post-mutation exit, comparison and coverage limits, while
+    `exitRestriction.ts` owns isolation, deadlines, evidence, clock matching and
+    the fail-closed composition. Comet is a behaviour-preserving port;
+    FiatToken is the second protocol, and `test/exitAdapters.test.ts` drives it
+    through the real executor against a fake fork — including the first place in
+    the suite where `no_direct_restriction_found` is actually reachable, and the
+    case proving it is withheld when enumeration is incomplete.
+    RESIDUAL, and it is the honest one: FiatToken's mechanics are exercised
+    against a FAKE fork, not a live one. `validatedOn` gates a verdict on a
+    (chain, adapter) pair, so an unvalidated pair refuses to run — but the entry
+    for FiatToken on mainnet asserts a live validation that has been reasoned
+    through rather than executed here. Before that adapter is trusted on a real
+    report, run it against a live fork and record the result the way day 7
+    recorded Comet's.
+
+42. **[SCALABILITY STEP 4] Evidence is normalized for TRANSPORT, not in the
+    pinned artifact — and the graph's old linkage rule was wrong in both
+    directions.** The report on disk stays self-contained, because that property
+    is what makes it evidence. What changed is everything that ships evidence
+    over a wire: a shared table keyed by content hash, nodes referencing ids, a
+    BOUNDED inlined prefix (50) with the true total beside it, and the remainder
+    at `GET /api/reports/:id/evidence` behind the same publication gate.
+    Measured: the Aave ACL Manager graph went 449KB → 24KB, sUSDe 512KB → 87KB.
+    Separately, the role replay no longer copies the whole scan-evidence array
+    into every role it discovered — the scan lives once on
+    `reconstruction.scanEvidence`, which is also better provenance, since "how we
+    learned the role exists" and "what we read about the role" were never the
+    same claim. `listPublishable` no longer reopens ~9.6MB of calibration JSON
+    per request to re-read one immutable boolean, and idempotency keys are
+    indexed rather than scanned.
+    RESIDUAL: the coverage endpoint still recomposes on every 2s poll, and
+    `pruneCache` still walks the cache directory on every job completion. Both
+    are bounded by retention today and both are the next things to index.
+
+43. **[SCALABILITY STEP 5] Job ownership is durable; the STORE behind it is
+    still single-volume.** See jobs/lease.ts for the model and its rails. What is
+    genuinely fixed is the destructive one: a second instance can no longer
+    interrupt a peer's live work, and `test/webappJobs.test.ts` pins that
+    directly. What is NOT fixed, and must not be described as multi-node ready:
+    the claim is a read-then-write over atomic temp+rename, so two instances
+    racing for the same job on separate volumes (or over NFS) can both win. The
+    ownership RULES are storage-independent and unit-tested in
+    `test/jobLease.test.ts`; swapping in a store with real conditional writes is
+    the remaining work, and until it is done a multi-instance deployment needs a
+    shared volume and distinct RIPCORD_INSTANCE_ID values.
+
 22. **The cleared-dependency registry is small, manual, and mainnet-only
     (consolidation pass).** `clearedRegistry.ts` documents design-not-bug
     capabilities for the 6 curated majors (USDC/USDT/DAI/WBTC/stETH; WETH has
@@ -1599,7 +1888,7 @@ moves, each worth more than a hundred added signatures:
      everything in the calibration set is verified. Bytecode extraction stays
      the always-on base layer and the fallback for unverified contracts, and
      comparing fetched ABI against extracted selectors validates the
-     dispatcher parser on every real run for free.
+     bytecode analyser on every real run for free.
 Day-5 measurement: walk each fixture's `unmatchedSelectors` by hand, label
 which were genuinely privileged, report THAT percentage.
 
@@ -1611,7 +1900,7 @@ which were genuinely privileged, report THAT percentage.
   holder classification (eoa/safe/contract), report schema, CLI, 5 verified
   mainnet fixtures.
 - **Day 2 (done).** Capability detection: dispatcher-based selector
-  extraction (reachability-limited, not a naive scan) with proxy-
+  extraction (now backed by EVMole's calldata/control-flow analysis) with proxy-
   implementation resolution, capability taxonomy grouped by power category,
   guard attribution BY PROBING real eth_calls (not static analysis) with
   weakest-link unknown propagation encoded in the schema, unguarded-looking

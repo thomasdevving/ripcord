@@ -20,11 +20,27 @@
  * actually pass its own authorisation is not something a line on a diagram can
  * establish, which is why labels describe the relation and never the outcome.
  */
-import { useCallback, useMemo, useEffect, useRef } from "react";
-import { ReactFlow, Background, Controls, Handle, MarkerType, Position, type Edge, type Node, type NodeProps, type ReactFlowInstance } from "@xyflow/react";
+import { useCallback, useMemo } from "react";
+import { ReactFlow, Background, Controls, Handle, MarkerType, Position, type Edge, type Node, type NodeProps } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type { StructuralEdge, StructuralNode, StructuralSnapshot } from "@shared/dto";
 import type { ReactElement } from "react";
+
+/**
+ * Termination reasons that mean the recursion STOPPED rather than reached an
+ * end. Kept in step with `UNRESOLVED_TERMINATIONS` in src/report/schema.ts —
+ * browser code may not value-import the engine (scripts/verify-webapp.mjs fails
+ * the build if it does), so this list is duplicated deliberately rather than
+ * shared, and it carries the DTO-only "not followed by Ripcord" label the
+ * observer synthesises for a node it never entered.
+ */
+const UNRESOLVED_TERMINATION_LABELS = new Set([
+  "max_depth",
+  "no_authority_found",
+  "budget_exhausted",
+  "not followed by Ripcord",
+]);
+
 
 const NODE_W = 210;
 const NODE_H = 84;
@@ -46,7 +62,7 @@ function RipcordNode({ data }: NodeProps): ReactElement {
   const classes = [
     "node-box",
     node.kind === "target" ? "target" : "",
-    `k-${node.kind === "implementation" ? "implementation" : node.terminationReason === "max_depth" || node.terminationReason === "no_authority_found" || node.terminationReason === "not followed by Ripcord" ? "unknown" : "known"}`,
+    `k-${node.kind === "implementation" ? "implementation" : UNRESOLVED_TERMINATION_LABELS.has(node.terminationReason ?? "") ? "unknown" : "known"}`,
     selected ? "selected" : "",
   ]
     .filter(Boolean)
@@ -91,6 +107,37 @@ function RipcordNode({ data }: NodeProps): ReactElement {
 
 const nodeTypes = { ripcord: RipcordNode };
 
+/**
+ * React Flow draws an edge only after it has measured the source and target
+ * handles. During a live run the graph arrives as a series of complete but
+ * growing snapshots. Keeping the same React Flow instance across those updates
+ * occasionally left a newly added custom handle unmeasured, so the edge stayed
+ * absent until a page refresh mounted the finished graph from scratch.
+ *
+ * This key changes for graph structure and presentation facts that can change a
+ * node's dimensions, but not for selection or attached evidence. A structural
+ * update therefore gets the same clean measurement pass as a refresh, while
+ * clicking a node does not reset the viewport.
+ */
+export function graphRevisionKey(snapshot: StructuralSnapshot): string {
+  const nodes = snapshot.nodes
+    .map((node) => [
+      node.address.toLowerCase(),
+      node.depth,
+      node.kind,
+      node.accountType,
+      node.safeThreshold,
+      node.safeOwners,
+      node.timelockDelaySeconds,
+      node.terminationReason,
+    ])
+    .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  const edges = snapshot.edges
+    .map((edge) => [edge.from.toLowerCase(), edge.to.toLowerCase(), edge.label, edge.resolution])
+    .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  return JSON.stringify({ nodes, edges });
+}
+
 export function PowerMap({
   snapshot,
   selected,
@@ -100,13 +147,7 @@ export function PowerMap({
   selected: string | null;
   onSelect: (address: string | null) => void;
 }): ReactElement {
-  const flow = useRef<ReactFlowInstance | null>(null);
-  const userMoved = useRef(false);
   const { nodes, edges } = useMemo(() => layout(snapshot, selected), [snapshot, selected]);
-
-  useEffect(() => {
-    if (!userMoved.current) void flow.current?.fitView({ padding: 0.18, maxZoom: 1, duration: 150 });
-  }, [nodes.length, edges.length]);
 
   const onNodeClick = useCallback(
     (_: unknown, node: Node) => onSelect(String(node.id)),
@@ -128,16 +169,16 @@ export function PowerMap({
     <>
       <div className="graph-wrap">
         <ReactFlow
+          key={graphRevisionKey(snapshot)}
           nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}
-          onInit={instance => { flow.current = instance; }}
-          onMoveStart={event => { if (event) userMoved.current = true; }}
           onNodeClick={onNodeClick}
           onPaneClick={() => onSelect(null)}
           fitView
-          // Growth fits the graph until the viewer manually pans or zooms.
-          // Selection and viewport state survive because ReactFlow stays mounted.
+          // A structural revision remounts and fits the complete new graph. A
+          // node selection is deliberately absent from the key, so inspection
+          // does not reset the viewport.
           fitViewOptions={{ padding: 0.18, maxZoom: 1 }}
           // The layout is authoritative; dragging a node would suggest position
           // is cosmetic when it encodes authority depth.

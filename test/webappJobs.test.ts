@@ -346,10 +346,13 @@ describe("restart recovery", () => {
   it("marks a job that was running as interrupted, never completed", async () => {
     const { record } = await create(HANGS);
     await untilState(record, "running");
-    // Simulate a restart: a fresh store over the same directory.
+    // Simulate a restart: a fresh store over the same directory, recovering as
+    // THE SAME INSTANCE. That identity is the point — a record bearing our own
+    // instance id can only be a previous life of this process, so it is
+    // reclaimable, while a lease held by a live PEER is not (asserted below).
     const rebooted = new JobStore(dir);
     await rebooted.init();
-    const recovered = await rebooted.recoverInterruptedJobs();
+    const { recovered } = await rebooted.recoverInterruptedJobs(manager.identity);
     expect(recovered).toBeGreaterThanOrEqual(1);
 
     const reloaded = await rebooted.loadJob(record.jobId);
@@ -368,8 +371,65 @@ describe("restart recovery", () => {
 
     const rebooted = new JobStore(dir);
     await rebooted.init();
-    await rebooted.recoverInterruptedJobs();
+    await rebooted.recoverInterruptedJobs(manager.identity);
+    // A queued job is unclaimed, so it is reclaimable by anyone: nothing is
+    // heartbeating for it and its position would never advance.
     expect((await rebooted.loadJob(queued.record.jobId))?.state).toBe("interrupted");
+  });
+
+  /**
+   * THE BUG THIS MECHANISM EXISTS FOR.
+   *
+   * Boot recovery used to interrupt every persisted in-flight job unconditionally,
+   * so bringing up a second instance declared the first one's live work dead
+   * while it was still running — and the browser watching it was told the
+   * analysis had failed. Ownership makes that impossible to express.
+   */
+  it("never interrupts a job a DIFFERENT live instance still holds", async () => {
+    const { record } = await create(HANGS);
+    await untilState(record, "running");
+
+    const peer = new JobStore(dir);
+    await peer.init();
+    const other = { instanceId: "another-replica", host: "peer-host", pid: 1, startedAt: new Date().toISOString() };
+    const { recovered, skippedLive } = await peer.recoverInterruptedJobs(other);
+
+    expect(skippedLive).toBeGreaterThanOrEqual(1);
+    expect(recovered).toBe(0);
+    const reloaded = await peer.loadJob(record.jobId);
+    expect(reloaded?.state).toBe("running");
+    expect(reloaded?.lease?.instanceId).toBe(manager.identity.instanceId);
+  });
+
+  it("reclaims a peer's job once its lease has expired, and says whose it was", async () => {
+    const { record } = await create(HANGS);
+    await untilState(record, "running");
+
+    const peer = new JobStore(dir);
+    await peer.init();
+    const other = { instanceId: "another-replica", host: "peer-host", pid: 1, startedAt: new Date().toISOString() };
+    // Far enough ahead that no heartbeat could have renewed it.
+    const later = Date.now() + 10 * 60_000;
+    const { recovered } = await peer.recoverInterruptedJobs(other, later);
+
+    expect(recovered).toBeGreaterThanOrEqual(1);
+    const reloaded = await peer.loadJob(record.jobId);
+    expect(reloaded?.state).toBe("interrupted");
+    expect(reloaded?.lease).toBeNull();
+    // A stalled peer and a local restart are different facts, and the message
+    // must not conflate them.
+    expect(reloaded?.error?.message).toContain("stopped renewing its lease");
+  });
+
+  it("refuses a second claim while a live one stands, and allows it after expiry", async () => {
+    const { record } = await create(HANGS);
+    await untilState(record, "running");
+    const peer = new JobStore(dir);
+    await peer.init();
+    const other = { instanceId: "another-replica", host: "peer-host", pid: 1, startedAt: new Date().toISOString() };
+
+    expect(await peer.claimJob(record.jobId, other)).toBeNull();
+    expect(await peer.claimJob(record.jobId, other, Date.now() + 10 * 60_000)).not.toBeNull();
   });
 });
 

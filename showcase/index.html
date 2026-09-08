@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="dark" />
-  <title>Ripcord — Top 10 Showcase</title>
+  <title>Ripcord — Showcase</title>
   <style>
     :root {
       color-scheme: dark;
@@ -217,6 +217,72 @@
       margin-top: 24px;
     }
 
+    .problem-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1.15fr;
+      gap: 18px;
+      margin-top: 24px;
+    }
+
+    .problem-card {
+      min-height: 255px;
+      padding: clamp(24px, 2.4vw, 40px);
+      border: 1px solid var(--rule);
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .problem-card.missing {
+      border-color: rgba(239, 115, 97, .52);
+      background: var(--red-wash);
+    }
+
+    .problem-card .answer {
+      margin-top: auto;
+      font-size: clamp(22px, 2vw, 34px);
+      line-height: 1.12;
+      letter-spacing: -.025em;
+      font-weight: 680;
+    }
+
+    .problem-card p {
+      margin: 12px 0 0;
+      color: var(--secondary);
+      font-size: clamp(14px, 1.05vw, 18px);
+      line-height: 1.45;
+    }
+
+    .output-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+      margin-top: 26px;
+    }
+
+    .output-card {
+      min-height: 235px;
+      padding: clamp(26px, 2.6vw, 42px);
+      border: 1px solid var(--rule);
+      background: var(--surface);
+    }
+
+    .output-card .output-value {
+      display: block;
+      margin: 46px 0 12px;
+      color: var(--green);
+      font-size: clamp(29px, 3vw, 50px);
+      line-height: 1;
+      letter-spacing: -.04em;
+      font-weight: 700;
+    }
+
+    .output-card p {
+      color: var(--secondary);
+      font-size: clamp(14px, 1.05vw, 18px);
+      line-height: 1.45;
+    }
+
     .question, .panel {
       border: 1px solid var(--rule);
       background: rgba(24, 28, 23, .93);
@@ -292,6 +358,265 @@
       font-family: var(--mono);
       font-size: clamp(12px, .9vw, 15px);
       color: var(--secondary);
+    }
+
+    .report-shell {
+      margin-top: 18px;
+      border: 1px solid var(--rule-strong);
+      background: rgba(24, 28, 23, .96);
+      box-shadow: inset 4px 0 0 var(--green);
+    }
+
+    .report-head {
+      display: grid;
+      grid-template-columns: 1.4fr .8fr .8fr;
+      gap: 1px;
+      background: var(--rule);
+    }
+
+    .report-cell {
+      min-width: 0;
+      padding: 20px 24px;
+      background: var(--surface);
+    }
+
+    .report-cell strong {
+      display: block;
+      margin-top: 8px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--ink);
+      font: 700 clamp(13px, 1vw, 17px)/1.35 var(--mono);
+      white-space: nowrap;
+    }
+
+    .report-foot {
+      display: flex;
+      justify-content: space-between;
+      gap: 28px;
+      padding: 14px 24px;
+      border-top: 1px solid var(--rule);
+      color: var(--secondary);
+      font: clamp(10px, .72vw, 13px)/1.4 var(--mono);
+    }
+
+    .recognition-layout {
+      display: grid;
+      grid-template-columns: .9fr 1.25fr;
+      gap: 22px;
+      align-items: stretch;
+      margin-top: 18px;
+    }
+
+    .recognition-slide .content { padding: 2vh 0; }
+    .recognition-slide .eyebrow { margin-bottom: 12px; }
+    .recognition-slide h2 {
+      margin-bottom: 18px;
+      font-size: clamp(38px, 4vw, 64px);
+    }
+    .recognition-slide .recognition-layout { margin-top: 0; }
+    .recognition-slide .recognition-item { padding: 12px 15px; }
+    .recognition-slide .code-window pre {
+      padding: clamp(14px, 1.35vw, 21px);
+      font-size: clamp(10px, .7vw, 13px);
+      line-height: 1.42;
+    }
+    .recognition-slide .for-now {
+      margin-top: 10px;
+      padding: 10px 14px;
+      line-height: 1.35;
+    }
+
+    .recognition-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .recognition-item {
+      display: grid;
+      grid-template-columns: 42px 1fr;
+      gap: 14px;
+      padding: 16px 17px;
+      border: 1px solid var(--rule);
+      background: var(--surface);
+    }
+
+    .recognition-item .num {
+      color: var(--green);
+      font: 700 12px/1.4 var(--mono);
+    }
+
+    .recognition-item strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: clamp(15px, 1.05vw, 18px);
+    }
+
+    .recognition-item p {
+      margin: 0;
+      color: var(--secondary);
+      font-size: clamp(11px, .78vw, 14px);
+      line-height: 1.38;
+    }
+
+    .code-window {
+      min-width: 0;
+      border: 1px solid var(--rule-strong);
+      background: #0b0e0b;
+    }
+
+    .code-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--rule);
+      color: var(--muted);
+      font: 11px/1 var(--mono);
+    }
+
+    .code-window pre {
+      margin: 0;
+      padding: clamp(18px, 1.8vw, 28px);
+      overflow: hidden;
+      color: #cbd5c7;
+      font: clamp(10px, .76vw, 14px)/1.58 var(--mono);
+      white-space: pre-wrap;
+    }
+
+    .code-window .kw { color: var(--blue); }
+    .code-window .fn { color: var(--green); }
+    .code-window .str { color: var(--amber); }
+    .code-window .cm { color: var(--muted); }
+
+    .for-now {
+      margin-top: 16px;
+      padding: 13px 16px;
+      border-left: 3px solid var(--amber);
+      background: var(--amber-wash);
+      color: var(--secondary);
+      font: clamp(11px, .8vw, 14px)/1.45 var(--mono);
+    }
+
+    .evidence-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin-top: 22px;
+    }
+
+    .evidence-card {
+      min-height: 255px;
+      padding: clamp(25px, 2.6vw, 42px);
+      border: 1px solid var(--rule);
+      background: var(--surface);
+    }
+
+    .evidence-card.result {
+      border-color: rgba(76, 195, 132, .45);
+      background: var(--green-wash);
+    }
+
+    .evidence-command {
+      margin: 28px 0 12px;
+      padding: 13px 15px;
+      border: 1px solid var(--rule-strong);
+      background: #0b0e0b;
+      color: var(--ink);
+      font: clamp(12px, .9vw, 16px)/1.4 var(--mono);
+    }
+
+    .evidence-return {
+      color: var(--secondary);
+      font: clamp(12px, .9vw, 16px)/1.45 var(--mono);
+    }
+
+    .binding-result {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 22px;
+      margin-top: 46px;
+    }
+
+    .binding-result strong {
+      color: var(--amber);
+      font: 700 clamp(58px, 7vw, 112px)/.86 var(--mono);
+      letter-spacing: -.07em;
+    }
+
+    .binding-result span {
+      max-width: 330px;
+      color: var(--secondary);
+      font-size: clamp(14px, 1vw, 18px);
+      line-height: 1.42;
+    }
+
+    .causal-strip {
+      margin-top: 18px;
+      padding: 14px 18px;
+      border-left: 3px solid var(--green);
+      background: rgba(76, 195, 132, .08);
+      color: var(--ink);
+      font: clamp(13px, 1vw, 17px)/1.45 var(--mono);
+      text-transform: uppercase;
+      letter-spacing: .035em;
+    }
+
+    .scope-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+      margin-top: 25px;
+    }
+
+    .scope-card {
+      min-height: 250px;
+      padding: clamp(26px, 2.5vw, 40px);
+      border: 1px solid var(--rule);
+      background: var(--surface);
+    }
+
+    .scope-card p {
+      color: var(--secondary);
+      font-size: clamp(15px, 1.15vw, 19px);
+      line-height: 1.48;
+    }
+
+    .big-proof {
+      display: grid;
+      grid-template-columns: .9fr 1.1fr;
+      gap: 22px;
+      margin-top: 22px;
+    }
+
+    .proof-value {
+      min-height: 310px;
+      padding: clamp(30px, 3vw, 48px);
+      border: 1px solid rgba(223, 167, 72, .48);
+      background: var(--amber-wash);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .proof-value strong {
+      color: var(--amber);
+      font: 700 clamp(58px, 7vw, 112px)/.9 var(--mono);
+      letter-spacing: -.07em;
+    }
+
+    .proof-caveat {
+      min-height: 310px;
+      padding: clamp(30px, 3vw, 48px);
+      border: 1px solid var(--rule);
+      background: var(--surface);
+    }
+
+    .proof-caveat p {
+      color: var(--secondary);
+      font-size: clamp(17px, 1.35vw, 22px);
+      line-height: 1.5;
     }
 
     .live {
@@ -526,52 +851,174 @@
 
     .links a { color: inherit; text-decoration: none; border-bottom: 1px solid var(--rule-strong); }
 
-    /* Backup visuals ------------------------------------------------------ */
-    .map {
+    /* Static reproduction of the report's interactive React Flow power map. */
+    .report-power-layout {
       display: grid;
-      grid-template-columns: 1.1fr .28fr 1fr;
-      align-items: center;
-      gap: 30px;
-      margin-top: 20px;
+      grid-template-columns: minmax(0, 1fr) 330px;
+      gap: 16px;
+      min-height: 520px;
+      margin-top: 16px;
     }
 
-    .node-stack { display: grid; gap: 17px; }
-
-    .node {
-      position: relative;
-      min-height: 92px;
-      padding: 18px 22px;
-      border: 1px solid var(--rule-strong);
-      background: var(--surface);
-    }
-
-    .node.target { border-left: 5px solid var(--green); }
-    .node.delay { border-left: 5px solid var(--amber); }
-    .node.zero { border-left: 5px solid var(--red); }
-    .node .kind { margin-bottom: 7px; color: var(--muted); font: 11px/1 var(--mono); letter-spacing: .11em; text-transform: uppercase; }
-    .node .name { font-size: clamp(18px, 1.55vw, 26px); font-weight: 680; }
-    .node .detail { margin-top: 6px; color: var(--secondary); font: clamp(11px, .8vw, 14px)/1.35 var(--mono); }
-    .arrows { color: var(--muted); text-align: center; font: clamp(28px, 3vw, 48px)/1.5 var(--mono); }
-
-    .route-summary {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 18px;
-      margin-top: 24px;
-    }
-
-    .route {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 28px;
-      padding: 20px 26px;
+    .report-power-card,
+    .report-detail-card {
+      min-width: 0;
+      padding: 18px;
       border: 1px solid var(--rule);
       background: var(--surface);
-      font-size: clamp(15px, 1.2vw, 20px);
     }
 
-    .route strong { font: 700 clamp(28px, 3vw, 48px)/1 var(--mono); }
+    .report-power-card h3,
+    .report-detail-card h3 {
+      margin: 0 0 7px;
+      font-size: clamp(18px, 1.25vw, 22px);
+    }
+
+    .report-power-note {
+      margin: 0 0 12px;
+      color: var(--secondary);
+      font-size: clamp(10px, .72vw, 12px);
+      line-height: 1.4;
+    }
+
+    .report-power-canvas {
+      position: relative;
+      height: 404px;
+      overflow: hidden;
+      border: 1px solid var(--rule);
+      background-color: #121511;
+      background-image: radial-gradient(circle, var(--rule-strong) 1px, transparent 1.4px);
+      background-size: 18px 18px;
+    }
+
+    .report-power-lines {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    .report-power-lines > path {
+      fill: none;
+      stroke: #788275;
+      stroke-width: 1.5;
+      vector-effect: non-scaling-stroke;
+    }
+
+    .report-power-lines > path.unknown {
+      stroke: var(--amber);
+      stroke-dasharray: 3 5;
+    }
+
+    .report-node {
+      position: absolute;
+      z-index: 2;
+      width: 184px;
+      min-height: 68px;
+      padding: 9px 12px;
+      transform: translateX(-50%);
+      border: 1px solid #788275;
+      border-radius: 3px;
+      background: #181c17;
+      box-shadow: 0 5px 18px rgba(0,0,0,.18);
+    }
+
+    .report-node.selected {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 2px rgba(91,157,255,.25);
+    }
+
+    .report-node.target { border: 2px solid var(--ink); }
+    .report-node.implementation { border-style: dashed; }
+    .report-node.timelock { left: 50%; top: 12px; }
+    .report-node.proxy-admin { left: 18%; top: 154px; }
+    .report-node.implementation { left: 50%; top: 154px; }
+    .report-node.guardian { left: 82%; top: 154px; }
+    .report-node.target { left: 50%; top: 318px; }
+
+    .report-node-kind {
+      color: var(--muted);
+      font: 9px/1.2 var(--mono);
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    .report-node-address {
+      margin: 4px 0;
+      color: var(--ink);
+      font: 11px/1.2 var(--mono);
+    }
+
+    .report-node-meta {
+      color: var(--secondary);
+      font-size: 10px;
+      line-height: 1.25;
+    }
+
+    .report-edge-label {
+      position: absolute;
+      z-index: 1;
+      padding: 3px 5px;
+      border-radius: 3px;
+      background: rgba(24,28,23,.95);
+      color: var(--secondary);
+      font: 9px/1.15 var(--mono);
+      text-align: center;
+    }
+
+    .edge-owner { left: 24%; top: 102px; }
+    .edge-code { left: 50%; top: 266px; transform: translateX(-50%); }
+    .edge-upgrade { left: 21%; top: 268px; }
+    .edge-pause { right: 10%; top: 268px; }
+    .edge-governor { left: 58%; top: 104px; color: var(--amber); }
+
+    .report-power-legend {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-top: 9px;
+      color: var(--secondary);
+      font-size: 10px;
+    }
+
+    .report-power-legend span { white-space: nowrap; }
+    .legend-swatch {
+      display: inline-block;
+      width: 19px;
+      height: 9px;
+      margin-right: 5px;
+      vertical-align: -1px;
+      border: 1px solid #788275;
+      border-radius: 2px;
+    }
+    .legend-swatch.dashed { border-style: dashed; }
+    .legend-swatch.dotted { border-color: var(--amber); border-style: dotted; }
+
+    .report-detail-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+      padding-bottom: 11px;
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .report-detail-head span { color: var(--blue); font: 10px/1 var(--mono); }
+    .report-detail-address { margin: 16px 0; color: var(--ink); font: 11px/1.5 var(--mono); word-break: break-all; }
+    .report-detail-table { width: 100%; border-collapse: collapse; font-size: 11px; line-height: 1.35; }
+    .report-detail-table th,
+    .report-detail-table td { padding: 9px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+    .report-detail-table th { width: 42%; color: var(--muted); font-weight: 500; text-align: left; }
+    .report-detail-table td { color: var(--secondary); }
+
+    .report-read-summary {
+      margin-top: 16px;
+      padding: 11px 12px;
+      border: 1px solid var(--rule);
+      color: var(--secondary);
+      font: 10px/1.35 var(--mono);
+    }
 
     .experiment {
       display: grid;
@@ -680,14 +1127,17 @@
     .speaker-notes { display: none; }
 
     @media (max-width: 900px) {
-      .questions, .roadmap, .process { grid-template-columns: 1fr; }
-      .question, .step, .roadmap-item { min-height: auto; }
+      .questions, .roadmap, .process, .problem-grid, .output-grid, .scope-grid { grid-template-columns: 1fr; }
+      .question, .step, .roadmap-item, .problem-card, .output-card, .scope-card { min-height: auto; }
       .step:not(:last-child)::after { display: none; }
       .coverage-grid { grid-template-columns: 1fr; }
       .divider-word { writing-mode: initial; }
       .experiment, .equation { grid-template-columns: 1fr; }
       .experiment-arrow, .operator { transform: rotate(90deg); text-align: center; }
-      .map { grid-template-columns: 1fr; }
+      .report-power-layout { grid-template-columns: 1fr; }
+      .report-power-canvas { min-width: 760px; }
+      .report-power-card { overflow-x: auto; }
+      .recognition-layout, .evidence-grid, .big-proof, .report-head { grid-template-columns: 1fr; }
       .arrows { transform: rotate(90deg); }
       .contract-box { grid-template-columns: 1fr; }
       .slide { overflow: auto; }
@@ -717,11 +1167,11 @@
 </head>
 <body>
   <main class="deck" aria-live="polite">
-    <section class="slide active" data-main data-title="Hook">
+    <section class="slide active" data-main data-sequence="1" data-title="Hook">
       <div class="frame">
         <div class="topline">
           <div class="brand"><img src="ripcord-mark.svg" alt="" /> RIPCORD</div>
-          <div class="section-label">Top 10 showcase · Thomas</div>
+          <div class="section-label">Thomas Nguyen</div>
         </div>
         <div class="content hero-copy">
           <div class="eyebrow">DeFi sovereignty, measured</div>
@@ -731,204 +1181,247 @@
         </div>
       </div>
       <aside class="speaker-notes">
-        <strong>0:00–0:40 · Hook</strong><br />
-        “Hi, I’m Thomas, and this is Ripcord. DeFi security often asks whether an attacker can break the code. Ripcord asks a different question: what can the authorised controllers do? A protocol can be correctly coded and still allow a guardian to close withdrawals immediately.”
+        <strong>0:00–0:25 · Hook</strong><br />
+        “Hi, I’m Thomas, and this is Ripcord. DeFi security often asks whether an attacker can break the code. Ripcord asks a different question: what can the people who are already authorised to control it do?”
       </aside>
     </section>
 
-    <section class="slide" data-main data-title="Three questions">
+    <section class="slide" data-main data-sequence="2" data-title="Three questions">
       <div class="frame">
         <div class="topline">
           <div class="brand"><img src="ripcord-mark.svg" alt="" /> RIPCORD</div>
           <div class="section-label">Before capital enters</div>
         </div>
         <div class="content">
-          <div class="eyebrow">One address. One decision window.</div>
-          <h2>Three questions risk teams need answered.</h2>
+          <div class="eyebrow">The problem, reduced to what matters</div>
+          <h2>Three questions to answer before deploying capital into DeFi.</h2>
           <div class="questions">
-            <article class="question"><span class="index">01</span><strong>Who has power?</strong></article>
-            <article class="question"><span class="index">02</span><strong>How fast can they act?</strong></article>
-            <article class="question"><span class="index">03</span><strong>Can users exit first?</strong></article>
+            <article class="question"><span class="index">01</span><strong>Who controls the protocol?</strong></article>
+            <article class="question"><span class="index">02</span><strong>How quickly can they act?</strong></article>
+            <article class="question"><span class="index">03</span><strong>How quickly can you exit?</strong></article>
           </div>
         </div>
       </div>
       <aside class="speaker-notes">
-        <strong>0:40–1:00 · Product</strong><br />
-        “Ripcord turns one contract address into an evidence-backed Exit Window. It reconstructs the control structure, measures the shortest enforced notice and, where supported, tests whether a working withdrawal can actually be closed on a mainnet fork. If the evidence is incomplete, Ripcord says undetermined. It never turns unknown into safe.”
+        <strong>0:25–0:55 · The three questions</strong><br />
+        “Before deploying capital into a DeFi protocol, there are three questions you need answered. Who controls the protocol? How quickly can those controllers act? And how quickly can you exit? Audits usually focus on whether an outsider can exploit the code. Ripcord measures whether the authorised controllers can change the rules before users can leave.”
       </aside>
     </section>
 
-    <section class="slide" data-main data-title="Live demo">
+    <section class="slide" data-main data-sequence="3" data-title="The product">
       <div class="frame">
         <div class="topline">
           <div class="brand"><img src="ripcord-mark.svg" alt="" /> RIPCORD</div>
-          <div class="section-label">Live analysis</div>
+          <div class="section-label">One address in</div>
         </div>
         <div class="content">
-          <div class="eyebrow">Compound III · USDC market</div>
-          <h2>One contract address in. Executable evidence out.</h2>
-          <div class="contract-box">
+          <div class="eyebrow">Evidence, not a governance label</div>
+          <h2>Ripcord turns control into a decision window.</h2>
+          <div class="output-grid">
+            <article class="output-card"><div class="micro">01 · Reconstruct</div><span class="output-value">POWER MAP</span><p>Who controls upgrades, roles and exit restrictions—and who controls them in turn.</p></article>
+            <article class="output-card"><div class="micro">02 · Measure</div><span class="output-value">NOTICE</span><p>The shortest enforced delay across the relevant authority routes.</p></article>
+            <article class="output-card"><div class="micro">03 · Execute</div><span class="output-value">EXIT PROOF</span><p>Where supported, a fork differential that tests whether an open exit can be closed.</p></article>
+          </div>
+          <div class="rule-line">INCOMPLETE EVIDENCE → UNDETERMINED. UNKNOWN IS NEVER TURNED INTO SAFE.</div>
+        </div>
+      </div>
+      <aside class="speaker-notes">
+        <strong>0:55–1:20 · Product</strong><br />
+        “Ripcord turns one contract address into three outputs: a power map, the shortest enforced notice and, for supported protocols, executable exit evidence. Those combine into the Exit Window. If evidence is incomplete, Ripcord says undetermined. It never turns unknown into safe.”
+      </aside>
+    </section>
+
+    <section class="slide recognition-slide" data-main data-sequence="5" data-title="Function recognition">
+      <div class="frame">
+        <div class="topline">
+          <div class="brand"><img src="ripcord-mark.svg" alt="" /> RIPCORD</div>
+          <div class="section-label">Example report · Recognition</div>
+        </div>
+        <div class="content">
+          <div class="eyebrow">Selector match first · observed behaviour second</div>
+          <h2>How Ripcord recognises and verifies a function</h2>
+          <div class="recognition-layout">
+            <div class="recognition-list">
+              <div class="recognition-item"><span class="num">01</span><div><strong>Extract the four-byte ID</strong><p>Ripcord reads the implementation bytecode and records selectors that its reachable dispatcher accepts, such as <span class="mono">0x44c35d07</span>.</p></div></div>
+              <div class="recognition-item"><span class="num">02</span><div><strong>Match a known signature</strong><p>It hashes each signature in its local taxonomy and protocol adapters. Equal first four bytes create a candidate. No match stays unclassified.</p></div></div>
+              <div class="recognition-item"><span class="num">03</span><div><strong>Identify the guard</strong><p>Calls from unrelated addresses expose recognised access-control reverts. This indicates who may call the function, not what the function does.</p></div></div>
+              <div class="recognition-item"><span class="num">04</span><div><strong>Verify the observed effect</strong><p>On a fork, Ripcord executes the candidate as the controller and repeats the same working exit. Only the changed outcome confirms the restriction.</p></div></div>
+            </div>
             <div>
-              <div class="micro">Target · Ethereum mainnet</div>
-              <div class="address">0xc3d688B66703497DAA19211EEdff47f25384cdc3</div>
-            </div>
-            <a class="action" id="open-demo" href="https://thomasdevving.github.io/ripcord/compound-comet-cusdcv3.html" target="_blank" rel="noreferrer">Open Compound report ↗</a>
-          </div>
-          <div class="demo-status">
-            <span class="live"><span class="pulse-dot"></span> Product demo</span>
-            <span>POWER MAP → EXIT WINDOW → MOBULA 2ND LAYER</span>
-          </div>
-        </div>
-      </div>
-      <aside class="speaker-notes">
-        <strong>1:00–3:50 · Switch to the real site</strong><br />
-        On the new-analysis screen, paste this address and select <strong>Ripcord + Mobula 2nd layer</strong>. Point out that this default-off option is available only for the supported Compound III withdrawal analysis. Start it, then open the completed report for this same target. Show: (1) target → proxy admin → two-day timelock; (2) the separate pause guardian route; (3) baseline withdrawal succeeds; (4) guardian pauses; (5) identical withdrawal fails with Compound’s Paused error; (6) upgrade route = 2D, guardian route = 0S, effective Exit Window = 0S. If the live sidecar has completed, briefly open Asset coverage and show one candidate row; do not wait for it.<br /><br />
-        If the live site fails, return here and press <strong>B</strong> for the three backup evidence slides. When finished, press <strong>B</strong> again to return to the process slide.
-      </aside>
-    </section>
+              <div class="code-window">
+                <div class="code-head"><span>capabilities.ts + exitRestriction.ts</span><span>production path · shortened</span></div>
+                <pre><span class="kw">const</span> dispatcher = <span class="fn">extractDispatcherSelectors</span>(code);
 
-    <section class="slide" data-main data-title="Process">
-      <div class="frame">
-        <div class="topline">
-          <div class="brand"><img src="ripcord-mark.svg" alt="" /> RIPCORD</div>
-          <div class="section-label">Under the hood</div>
-        </div>
-        <div class="content">
-          <div class="eyebrow">Static discovery + execution evidence</div>
-          <h2>From chain state to an auditable conclusion.</h2>
-          <div class="process">
-            <article class="step"><span class="num">01</span><strong>PIN</strong><p>One block number and hash. Every read describes the same state.</p></article>
-            <article class="step"><span class="num">02</span><strong>TRACE</strong><p>Resolve proxies, roles, multisigs, timelocks and authority chains.</p></article>
-            <article class="step"><span class="num">03</span><strong>MEASURE</strong><p>Find the shortest supported route and its enforced notice.</p></article>
-            <article class="step"><span class="num">04</span><strong>TEST</strong><p>Execute the decisive intervention on a deterministic mainnet fork.</p></article>
-            <article class="step"><span class="num">05</span><strong>VALIDATE</strong><p>Attach reads, transactions and receipts. Reject unsupported certainty.</p></article>
-          </div>
-          <div class="rule-line">INCOMPLETE EVIDENCE → UNDETERMINED&nbsp;&nbsp; / &nbsp;&nbsp;NEVER “SAFE”</div>
-        </div>
-      </div>
-      <aside class="speaker-notes">
-        <strong>3:50–4:25 · Technical execution</strong><br />
-        “Ripcord combines static discovery with execution evidence. It pins the chain state, reconstructs authority recursively, measures the shortest supported route and tests the decisive capability on a deterministic fork. Every conclusion links back to RPC reads, storage evidence, transactions and receipts. Incomplete evidence remains undetermined.”
-      </aside>
-    </section>
+<span class="kw">for</span> (<span class="kw">const</span> selector <span class="kw">of</span> dispatcher.selectors) {
+  <span class="kw">const</span> entry = <span class="fn">lookupTaxonomy</span>(selector);
+  <span class="cm">// toFunctionSelector(entry.signature) === selector</span>
+  <span class="kw">if</span> (!entry) { unmatchedSelectors.push(selector); <span class="kw">continue</span>; }
+  <span class="kw">await</span> <span class="fn">probeGuard</span>(chain, target, entry.signature, guardContext);
+}
 
-    <section class="slide" data-main data-title="Mobula">
-      <div class="frame">
-        <div class="topline">
-          <div class="brand"><img src="ripcord-mark.svg" alt="" /> RIPCORD</div>
-          <div class="section-label">Asset coverage · Mobula implementation</div>
-        </div>
-        <div class="content">
-          <div class="eyebrow">Opt-in · post-report · sidecar only</div>
-          <h2>Mobula expands what Ripcord can investigate.</h2>
-          <div class="coverage-grid">
-            <article class="coverage-card core">
-              <div class="micro green">Deterministic core report</div>
-              <h3>Finishes first. Determines the verdict.</h3>
-              <ul><li>Pinned block and authority graph</li><li>Enforced notice and Exit Window</li><li>Primary fork evidence</li></ul>
-              <div class="asset-row"><span class="asset verified">PINNED</span><span class="asset verified">REPRODUCIBLE</span><span class="asset verified">VERDICT</span></div>
-            </article>
-            <div class="divider-word">separate boundary</div>
-            <article class="coverage-card context">
-              <div class="micro" style="color: var(--blue)">Mobula second layer</div>
-              <div class="layer-flow">
-                <div class="layer-item"><span class="layer-num">01</span><div><strong>Discover</strong><p>Use every returned identity—not only the visible or priced top 12.</p></div></div>
-                <div class="layer-item"><span class="layer-num">02</span><div><strong>Verify</strong><p>Check up to 64 same-chain ERC20s at the pinned block, including explicit zero balances.</p></div></div>
-                <div class="layer-item"><span class="layer-num">03</span><div><strong>Test</strong><p>Ask Compound for the asset role; run real approve, supply and withdraw paths from an isolated snapshot.</p></div></div>
-                <div class="layer-item"><span class="layer-num">04</span><div><strong>Compose</strong><p>Attach only after target, chain, block and hash match; broaden evidence, never soften the verdict.</p></div></div>
+<span class="cm">// Supported Comet fork: replay the same withdrawTx</span>
+<span class="kw">const</span> baselineVerified = baselineWithdraw.status === <span class="str">"success"</span>
+  &amp;&amp; <span class="fn">fullWithdrawalVerified</span>(beforeBaseline, afterBaseline);
+confirmed = baselineVerified
+  &amp;&amp; pause.status === <span class="str">"success"</span>
+  &amp;&amp; !pausedBefore &amp;&amp; pausedAfter
+  &amp;&amp; afterWithdraw.revertData === COMET_PAUSED_ERROR
+  &amp;&amp; afterMutationExit.tokens === beforeMutationExit.tokens
+  &amp;&amp; afterMutationExit.principal === beforeMutationExit.principal
+  &amp;&amp; afterMutationExit.borrowed === <span class="str">0n</span>;</pre>
               </div>
-              <div class="boundary-strip">Timestamped vendor input → separate sidecar → core verdict unchanged</div>
+              <div class="for-now"><strong class="amber">FOR NOW:</strong> signatures come from a versioned local taxonomy and protocol adapters. Unknown selectors remain unclassified. Fork support expands adapter by adapter.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <aside class="speaker-notes">
+        <strong>1:50–2:35 · Function recognition</strong><br />
+        “Now Ripcord needs to understand the functions behind that map. First, it reads the implementation bytecode and extracts the four-byte IDs accepted by the reachable dispatcher. Those IDs contain no readable names. Ripcord therefore hashes the exact signatures in its versioned taxonomy and protocol adapters. Equal first four bytes verify a candidate signature; selectors without a match remain unclassified. It then calls recognised functions from unrelated addresses and interprets access-control reverts to identify the guard. That still does not prove what the function does. For supported protocols, Ripcord executes the candidate as the controller on a fork and repeats the same previously working exit. The changed result verifies the observed consequence.”
+      </aside>
+    </section>
+
+    <section class="slide" data-main data-sequence="6" data-title="Binding notice">
+      <div class="frame">
+        <div class="topline"><div class="brand"><img src="ripcord-mark.svg" alt="" /> RIPCORD</div><div class="section-label">Example report · Enforced notice</div></div>
+        <div class="content">
+          <div class="eyebrow">A delay label is not enough</div>
+          <h2>Ripcord tests whether the two days actually bind.</h2>
+          <div class="evidence-grid">
+            <article class="evidence-card">
+              <div class="micro">Read the configured delay</div>
+              <div class="evidence-command">delay()</div>
+              <div class="evidence-return">→ 172,800 seconds</div>
+            </article>
+            <article class="evidence-card result">
+              <div class="micro green">Probe the shortening route</div>
+              <div class="evidence-command">setDelay(0) · from unrelated address</div>
+              <div class="evidence-return">→ REVERTS: “Call must come from Timelock.”</div>
+              <div class="binding-result"><strong>2D</strong><span>The delay can only be changed through the timelock’s own delayed execution path.</span></div>
             </article>
           </div>
         </div>
       </div>
       <aside class="speaker-notes">
-        <strong>4:25–5:10 · Mobula implementation</strong><br />
-        “The core report finishes first. Mobula then adds a separate, opt-in second layer. It proposes every asset identity from the fresh holdings response—not only the priced top twelve. Ripcord selects up to sixty-four same-chain ERC20s, verifies their code and target balance at the pinned block, and itemises anything it excludes. For Compound, even a verified zero-balance candidate can continue: Ripcord asks Compound whether it is registered collateral, seeds an isolated holder only inside Anvil, executes the real approve, supply and withdraw paths, then repeats the exit after the guardian pause. Every asset gets its own snapshot. The final composer accepts the sidecar only when target, chain, block number and block hash match. Confirmed evidence can broaden the finding, but Mobula never rewrites or softens the deterministic verdict.”
+        <strong>2:35–3:00 · Delay proof</strong><br />
+        “Ripcord does not read ‘two days’ and trust the label. It also probes the delay mutator. An unrelated address cannot shorten it, and the contract says the call must come from the timelock itself. Changing the delay therefore has to pass through the current delay. On this upgrade route, two days is binding.”
       </aside>
     </section>
 
-    <section class="slide" data-main data-title="Roadmap">
+    <section class="slide" data-main data-sequence="4" data-title="Power map">
       <div class="frame">
-        <div class="topline">
-          <div class="brand"><img src="ripcord-mark.svg" alt="" /> RIPCORD</div>
-          <div class="section-label">After Common S3nse</div>
-        </div>
+        <div class="topline"><div class="brand"><img src="ripcord-mark.svg" alt="" /> RIPCORD</div><div class="section-label">Example report · Power map</div></div>
         <div class="content">
-          <div class="eyebrow">From analysis to continuous sovereignty monitoring</div>
-          <h2>Test the complete ways an exit can fail.</h2>
-          <div class="roadmap">
-            <article class="roadmap-item"><span class="tag">Protocol adapters</span><h3>Move beyond Compound.</h3><p>Add explicit position, exit and restrictor definitions for lending, vault and staking systems.</p></article>
-            <article class="roadmap-item"><span class="tag">Economic stress</span><h3>Test recoverable value.</h3><p>Liquidity shocks, mass withdrawals, oracle changes and multi-step failure scenarios.</p></article>
-            <article class="roadmap-item"><span class="tag">Continuous alerts</span><h3>Detect when the window changes.</h3><p>Monitor authority, exit conditions and verified asset exposure for risk teams.</p></article>
+          <div class="eyebrow">Report reproduction · selected guardian node</div>
+          <h2>The Power Map reconstructed from Compound III.</h2>
+          <div class="report-power-layout">
+            <section class="report-power-card">
+              <h3>Power map</h3>
+              <p class="report-power-note">Authority rises from the analyzed contract to the addresses and contracts that can control it. Select any node to inspect the observed relation and the reads behind it.</p>
+              <div class="report-power-canvas">
+                <svg class="report-power-lines" viewBox="0 0 1000 404" preserveAspectRatio="none" aria-hidden="true">
+                  <defs>
+                    <marker id="power-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                      <path d="M 0 0 L 10 5 L 0 10 z" fill="#788275" stroke="none"></path>
+                    </marker>
+                    <marker id="power-arrow-unknown" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                      <path d="M 0 0 L 10 5 L 0 10 z" fill="#dfa748" stroke="none"></path>
+                    </marker>
+                  </defs>
+                  <path d="M500 80 C500 122 180 112 180 154" marker-end="url(#power-arrow)"></path>
+                  <path class="unknown" d="M525 80 C700 125 680 280 525 318" marker-end="url(#power-arrow-unknown)"></path>
+                  <path d="M180 222 C180 278 465 264 480 318" marker-end="url(#power-arrow)"></path>
+                  <path d="M500 222 L500 318" marker-end="url(#power-arrow)"></path>
+                  <path d="M820 222 C820 278 535 264 520 318" marker-end="url(#power-arrow)"></path>
+                </svg>
+
+                <span class="report-edge-label edge-owner">is the owner of</span>
+                <span class="report-edge-label edge-governor">is named by governor() of</span>
+                <span class="report-edge-label edge-upgrade">controls upgrades of</span>
+                <span class="report-edge-label edge-code">supplies code to</span>
+                <span class="report-edge-label edge-pause">can pause withdrawals of<br />(fork-confirmed)</span>
+
+                <div class="report-node timelock">
+                  <div class="report-node-kind">authority</div>
+                  <div class="report-node-address">0x6d903f60…C33925</div>
+                  <div class="report-node-meta">Timelock 172800s</div>
+                </div>
+                <div class="report-node proxy-admin">
+                  <div class="report-node-kind">proxyAdmin</div>
+                  <div class="report-node-address">0x1ec63b58…2e8779</div>
+                  <div class="report-node-meta">contract</div>
+                </div>
+                <div class="report-node implementation">
+                  <div class="report-node-kind">implementation</div>
+                  <div class="report-node-address">0x83d49126…9a293a</div>
+                  <div class="report-node-meta">contract</div>
+                </div>
+                <div class="report-node guardian selected">
+                  <div class="report-node-kind">authority</div>
+                  <div class="report-node-address">0xbbf3f142…f2012c</div>
+                  <div class="report-node-meta">Safe 5-of-9</div>
+                </div>
+                <div class="report-node target">
+                  <div class="report-node-kind">target</div>
+                  <div class="report-node-address">0xc3d688B6…84cdc3</div>
+                  <div class="report-node-meta">contract</div>
+                </div>
+              </div>
+              <div class="report-power-legend">
+                <span><i class="legend-swatch"></i>resolved relation</span>
+                <span><i class="legend-swatch dashed"></i>implementation</span>
+                <span><i class="legend-swatch dotted"></i>unresolved / not followed</span>
+              </div>
+            </section>
+
+            <section class="report-detail-card">
+              <div class="report-detail-head"><h3>authority</h3><span>SELECTED NODE</span></div>
+              <div class="report-detail-address">0xbbf3f1421D886E9b2c5D716B5192aC998af2012c</div>
+              <table class="report-detail-table">
+                <tbody>
+                  <tr><th>Type</th><td>safe</td></tr>
+                  <tr><th>Threshold</th><td>5 of 9 signers</td></tr>
+                  <tr><th>Depth</th><td>1 hop from target</td></tr>
+                  <tr><th>Confidence</th><td>high</td></tr>
+                  <tr><th>How it was found</th><td>can pause withdrawals of the target (fork-confirmed)</td></tr>
+                </tbody>
+              </table>
+              <div class="report-read-summary">▸ Recorded reads and fork evidence</div>
+            </section>
           </div>
         </div>
       </div>
       <aside class="speaker-notes">
-        <strong>5:10–5:35 · Vision</strong><br />
-        “Today, Mobula candidates can already be verified and enter the supported Compound fork adapter. Next, I want to expand that adapter model across protocols and move from one privileged action to complete failure scenarios: governance execution, oracle changes, liquidity shocks and mass withdrawals. The final product is continuous sovereignty monitoring.”
+        <strong>1:20–1:50 · Power map</strong><br />
+        “This is the Power Map as it appears in the report. The target sits at the bottom and authority rises above it. The dashed implementation supplies code, but does not control the proxy. The ProxyAdmin controls upgrades, and Ripcord follows its owner to Compound’s two-day timelock. The dotted governor edge marks a detected handle Ripcord does not separately follow. The selected node is the fork-confirmed pause guardian, classified as a five-of-nine Safe. It reaches the target directly rather than through the timelock, so it is a separate zero-notice route.”
       </aside>
     </section>
 
-    <section class="slide center" data-main data-title="Close">
-      <div>
-        <img class="final-mark" src="ripcord-mark.svg" alt="Ripcord" />
-        <div class="eyebrow">Knowing that you can exit is not enough.</div>
-        <div class="final-question">Can you exit <span class="green">first?</span></div>
-        <div class="links">
-          <a href="https://thomasdevving.github.io/ripcord/">thomasdevving.github.io/ripcord</a>
-          <a href="https://github.com/thomasdevving/ripcord">github.com/thomasdevving/ripcord</a>
-        </div>
-      </div>
-      <aside class="speaker-notes">
-        <strong>5:35–5:45 · Close</strong><br />
-        “When authority, exit conditions or exposure changes, Ripcord tells risk teams whether users still have time to leave. Because in DeFi, knowing that you can exit is not enough. You need to know whether you can exit first. Thank you.” Then stop.
-      </aside>
-    </section>
-
-    <!-- Backup sequence. Hidden from normal navigation and print. Press B. -->
-    <section class="slide backup" data-backup data-title="Backup · Power map">
+    <section class="slide" data-main data-sequence="7" data-title="Fork differential">
       <div class="frame">
-        <div class="topline"><div class="brand"><img src="ripcord-mark.svg" alt="" /> RIPCORD</div><div class="section-label">Demo backup 1/3 · Reconstructed authority</div></div>
-        <div class="content">
-          <div class="eyebrow">Compound III · Two relevant routes</div>
-          <h2>The visible timelock is not the whole story.</h2>
-          <div class="map">
-            <div class="node target"><div class="kind">Target</div><div class="name">Compound III · USDC market</div><div class="detail">0xc3d6…cdc3</div></div>
-            <div class="arrows">→<br />↘</div>
-            <div class="node-stack">
-              <div class="node delay"><div class="kind">Upgrade authority</div><div class="name">ProxyAdmin → Timelock</div><div class="detail">binding notice · 172,800 seconds</div></div>
-              <div class="node zero"><div class="kind">Exit restriction authority</div><div class="name">Pause guardian · Safe</div><div class="detail">does not pass through upgrade timelock</div></div>
-            </div>
-          </div>
-          <div class="route-summary">
-            <div class="route"><span>Implementation upgrade</span><strong class="amber">2D</strong></div>
-            <div class="route"><span>Withdraw pause</span><strong class="red">0S</strong></div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="slide backup" data-backup data-title="Backup · Fork differential">
-      <div class="frame">
-        <div class="topline"><div class="brand"><img src="ripcord-mark.svg" alt="" /> RIPCORD</div><div class="section-label">Demo backup 2/3 · Fork differential</div></div>
+        <div class="topline"><div class="brand"><img src="ripcord-mark.svg" alt="" /> RIPCORD</div><div class="section-label">Example report · Fork evidence</div></div>
         <div class="content">
           <div class="eyebrow">Same pinned state · Same holder · Same withdrawal</div>
-          <h2>One privileged mutation changes the outcome.</h2>
+          <h2>One authorised mutation changes the outcome.</h2>
+          <div class="causal-strip"><strong>WHY A FORK?</strong> Reads reveal the route. Matched execution proves that this exact mutation closes a working exit.</div>
           <div class="experiment">
-            <article class="branch success"><span class="letter">BRANCH A</span><div class="branch-title green">Withdrawal succeeds</div><p>Fund sandbox holder, create a Compound position and establish the working baseline.</p></article>
+            <article class="branch success"><span class="letter">BRANCH A · CONTROL</span><div class="branch-title green">Withdrawal succeeds</div><p>Fund a sandbox holder, create a real Compound position and verify token recovery.</p></article>
             <div class="experiment-arrow">→</div>
-            <article class="branch mutation"><span class="letter">BRANCH B</span><div class="branch-title amber">Guardian pauses</div><p>Return to the starting state. Impersonate the authorised guardian inside the fork.</p></article>
+            <article class="branch mutation"><span class="letter">BRANCH B · MUTATION</span><div class="branch-title amber">Guardian pauses</div><p>Restore the starting state. Impersonate only the authorised guardian inside Anvil.</p></article>
             <div class="experiment-arrow">→</div>
-            <article class="branch failure"><span class="letter">BRANCH C</span><div class="branch-title red">Withdrawal reverts</div><p>Repeat the same exit under matched conditions. Compound returns its own Paused error.</p></article>
+            <article class="branch failure"><span class="letter">BRANCH C · DIFFERENTIAL</span><div class="branch-title red">Withdrawal reverts</div><p>Repeat the identical exit at the matched clock. Compound returns its own Paused error.</p></article>
           </div>
         </div>
       </div>
+      <aside class="speaker-notes">
+        <strong>3:00–3:40 · Why the fork + differential</strong><br />
+        “The Power Map tells Ripcord that a guardian and pause route exist, but without execution their effect on a real user exit is still only a hypothesis. It would not know whether the withdrawal worked beforehand, whether the mutation was executable, or whether that exact mutation closed the exit. So Ripcord creates a real Compound position on a pinned Anvil fork and proves the withdrawal returns the asset. It restores the same state, impersonates the identified guardian only inside the fork and calls Compound’s real pause function. The same holder repeats the identical withdrawal under matched time conditions. It now reverts with Compound’s own Paused error. The fork turns a possible power into causal evidence—without touching mainnet.”
+      </aside>
     </section>
 
-    <section class="slide backup center" data-backup data-title="Backup · Verdict">
+    <section class="slide center" data-main data-sequence="8" data-title="Exit Window">
       <div class="frame">
-        <div class="topline"><div class="brand"><img src="ripcord-mark.svg" alt="" /> RIPCORD</div><div class="section-label">Demo backup 3/3 · Effective Exit Window</div></div>
+        <div class="topline"><div class="brand"><img src="ripcord-mark.svg" alt="" /> RIPCORD</div><div class="section-label">Example report · Conclusion</div></div>
         <div class="content">
           <div class="eyebrow">Ripcord takes the shortest relevant route</div>
           <div class="equation">
@@ -941,40 +1434,165 @@
           <p class="lede" style="margin: 40px auto 0; text-align:center;">Capability, not intent. No private key. No mainnet transaction.</p>
         </div>
       </div>
+      <aside class="speaker-notes">
+        <strong>3:40–4:00 · Conclusion</strong><br />
+        “The upgrade route gives users two days. The guardian route gives them zero. A slow route cannot protect a faster route, so Ripcord takes the shortest relevant one. The effective Exit Window is zero. This is capability, not intent: no Safe was compromised, no private key was used and no mainnet transaction was sent.”
+      </aside>
+    </section>
+
+    <section class="slide" data-main data-sequence="9" data-title="Mobula">
+      <div class="frame">
+        <div class="topline">
+          <div class="brand"><img src="ripcord-mark.svg" alt="" /> RIPCORD</div>
+          <div class="section-label">Example report · Mobula implementation</div>
+        </div>
+        <div class="content">
+          <div class="eyebrow">Asset discovery → onchain verification → fork evidence</div>
+          <h2>Mobula proposes the next assets to test.</h2>
+          <div class="coverage-grid">
+            <article class="coverage-card core">
+              <div class="micro green">Why this is valuable</div>
+              <h3>One control risk can reach more than the USDC baseline.</h3>
+              <ul><li>Discover additional collateral candidates</li><li>Include lower-ranked or unpriced identities</li><li>Measure which supported exits share the restriction</li></ul>
+              <div class="asset-row"><span class="asset verified">COVERAGE</span><span class="asset verified">BLAST RADIUS</span><span class="asset verified">PRIORITY</span></div>
+            </article>
+            <div class="divider-word">candidate → evidence</div>
+            <article class="coverage-card context">
+              <div class="micro" style="color: var(--blue)">How the second layer works</div>
+              <div class="layer-flow">
+                <div class="layer-item"><span class="layer-num">01</span><div><strong>Propose</strong><p>Return asset identities from a fresh, timestamped holdings response.</p></div></div>
+                <div class="layer-item"><span class="layer-num">02</span><div><strong>Verify</strong><p>Check selected ERC20 code, target balance and Compound registration onchain.</p></div></div>
+                <div class="layer-item"><span class="layer-num">03</span><div><strong>Test</strong><p>Run isolated approve, supply, withdraw and post-pause withdrawal scenarios.</p></div></div>
+                <div class="layer-item"><span class="layer-num">04</span><div><strong>Attribute</strong><p>Show which supported assets the demonstrated control route can affect.</p></div></div>
+              </div>
+              <div class="boundary-strip">Mobula proposes candidates · Ripcord verifies and proves</div>
+            </article>
+          </div>
+        </div>
+      </div>
+      <aside class="speaker-notes">
+        <strong>4:00–4:30 · Mobula</strong><br />
+        “The USDC experiment proves one real exit, but the same control route may affect other collateral assets. Mobula proposes additional asset identities, including candidates that may sit below a value-ranked display or have no usable price. That is valuable because it helps Ripcord move from one demonstrated exit to the broader potential blast radius. Ripcord does not trust the vendor response as security evidence: it verifies selected token code, target balance and Compound registration at the pinned block, then runs each supported asset through its own isolated fork experiment. Mobula expands what to investigate; Ripcord establishes what can actually be claimed.”
+      </aside>
+    </section>
+
+    <section class="slide" data-main data-sequence="10" data-title="Roadmap">
+      <div class="frame">
+        <div class="topline">
+          <div class="brand"><img src="ripcord-mark.svg" alt="" /> RIPCORD</div>
+          <div class="section-label">After Common S3nse</div>
+        </div>
+        <div class="content">
+          <div class="eyebrow">From one adapter to continuous sovereignty monitoring</div>
+          <h2>Expand hypotheses. Keep verification deterministic.</h2>
+          <div class="roadmap">
+            <article class="roadmap-item"><span class="tag">AI-assisted recognition</span><h3>Generate candidates, never verdicts.</h3><p>Suggest signatures for unmatched selectors; accept only exact hash matches, then classify on observed fork behaviour.</p></article>
+            <article class="roadmap-item"><span class="tag">Protocol + economic scenarios</span><h3>Test complete failure paths.</h3><p>More exit adapters, governance execution, oracle changes, liquidity shocks and mass withdrawals.</p></article>
+            <article class="roadmap-item"><span class="tag">Continuous alerts</span><h3>Know when the window changes.</h3><p>Monitor authority, exit conditions and verified asset exposure for risk teams.</p></article>
+          </div>
+        </div>
+      </div>
+      <aside class="speaker-notes">
+        <strong>4:30–4:55 · Vision</strong><br />
+        “For now, the generic signature taxonomy is finite and executable exit testing is adapter-based. Next, AI can propose signatures for unmatched selectors without becoming the judge: the selector hash verifies the candidate, and only observed fork behaviour supports a capability claim. I then want to add more protocols and complete economic failure scenarios, and rerun them continuously whenever authority or exposure changes.”
+      </aside>
+    </section>
+
+    <section class="slide center" data-main data-sequence="11" data-title="Close">
+      <div>
+        <img class="final-mark" src="ripcord-mark.svg" alt="Ripcord" />
+        <div class="eyebrow">Knowing that you can exit is not enough.</div>
+        <div class="final-question">Can you exit <span class="green">first?</span></div>
+        <div class="links">
+          <a href="https://thomasdevving.github.io/ripcord/">thomasdevving.github.io/ripcord</a>
+          <a href="https://ripcord-production.up.railway.app">ripcord-production.up.railway.app</a>
+        </div>
+      </div>
+      <aside class="speaker-notes">
+        <strong>4:55–5:05 · Close</strong><br />
+        “Ripcord turns protocol control into an evidence-backed decision window. Because in DeFi, knowing that you can exit is not enough. You need to know whether you can exit first. Thank you.” Then stop.
+      </aside>
+    </section>
+
+    <!-- Q&A appendix. Hidden from normal navigation and print. Press B. -->
+    <section class="slide backup center" data-backup data-title="Appendix · Upgrade drain proof">
+      <div class="frame">
+        <div class="topline"><div class="brand"><img src="ripcord-mark.svg" alt="" /> RIPCORD</div><div class="section-label">Q&amp;A appendix 1/3 · Upgrade capability</div></div>
+        <div class="content">
+          <div class="eyebrow">Separate fork proof · same pinned Compound report</div>
+          <h2 style="margin-left:auto;margin-right:auto;">The upgrade authority could ultimately move at least</h2>
+          <div class="final-question green" style="margin: 10px auto 30px;">$540.6M</div>
+          <p class="lede" style="margin: 0 auto; text-align:center;">Not immediate: this route remains protected by the proven two-day timelock. The fork bypasses the real queue by impersonating the controller.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide backup" data-backup data-title="Appendix · Evidence boundary">
+      <div class="frame">
+        <div class="topline"><div class="brand"><img src="ripcord-mark.svg" alt="" /> RIPCORD</div><div class="section-label">Q&amp;A appendix 2/3 · Evidence boundary</div></div>
+        <div class="content">
+          <div class="eyebrow">What the experiment does—and does not—prove</div>
+          <h2>Bound the claim before making it.</h2>
+          <div class="scope-grid">
+            <article class="scope-card"><div class="micro green">Proven</div><h3>Protocol capability</h3><p>The identified guardian address can set the withdrawal pause and change the same exit from success to revert.</p></article>
+            <article class="scope-card"><div class="micro amber">Simulated</div><h3>Authorised execution</h3><p>Anvil impersonates the controller address. It does not reproduce the Safe’s complete signatures, guards or modules.</p></article>
+            <article class="scope-card"><div class="micro red">Not claimed</div><h3>Intent or compromise</h3><p>No private key is obtained, no signer is accused and no transaction is sent to mainnet.</p></article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide backup" data-backup data-title="Appendix · Current limits">
+      <div class="frame">
+        <div class="topline"><div class="brand"><img src="ripcord-mark.svg" alt="" /> RIPCORD</div><div class="section-label">Q&amp;A appendix 3/3 · Honest scope</div></div>
+        <div class="content">
+          <div class="eyebrow">Fail closed by design</div>
+          <h2>What remains outside today’s proof.</h2>
+          <div class="scope-grid">
+            <article class="scope-card"><div class="micro">Recognition</div><h3>Finite taxonomy</h3><p>This Comet report extracts 67 selectors; all 67 remain unmatched by the generic taxonomy. The separate Comet adapter identifies and fork-tests the supported exit.</p></article>
+            <article class="scope-card"><div class="micro">Execution</div><h3>One live-validated exit adapter</h3><p>The fork differential currently supports Compound III / Comet, not arbitrary DeFi exits.</p></article>
+            <article class="scope-card"><div class="micro">Discovery + economics</div><h3>No completeness shortcut</h3><p>Mobula proposes candidates, not a complete inventory. Liquidity is not modelled, so the proof does not claim every position can exit under stress.</p></article>
+          </div>
+        </div>
+      </div>
     </section>
   </main>
 
   <div class="progress" aria-hidden="true"></div>
   <div class="counter" aria-hidden="true"></div>
-  <div class="help" aria-hidden="true">← → NAV · N NOTES · F FULLSCREEN · B BACKUP</div>
+  <div class="help" aria-hidden="true">← → NAV · N NOTES · F FULLSCREEN · B Q&amp;A</div>
   <div class="notes" role="status"></div>
 
   <script>
     (() => {
-      const mainSlides = [...document.querySelectorAll('[data-main]')];
+      const mainSlides = [...document.querySelectorAll('[data-main]')]
+        .sort((a, b) => Number(a.dataset.sequence) - Number(b.dataset.sequence));
       const backupSlides = [...document.querySelectorAll('[data-backup]')];
+      const deck = document.querySelector('main.deck');
+      const firstBackup = backupSlides[0] ?? null;
+      // Keep browser navigation and print/PDF order identical even when related
+      // slide sections live together in source for easier maintenance.
+      if (deck && firstBackup) {
+        for (const slide of mainSlides) deck.insertBefore(slide, firstBackup);
+      }
       const progress = document.querySelector('.progress');
       const counter = document.querySelector('.counter');
       const notes = document.querySelector('.notes');
-      const demoLink = document.querySelector('#open-demo');
-      const params = new URLSearchParams(location.search);
-      const customDemo = params.get('demo');
-      if (customDemo && demoLink) demoLink.href = customDemo;
-
       let sequence = mainSlides;
       let index = Math.max(0, Math.min(mainSlides.length - 1, Number(location.hash.slice(1)) - 1 || 0));
       let notesOpen = false;
+      let mainReturnIndex = index;
 
       function render() {
         [...mainSlides, ...backupSlides].forEach((slide) => slide.classList.remove('active'));
         const current = sequence[index];
         current.classList.add('active');
         const isBackup = sequence === backupSlides;
-        counter.textContent = isBackup ? `BACKUP ${index + 1}/${sequence.length}` : `${index + 1}/${sequence.length}`;
+        counter.textContent = isBackup ? `Q&A ${index + 1}/${sequence.length}` : `${index + 1}/${sequence.length}`;
         progress.style.width = `${((index + 1) / sequence.length) * 100}%`;
         progress.style.background = isBackup ? 'var(--red)' : 'var(--green)';
         const speakerNotes = current.querySelector('.speaker-notes');
-        notes.innerHTML = speakerNotes ? speakerNotes.innerHTML : '<strong>Backup evidence slide.</strong> Use the large visual in place of the live report.';
+        notes.innerHTML = speakerNotes ? speakerNotes.innerHTML : '<strong>Q&A appendix.</strong> Use only when a judge asks about this boundary.';
         notes.classList.toggle('visible', notesOpen);
         document.title = `Ripcord — ${current.dataset.title || 'Showcase'}`;
         if (!isBackup) history.replaceState(null, '', `${location.pathname}${location.search}#${index + 1}`);
@@ -988,8 +1606,9 @@
       function toggleBackup() {
         if (sequence === backupSlides) {
           sequence = mainSlides;
-          index = 3;
+          index = mainReturnIndex;
         } else {
+          mainReturnIndex = index;
           sequence = backupSlides;
           index = 0;
         }

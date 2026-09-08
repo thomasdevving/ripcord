@@ -13,10 +13,8 @@ import { decodeFunctionResult, encodeFunctionData, zeroAddress, type Hex } from 
 import type { ChainReader } from "../chain/client.js";
 import { erc20Abi, oracleGetterAbi } from "../chain/abi.js";
 import { MAJOR_TOKENS } from "../chain/majorTokens.js";
-import { detectProxy } from "./proxy.js";
-import { detectOwnership } from "./ownership.js";
-import { detectAccessControl } from "./accessControl.js";
 import { detectCapabilities } from "./capabilities.js";
+import { factsFor } from "./facts.js";
 import { collectPowerHolders } from "./accounts.js";
 import type { DependencyGraph, OracleDependency, TokenDependency, UnknownEntry } from "../report/schema.js";
 
@@ -33,6 +31,7 @@ export interface DependencyDetection {
 }
 
 export async function detectDependencies(chain: ChainReader, target: Hex): Promise<DependencyDetection> {
+  const facts = factsFor(chain);
   const unknowns: UnknownEntry[] = [];
   const tokens: TokenDependency[] = [];
   const candidates = MAJOR_TOKENS[chain.chainId] ?? [];
@@ -70,9 +69,13 @@ export async function detectDependencies(chain: ChainReader, target: Hex): Promi
     }
     if (!isMeaningfulBalance(balance)) continue;
 
-    const proxy = await detectProxy(chain, tokenAddress);
-    const ownership = await detectOwnership(chain, tokenAddress);
-    const accessControl = await detectAccessControl(chain, tokenAddress);
+    // Memoized per address: a major token is frequently ALSO an authority node
+    // (a governance token owned by the same timelock that owns the target), and
+    // a token held by two different scanned protocols is analysed identically
+    // both times.
+    const proxy = await facts.proxy(tokenAddress);
+    const ownership = await facts.ownership(tokenAddress);
+    const accessControl = await facts.accessControl(tokenAddress);
     unknowns.push(
       ...accessControl.unknowns.map((u) => ({ field: `dependencies.tokens[${tokenAddress}].${u.field}`, reason: u.reason })),
     );
@@ -121,6 +124,7 @@ export async function detectDependencies(chain: ChainReader, target: Hex): Promi
 }
 
 async function detectOracles(chain: ChainReader, target: Hex, unknowns: UnknownEntry[]): Promise<OracleDependency[]> {
+  const facts = factsFor(chain);
   const oracles: OracleDependency[] = [];
   const seen = new Set<string>();
 
@@ -149,11 +153,11 @@ async function detectOracles(chain: ChainReader, target: Hex, unknowns: UnknownE
     if (seen.has(addr.toLowerCase())) continue;
     seen.add(addr.toLowerCase());
 
-    const { code } = await chain.getCode(addr);
+    const { code } = await facts.code(addr);
     if (!code) continue; // an oracle getter returning an EOA is not a real dependency to chase
 
-    const ownership = await detectOwnership(chain, addr);
-    const accessControl = await detectAccessControl(chain, addr);
+    const ownership = await facts.ownership(addr);
+    const accessControl = await facts.accessControl(addr);
     unknowns.push(
       ...accessControl.unknowns.map((u) => ({ field: `dependencies.oracles[${addr}].${u.field}`, reason: u.reason })),
     );

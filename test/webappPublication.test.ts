@@ -5,7 +5,7 @@ import { TransportObserver } from "../server/jobs/observer.js";
 import { forkBlocksFromReport, forkTransactions, preferLiveBlocks } from "../server/shared/fork.js";
 import { formatTokenUnits } from "../web/src/report-types.js";
 import { reportStructure } from "../server/report-structure.js";
-import { layout } from "../web/src/components/PowerMap.js";
+import { graphRevisionKey, layout } from "../web/src/components/PowerMap.js";
 import type { Report } from "../src/report/schema.js";
 import type { JobEventPayload } from "../server/shared/dto.js";
 const report = (name: string): Report => JSON.parse(readFileSync(`calibration/reports/${name}.json`, "utf8"));
@@ -67,6 +67,26 @@ describe("web publication and evidence regressions", () => {
     expect(edges.length).toBe(graph.edges.length);
     const ids = new Set(nodes.map(n => n.id));
     expect(edges.every(e => ids.has(e.source) && ids.has(e.target))).toBe(true);
-    expect(graph.nodes.some(n => n.evidence?.length)).toBe(true);
+    // Nodes reference the snapshot's shared evidence table by id, and every id
+    // must resolve — a dangling reference would render as "no reads recorded",
+    // which is the one thing an evidence panel must never say wrongly.
+    expect(graph.nodes.some(n => n.evidenceIds?.length)).toBe(true);
+    for (const node of graph.nodes) {
+      for (const id of node.evidenceIds ?? []) expect(graph.evidence?.[id]).toBeDefined();
+      // A truncated list always carries the true total beside it.
+      expect(node.evidenceTotal).toBeGreaterThanOrEqual((node.evidenceIds ?? []).length);
+    }
+  });
+
+  it("remounts the power map for same-sized structural changes, but not evidence-only changes", () => {
+    const graph = reportStructure(report("compound-comet-cusdcv3"))!;
+    const first = graphRevisionKey(graph);
+    const changedEdge = structuredClone(graph);
+    changedEdge.edges[0] = { ...changedEdge.edges[0]!, resolution: changedEdge.edges[0]!.resolution === "resolved" ? "partial" : "resolved" };
+    expect(graphRevisionKey(changedEdge)).not.toBe(first);
+
+    const evidenceOnly = structuredClone(graph);
+    evidenceOnly.nodes[0]!.evidenceIds = ["newly-attached"];
+    expect(graphRevisionKey(evidenceOnly)).toBe(first);
   });
 });

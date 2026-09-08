@@ -23,7 +23,7 @@ import {
 } from "viem";
 import { startAnvilFork, type ForkHandle, type ForkTransactionResult } from "./anvil.js";
 import { checkAnvilAvailable } from "./preflight.js";
-import { COMET_PAUSED_ERROR, cometAbi, cometSupplyCalldata, cometWithdrawCalldata, cometWithdrawPauseCalldata } from "./exitActions.js";
+import { COMET_PAUSED_ERROR, cometAbi, cometSupplyCalldata, cometWithdrawCalldata, cometWithdrawPauseCalldata } from "./adapters/comet.js";
 import { looksLikeContractRevert, type Evidence } from "../chain/client.js";
 
 export const assetScenarioVersion = "0.4.0";

@@ -7,8 +7,8 @@
  */
 import { z } from "zod";
 
-export const schemaVersion = "0.13.0";
-export const rulesetVersion = "0.13.0";
+export const schemaVersion = "0.15.0";
+export const rulesetVersion = "0.16.0";
 
 const hexString = z.string().regex(/^0x[0-9a-fA-F]*$/);
 const address = z.string().regex(/^0x[0-9a-fA-F]{40}$/);
@@ -111,6 +111,22 @@ export const roleReconstructionSchema = z.object({
   maxLogRange: z.string().nullable(),
   scannedFromBlock: z.string().nullable(),
   scannedToBlock: z.string().nullable(),
+  /**
+   * The RoleGranted/RoleRevoked reads the scan performed, recorded ONCE here.
+   *
+   * They used to be copied into every role's own `evidence`, which is how the
+   * sUSDe report came to serialise ~1.13MB of evidence of which ~462KB was
+   * distinct: one scan of N chunks duplicated across every role it discovered.
+   * Storing them here is also better provenance, not merely smaller — the scan
+   * is what discovered WHICH roles exist, and it is a property of the
+   * reconstruction, while a role's own `evidence` is the reads about THAT role.
+   * The two were never the same claim.
+   *
+   * Empty on the Enumerable path, where membership comes from the getters and
+   * the scan only discovers role hashes. Optional so a report written before
+   * this split still parses.
+   */
+  scanEvidence: z.array(evidenceSchema).optional(),
 });
 export type RoleReconstruction = z.infer<typeof roleReconstructionSchema>;
 
@@ -140,7 +156,7 @@ export type RoleReconstruction = z.infer<typeof roleReconstructionSchema>;
  * only collapse two representations of the SAME site.
  */
 export const enumerationSiteSchema = z.object({
-  kind: z.enum(["stage", "target", "authority", "dependency", "authorityResolution", "capabilitySurface"]),
+  kind: z.enum(["stage", "target", "authority", "dependency", "authorityResolution", "capabilitySurface", "budget"]),
   /** The address, stage name, or "" for the singleton kinds. Lowercased where it is an address. */
   id: z.string(),
 });
@@ -182,6 +198,56 @@ export const enumerationWitnessSchema = z.object({
   basis: z.string(),
 });
 export type EnumerationWitness = z.infer<typeof enumerationWitnessSchema>;
+
+/**
+ * THE RESOURCE ACCOUNTING for one report.
+ *
+ * A report used to be bounded only by the shape of its target: the role scan's
+ * request ceiling applies per contract and a report can reach many, the depth cap
+ * bounds how FAR the authority recursion travels rather than how many branches it
+ * visits, and the member enumeration loop is driven by a count the analysed
+ * contract itself returns. This block is what makes the cost of a report a
+ * property of Ripcord rather than of the address it was pointed at.
+ *
+ * `exhausted` is the load-bearing field, and it is read by the enumeration
+ * witness, not merely displayed: a boundary that stopped work makes the analysis
+ * incomplete, and an incomplete analysis cannot carry a reassuring assessment. A
+ * budget can only ever push a verdict toward caution.
+ *
+ * Every dimension counts LOGICAL work, never elapsed time and never network
+ * attempts — a warm run makes no network calls at all, and a budget that could
+ * be exhausted on a cold run and not a warm one would make the report depend on
+ * whether someone had run it before.
+ */
+export const budgetExhaustionSchema = z.object({
+  dimension: z.enum(["chainReads", "logRequests", "authorityNodes", "roleMembers"]),
+  limit: z.number(),
+  /** What was being asked for when the ceiling was reached. Never below `limit`. */
+  requested: z.number(),
+  /** The detector and subject that met it, e.g. "accessControl:0x…". */
+  where: z.string(),
+  /** What happened instead. Always a labelled partial or a loud failure. */
+  consequence: z.string(),
+});
+export type BudgetExhaustionRecord = z.infer<typeof budgetExhaustionSchema>;
+
+export const analysisBudgetSchema = z.object({
+  limits: z.object({
+    chainReads: z.number(),
+    logRequests: z.number(),
+    authorityNodes: z.number(),
+    roleMembers: z.number(),
+  }),
+  consumed: z.object({
+    chainReads: z.number(),
+    logRequests: z.number(),
+    authorityNodes: z.number(),
+    roleMembers: z.number(),
+  }),
+  /** Empty means "nothing ran out", never "nothing was counted" — `consumed` is the proof it was. */
+  exhausted: z.array(budgetExhaustionSchema),
+});
+export type AnalysisBudgetRecord = z.infer<typeof analysisBudgetSchema>;
 
 export const accessControlSchema = z.object({
   detected: z.boolean(),
@@ -339,6 +405,11 @@ export type ManualVerificationEntry = z.infer<typeof manualVerificationEntrySche
 
 export const capabilitiesResultSchema = z.object({
   taxonomyVersion: z.string(),
+  /** Exact selector engine used by this report; a ruleset is not reproducible without its analyser version. */
+  selectorAnalyzer: z.object({
+    name: z.literal("evmole"),
+    version: z.string(),
+  }),
   dispatcherRecognized: z.boolean(),
   /** Bytecode source: the implementation for a proxy. Null when the dispatcher wasn't recognized, or the scanned address has no code. */
   scannedAddress: address.nullable(),
@@ -412,8 +483,37 @@ export const terminationReasonSchema = z.enum([
   "cycle", // this address already appears higher in the path (A owns B owns A)
   "no_authority_found", // a contract, but no owner()/AccessControl/proxyAdmin authority could be identified
   "not_a_contract_holder", // resolved as a leaf without recursing (used for direct EOA/Safe roots)
+  // The report-wide authority-node budget ran out before this address was
+  // classified. Deliberately its own reason and NOT folded into
+  // `no_authority_found`: that one means "we looked and found no authority
+  // mechanism", this one means "we never looked". Both are unresolved, and the
+  // exit window treats them identically (the terminal is a `contract`, so the
+  // route falls to the `unresolved_authority` branch and contributes no notice),
+  // but a reader must be able to tell "the recursion stopped" from "the search
+  // came back empty".
+  "budget_exhausted",
 ]);
 export type TerminationReason = z.infer<typeof terminationReasonSchema>;
+
+/**
+ * The reasons that mean the search STOPPED rather than finished.
+ *
+ * A single list, because these were three separate inline comparisons against
+ * two string literals — in the stage observer, the power-map renderer and the
+ * build orchestrator — and a fourth reason added anywhere would have silently
+ * been treated as a resolved terminal by all three. "We stopped looking" reading
+ * as "we found the end" is the exact conflation this project keeps having to
+ * fix; here it is one exported name.
+ */
+export const UNRESOLVED_TERMINATIONS: readonly TerminationReason[] = [
+  "max_depth",
+  "no_authority_found",
+  "budget_exhausted",
+];
+
+export function isUnresolvedTermination(reason: string | null | undefined): boolean {
+  return typeof reason === "string" && (UNRESOLVED_TERMINATIONS as readonly string[]).includes(reason);
+}
 
 
 export interface AuthorityNode {
@@ -1343,6 +1443,16 @@ export const reportSchema = z.object({
    * reconstructing it from the reconstruction blocks scattered below.
    */
   enumeration: enumerationCompletenessSchema,
+  /**
+   * Resource accounting for this run — see `analysisBudgetSchema`.
+   *
+   * Nullable for exactly one reason: reports generated before schema 0.15.0 ran
+   * under no report-wide budget, so they have nothing to record. A null is
+   * therefore "this run was unbounded", never "this run stayed inside its
+   * limits" — and it is not a gap either, because an unbounded run truncated
+   * nothing. Every report `buildReport` produces carries the block.
+   */
+  budget: analysisBudgetSchema.nullable(),
   disclosure: disclosureSchema,
   unknowns: z.array(unknownEntrySchema),
   errors: z.array(errorEntrySchema),

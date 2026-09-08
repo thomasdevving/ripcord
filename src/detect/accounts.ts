@@ -8,6 +8,7 @@
 import { decodeFunctionResult, encodeFunctionData, type Hex } from "viem";
 import type { Evidence, ChainReader } from "../chain/client.js";
 import { safeAbi } from "../chain/abi.js";
+import { factsFor } from "./facts.js";
 import type { AccountType, PowerHolder, RoleEntry, SafeInfo } from "../report/schema.js";
 
 export async function classifyAccount(
@@ -16,7 +17,11 @@ export async function classifyAccount(
   viaCapabilities: string[],
 ): Promise<PowerHolder> {
   const evidence: Evidence[] = [];
-  const { code, evidence: codeEvidence } = await chain.getCode(address);
+  // Shared with every other stage that wants this address's code (capability
+  // scanning, the timelock check, time-to-exit). classifyAccount runs once per
+  // power holder AND once per authority node, so the same address is routinely
+  // asked for twice in one report.
+  const { code, evidence: codeEvidence } = await factsFor(chain).code(address);
   evidence.push(codeEvidence);
 
   if (!code) {

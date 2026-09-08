@@ -207,7 +207,23 @@ export interface PhaseSnapshot {
  */
 export interface StructuralNode {
   /** Available after publication; empty before the gate. */
-  evidence?: unknown[];
+  /**
+   * Ids into the snapshot's shared `evidence` table. Nodes reference entries
+   * rather than embedding them, because the same read is routinely relevant to
+   * several nodes and embedding it duplicated it once per node.
+   *
+   * BOUNDED. A role scan on a range-capped provider produces well over a
+   * thousand log reads that all legitimately name the target, and shipping them
+   * to a browser to draw one box is not a detail view, it is a download. This
+   * list is the inlined prefix; `evidenceTotal` is how many exist.
+   */
+  evidenceIds?: string[];
+  /**
+   * How many evidence entries name this node in total. Always present alongside
+   * `evidenceIds`, so a truncated list is never presentable as a complete one —
+   * the same rule the report applies to a partial role scan.
+   */
+  evidenceTotal?: number;
   address: string;
   /** How this address entered the graph. */
   relation: string;
@@ -238,6 +254,18 @@ export interface StructuralSnapshot {
   /** Non-null once the proxy phase answered. */
   proxyPattern: string | null;
   implementation: string | null;
+  /**
+   * The shared evidence table: stable content-derived id -> the entry.
+   *
+   * Present only on a snapshot built from a COMPLETE report (report-structure.ts),
+   * because that is the only point where the whole evidence set is known. A
+   * snapshot streamed live during a run carries `evidenceIds` on nodes only once
+   * this table exists, so a consumer must treat a missing table as "detail not
+   * available yet" rather than as "this node has no evidence".
+   */
+  evidence?: Record<string, unknown>;
+  /** Ceiling applied per node when inlining, so a consumer can explain the gap. */
+  evidenceInlineLimit?: number;
 }
 
 // --- fork evidence blocks ----------------------------------------------------
@@ -332,8 +360,9 @@ export interface CreateJobRequest {
   /**
    * Explicit consent for the post-analysis live layer. When true, the server
    * sends the target address to Mobula after the pinned report is complete,
-   * then selects candidates from the complete response independently of the UI
-   * subset and verifies eligible same-chain ERC20 identities at the report block.
+   * then selects candidates from a separate unfiltered same-chain response
+   * independently of the UI subset and presentation filters, and verifies
+   * eligible ERC20 identities at the report block.
    * The worker and verdict engine never receive this flag or the resulting data.
    */
   refreshAssetContext?: boolean;
@@ -409,7 +438,11 @@ export interface ConfigResponse {
   anvil: { available: boolean; version: string | null };
   presets: PresetDescriptor[];
   /** Versions of the engine that will run, so a page can state what produced it. */
-  engine: { schemaVersion: string; rulesetVersion: string };
+  engine: {
+    schemaVersion: string;
+    rulesetVersion: string;
+    selectorAnalyzer: { name: string; version: string };
+  };
 }
 
 /**

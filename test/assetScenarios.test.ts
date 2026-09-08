@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { decodeFunctionData, encodeAbiParameters, getAddress, keccak256, toHex, type Hex } from "viem";
 import { runAssetExitScenariosOnFork } from "../src/fork/assetScenarios.js";
-import { COMET_PAUSED_ERROR, cometAbi, SELECTORS } from "../src/fork/exitActions.js";
+import { COMET_PAUSED_ERROR, cometAbi, COMET_SELECTORS as SELECTORS } from "../src/fork/adapters/comet.js";
 
 const TARGET = "0xc3d688B66703497DAA19211EEdff47f25384cdc3" as Hex;
 const BASE = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48" as Hex;
@@ -189,12 +189,12 @@ beforeEach(() => {
         const [to, amount] = decoded.args;
         addTargetBalance(tx.to, -amount);
         add(state.holderTokens, to, tx.to, amount);
-      } else if (selector === SELECTORS.cometSupply) {
+      } else if (selector === SELECTORS.supply) {
         const [asset, amount] = decodeFunctionData({ abi: cometAbi, data: tx.data! }).args as [Hex, bigint];
         add(state.holderTokens, from, asset, -amount);
         add(state.collateral, from, asset, amount);
         addTargetBalance(asset, amount);
-      } else if (selector === SELECTORS.cometPause) {
+      } else if (selector === SELECTORS.pause) {
         if (pauseReverts) {
           return {
             status: "reverted" as const, revertData: "0x82b42900" as Hex, gasUsed: 30_000n,
@@ -210,7 +210,7 @@ beforeEach(() => {
             transfer: transfer!, withdraw: withdraw!, absorb: absorb!, buy: buy!,
           };
         }
-      } else if (selector === SELECTORS.cometWithdraw) {
+      } else if (selector === SELECTORS.withdraw) {
         const blocked = (state.flags.withdraw && !withdrawIgnoresPause) || baselineRevert;
         if (blocked) {
           status = "reverted";
@@ -356,7 +356,7 @@ describe("per-asset Compound fork scenarios", () => {
     expect(result.scenarios[0]?.evidence.some((entry) => entry.params.read === "totalsCollateral(address)")).toBe(true);
     expect(fork.sendFrom).not.toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ data: expect.stringMatching(new RegExp(`^${SELECTORS.cometSupply}`)) }),
+      expect.objectContaining({ data: expect.stringMatching(new RegExp(`^${SELECTORS.supply}`)) }),
     );
   });
 

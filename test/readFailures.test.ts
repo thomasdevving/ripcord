@@ -330,7 +330,11 @@ const cleanSurface = () => ({
   pendingOwner: { address: null, source: "pendingOwner() reverted", evidence: [] },
   proxy: { pattern: "not_a_proxy", isProxy: false, implementation: null, beacon: null, admin: null, evidence: [] },
   indirection: null,
-}) as unknown as Pick<Parameters<typeof deriveEnumerationCompleteness>[0], "capabilities" | "owner" | "pendingOwner" | "proxy" | "indirection">;
+  budgetExhaustions: [],
+}) as unknown as Pick<
+  Parameters<typeof deriveEnumerationCompleteness>[0],
+  "capabilities" | "owner" | "pendingOwner" | "proxy" | "indirection" | "budgetExhaustions"
+>;
 
 describe("the enumeration witness — a failed stage can never support a reassuring claim", () => {
   it("turns a stage error into a gap, and the gap withholds the witness", () => {

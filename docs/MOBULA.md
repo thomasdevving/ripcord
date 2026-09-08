@@ -91,7 +91,7 @@ on every run so nobody has to rediscover it.
 
 ## 2. The endpoints, and why each one is there
 
-### Holdings — `GET genius-api.mobula.io/api/2/wallet/holdings`
+### Holdings — two requests to `GET genius-api.mobula.io/api/2/wallet/holdings`
 
 *What does this contract hold right now, across every chain.*
 
@@ -101,8 +101,23 @@ checks the target's balance against a **curated list of six mainnet ERC20s**
 because Ripcord runs no indexer and does no balance discovery. Anything outside
 that list is invisible to it, at any block, under any provider.
 
-Called with `fetchAllChains=true`, so the answer spans chains rather than
-re-confirming mainnet.
+The endpoint is called twice, concurrently, because display and discovery have
+different requirements:
+
+- The **presentation request** uses `fetchAllChains=true`, `filterSpam=true` and
+  `minLiquidity=10000`. It supplies a manageable cross-chain live-exposure panel.
+- The **candidate-discovery request** is scoped to the report chain and uses
+  `unlistedAssets=true`, `accuracy=maximum`, `filterSpam=false` and
+  `minLiquidity=0`. Candidate selection consumes this response independently of
+  the panel's value floor and display cap.
+
+If the discovery request fails, the sidecar marks a visible `filtered_fallback`
+and uses presentation identities rather than silently claiming complete
+coverage. `unfiltered_response` means the documented vendor-side filters were
+disabled; it does not prove that a third-party index contains every asset.
+The reverse failure is also independent: if presentation fails but discovery
+succeeds, the live-exposure panel stays unavailable while the pinned candidate
+verification pass can still consume the unfiltered inventory.
 
 **The case that makes the point.** Lido's withdrawal queue holds roughly **$63.7M of
 native ETH**. Native ETH is not an ERC20. No entry in `MAJOR_TOKENS` could ever
@@ -115,14 +130,15 @@ Native assets get their **own path** through the composer. They arrive under the
 sentinel pseudo-address `0xeeee…eeee`, which is *the same on every chain*: a price
 map keyed on address alone silently merges ETH with BNB, and did — verified on
 cbETH, where ETH came back carrying BNB's quote. Every lookup in this layer is
-keyed by `(chainId, address)`, and the sentinel is never sent to the ERC20 price or
-metadata endpoints, because it is not a contract.
+keyed by `(chainId, address)`, and the sentinel is never sent to the ERC20 price
+endpoint, because it is not a contract.
 
 ### Market data — `POST genius-api.mobula.io/api/2/token/price`
 
 *A second quote, and the liquidity behind it.*
 
-Batched (up to 500 pairs). Returns `priceUSD` and `liquidityUSD`. Used for two things:
+Batched (up to 500 pairs). Returns `priceUSD`, `liquidityUSD`, `name`, `symbol`
+and `logo`. Used for three things:
 
 - A **second derivation** of each holding's value — `amount × priceUSD`, compared
   against the holdings endpoint's own `amountUSD`. Disagreement beyond 10% means no
@@ -141,28 +157,42 @@ Batched (up to 500 pairs). Returns `priceUSD` and `liquidityUSD`. Used for two t
   > fiction in the set. With the 10× multiple, 3pool's live exposure comes to
   > **$160,373,035.58** against the vendor's independently-reported
   > $160,373,036 — agreement that the absolute rule destroyed.
+- **Display enrichment.** Names, symbols and logos come from this v2 response,
+  with the holdings response as a fallback. This removes the deprecated v1
+  metadata request without weakening token identity, which remains
+  `(chainId, contract address)`.
 
-### Metadata — `GET api.mobula.io/api/1/multi-metadata`
+### Token-security differential — `GET api.mobula.io/api/2/token/security`
 
-*Names and logos, for readability.*
+This endpoint is not part of the live exposure fetch and does not produce a
+verdict. It is an opt-in engineering audit:
 
-A holdings row reading `0x2260fac5…` is useless to a non-crypto-native reader;
-"Wrapped Bitcoin" with a logo is not. Batched, keyed by `(contract, blockchain)`
-pairs — Mobula returns `contracts[]` and `blockchains[]` as parallel arrays, and
-pairing them by index is what keeps a multi-chain token's entries distinct.
+```sh
+pnpm mobula:security-audit -- calibration/reports/usdc.json
+```
 
-Logos are **downloaded once at fetch time and inlined as `data:` URIs**, never
-hotlinked. A rendered Ripcord page must not reach the network when someone opens it
-— `verify-pages.mjs` rejects any page containing `src="https://…"`, a remote
-stylesheet, a `<script src>` or a `fetch(` — and hotlinking a CDN would break that
-for decoration while leaking every page view to the vendor. Oversized, non-image or
-failed fetches fall back to a text monogram.
+The audit compares four narrow, like-for-like flags — minting, transfer pause,
+blacklisting and whitelisting — with Ripcord's observed capability signatures.
+It checks both ordinary findings and `needsManualVerification`; an unreadable
+dispatcher is `not_comparable`, never a false negative. Mobula-only signals such
+as honeypot, mutable balances, modifiable tax and self-destruct are preserved as
+unsupported context rather than forced into mismatched Ripcord concepts.
 
-> **A documentation correction, since it cost time.** The v2 endpoints are on
-> `genius-api.mobula.io`, not `api.mobula.io` as the reference pages state —
-> `api.mobula.io/api/2/wallet/holdings` returns `{"statusCode":404}`. The v1
-> metadata endpoint is the other way round. Both hosts answer keyless at a reduced
-> rate limit.
+Agreement and disagreement are regression leads for the analyser. They do not
+edit the report, change its verdict, or claim that either tool is ground truth.
+Directory input is capped at 10 reports by default because this endpoint costs 10
+Mobula credits per request; pass `--limit` deliberately to raise it.
+
+Logos returned by holdings/price are **downloaded once at fetch time and inlined
+as `data:` URIs**, never hotlinked. A rendered Ripcord page must not reach the
+network when someone opens it — `verify-pages.mjs` rejects any page containing
+`src="https://…"`, a remote stylesheet, a `<script src>` or a `fetch(`. Oversized,
+non-image or failed fetches fall back to a text monogram.
+
+Hosts are selected per endpoint: the portfolio holdings/price routes tested by
+this project are on `genius-api.mobula.io`; token security is on
+`api.mobula.io`. The deprecated `/api/1/multi-metadata` dependency has been
+removed.
 
 ### WebSocket — `wss://api.mobula.io`
 
@@ -278,7 +308,8 @@ What is forbidden is the third option — a silent empty result that reads as "t
 contract holds nothing." An unavailable exposure has `exposureUsd: null` and
 `holdingsCount: null`, never `0`.
 
-- **Timeout** hard, via `AbortController`: 30s for price and metadata, **120s for holdings**.
+- **Timeout** hard, via `AbortController`: 30s for price and token security,
+  **120s for each holdings request**.
 
   > The split was measured, not guessed, and the first version was wrong. A flat
   > 30s budget failed on six targets — Balancer Vault, cbETH, WETH9 and three
@@ -292,14 +323,19 @@ contract holds nothing." An unavailable exposure has `exposureUsd: null` and
   > separated them.
 - **Retry** up to 4 attempts with exponential backoff on 429/5xx and network errors; a 4xx returns immediately.
 - **A 200 carrying non-JSON** (proxy pages, captive portals) is a failure, not an empty portfolio.
-- **Partial degradation**: if holdings succeed but price or metadata fail, the panel still renders and `endpoints` records which answered, with the failure in `notes`.
+- **Partial degradation**: if presentation holdings succeed but price or the
+  unfiltered discovery request fails, the panel still renders, `endpoints`
+  records which answered, and the failure is explicit in `notes` and
+  `candidateDiscovery`.
 - **Resumable fetch**: `pnpm live:fetch` skips targets that already have a good sidecar, so a rate-limited sweep converges over re-runs. `--refetch` forces a full re-pull.
 
-All of this is tested with the network stubbed (`test/liveExposure.test.ts`) and
-the candidate pass has its own network-free tests (`test/assetContext.test.ts`): a 503, a thrown network error, an HTML-instead-of-JSON
-response, enrichment-only failure, the sentinel collision, each valuation basis, the
-vendor-total rejection, itemised withholding, the phishing-name case, and
-concentration.
+All of this is tested with the network stubbed (`test/liveExposure.test.ts`), the
+candidate pass has its own network-free tests (`test/assetContext.test.ts`), and
+the differential audit is covered by `test/mobulaSecurityAudit.test.ts`: a 503,
+a thrown network error, an HTML-instead-of-JSON response, discovery fallback,
+enrichment-only failure, the sentinel collision, each valuation basis, the
+vendor-total rejection, itemised withholding, the phishing-name case,
+concentration, like-for-like security comparisons and identity mismatch.
 
 ### Coverage of the calibration set
 
@@ -322,12 +358,12 @@ checked and unchanged, because it never depended on Mobula in the first place.
 
 ### The API key
 
-`MOBULA_API_KEY` in `.env`, free from https://admin.mobula.io. **Optional** — every
-endpoint used here answers keyless at a lower rate limit, so the layer works without
-one and a report is byte-identical either way. The key is read only by `src/live/*`
-and `scripts/fetch-live.ts`, never committed, and `verify-boundary` fails the build
-if it ever appears in a sidecar or a page. `.env` is gitignored and gitleaks scans
-the full history on every CI run.
+`MOBULA_API_KEY` in `.env`, obtained from https://admin.mobula.io, is required
+for fresh production API calls. Missing or rejected authentication is returned
+as an explicit unavailable result and cannot affect a report. The key is read only
+by `src/live/*` and live scripts, never committed, and `verify-boundary` fails the
+build if it ever appears in a sidecar or page. `.env` is gitignored and gitleaks
+scans the full history on every CI run.
 
 ---
 
@@ -343,8 +379,9 @@ validation. Once a publishable deterministic report has been stored, this
 separate process:
 
 1. fetches a new timestamped Mobula snapshot for the analysed address;
-2. takes identities from the complete holdings response, independently of the
-   UI's $1 floor and top-12 display cap, then selects at most 64 unique valid
+2. takes identities from a separate unfiltered same-chain holdings response,
+   independently of the UI's $1 floor, top-12 display cap and the presentation
+   request's spam/liquidity filters, then selects at most 64 unique valid
    same-chain ERC20 candidates;
 3. verifies contract code and `balanceOf(target)` at the report's exact block;
 4. checks the block hash before and after the pass; and

@@ -42,7 +42,17 @@ export interface LoadedReport {
 
 export class ReportService {
   /** id → absolute path, for committed calibration reports only. Built once at startup. */
-  private readonly calibration = new Map<string, { path: string; item: SavedReportListItem }>();
+  /**
+   * `publishable` is recorded at INDEX time and reused.
+   *
+   * The listing used to reopen and re-parse every calibration report on every
+   * request to re-read one boolean — ~9.6MB of JSON across the committed corpus,
+   * per call, for a value that cannot change: these files are read-only build
+   * artifacts, and `init` had already computed the flag while indexing them.
+   * `loadPublishable` still re-reads the artifact itself, because THAT is the
+   * gate and it must resolve toward the file rather than an index.
+   */
+  private readonly calibration = new Map<string, { path: string; item: SavedReportListItem; publishable: boolean }>();
 
   /**
    * Mobula snapshots, indexed by `<chainRef>|<lowercased target>` — never by
@@ -151,6 +161,7 @@ export class ReportService {
       const verdict = parsed.verdict as { status?: string } | null | undefined;
       this.calibration.set(id, {
         path,
+        publishable,
         item: {
           id,
           address: target?.address ?? "",
@@ -194,16 +205,11 @@ export class ReportService {
         hasExitRestriction: m.hasExitRestriction,
       }));
 
-    const calibration = [...this.calibration.values()].filter((c) => c.item.origin === "calibration").map((c) => c.item);
-    // Only publishable calibration entries. `init` already recorded which are
-    // blocked; they are counted, never listed.
-    const publishableCalibration: SavedReportListItem[] = [];
-    for (const entry of calibration) {
-      const source = this.calibration.get(entry.id);
-      if (!source) continue;
-      const parsed = JSON.parse(await readFile(source.path, "utf8")) as { disclosure?: { publishable?: boolean } };
-      if (parsed.disclosure?.publishable === true) publishableCalibration.push(entry);
-    }
+    // Only publishable calibration entries. `init` recorded which are blocked
+    // while it indexed them; they are counted, never listed.
+    const publishableCalibration = [...this.calibration.values()]
+      .filter((c) => c.item.origin === "calibration" && c.publishable)
+      .map((c) => c.item);
 
     return [...live, ...publishableCalibration].sort((a, b) => b.generatedAt.localeCompare(a.generatedAt));
   }

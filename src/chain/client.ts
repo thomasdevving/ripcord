@@ -128,11 +128,21 @@ function looksTransient(err: unknown): boolean {
 const RETRY_ATTEMPTS = 4;
 const RETRY_BASE_MS = 400;
 
-/** Runs `fn`, retrying only transient-looking failures with exponential backoff. Rethrows the ORIGINAL error when attempts run out. */
-async function withTransientRetry<T>(fn: () => Promise<T>): Promise<T> {
+/**
+ * Runs `fn`, retrying only transient-looking failures with exponential backoff.
+ * Rethrows the ORIGINAL error when attempts run out.
+ *
+ * `onAttempt` fires once per ACTUAL request. The counter used to be incremented
+ * by the caller, outside this loop, so a read that was retried three times was
+ * reported as one network call — which made `networkCallCount` a count of
+ * distinct reads attempted rather than of requests issued, and therefore useless
+ * as the capacity number it is quoted as. See docs/BASELINES.md.
+ */
+async function withTransientRetry<T>(fn: () => Promise<T>, onAttempt?: () => void): Promise<T> {
   let lastError: unknown;
   for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
     try {
+      onAttempt?.();
       return await fn();
     } catch (err) {
       lastError = err;
@@ -241,9 +251,11 @@ export class PinnedChain implements ChainReader {
     const { value: code } = await this.cache.wrap(
       { chainId: this.chainId, blockNumber, method: "getCode", params },
       async () => {
-        this.networkCallsMade++;
         try {
-          return await withTransientRetry(async () => (await this.client.getCode({ address, blockNumber })) ?? "0x");
+          return await withTransientRetry(
+            async () => (await this.client.getCode({ address, blockNumber })) ?? "0x",
+            () => { this.networkCallsMade++; },
+          );
         } catch (err) {
           throw new ChainReadError("getCode", `getCode(${address}) at block ${blockNumber} failed`, err);
         }
@@ -257,9 +269,11 @@ export class PinnedChain implements ChainReader {
     const { value: code } = await this.cache.wrap(
       { chainId: this.chainId, blockNumber: this.blockNumber, method: "getCode", params },
       async () => {
-        this.networkCallsMade++;
         try {
-          return await withTransientRetry(async () => (await this.client.getCode({ address, blockNumber: this.blockNumber })) ?? "0x");
+          return await withTransientRetry(
+            async () => (await this.client.getCode({ address, blockNumber: this.blockNumber })) ?? "0x",
+            () => { this.networkCallsMade++; },
+          );
         } catch (err) {
           throw new ChainReadError("getCode", `getCode(${address}) failed`, err);
         }
@@ -281,10 +295,10 @@ export class PinnedChain implements ChainReader {
     const { value } = await this.cache.wrap(
       { chainId: this.chainId, blockNumber: this.blockNumber, method: "getStorageAt", params },
       async () => {
-        this.networkCallsMade++;
         try {
-          const result = await withTransientRetry(() =>
-            this.client.getStorageAt({ address, slot, blockNumber: this.blockNumber }),
+          const result = await withTransientRetry(
+            () => this.client.getStorageAt({ address, slot, blockNumber: this.blockNumber }),
+            () => { this.networkCallsMade++; },
           );
           return result ?? ("0x" + "0".repeat(64) as Hex);
         } catch (err) {
@@ -304,10 +318,10 @@ export class PinnedChain implements ChainReader {
     const { value } = await this.cache.wrap(
       { chainId: this.chainId, blockNumber: this.blockNumber, method: "call", params },
       async () => {
-        this.networkCallsMade++;
         try {
-          const result = await withTransientRetry(() =>
-            this.client.call({ to: address, data, blockNumber: this.blockNumber }),
+          const result = await withTransientRetry(
+            () => this.client.call({ to: address, data, blockNumber: this.blockNumber }),
+            () => { this.networkCallsMade++; },
           );
           return { result: result.data, reverted: false };
         } catch (err) {
@@ -366,10 +380,10 @@ export class PinnedChain implements ChainReader {
     const { value } = await this.cache.wrap(
       { chainId: this.chainId, blockNumber: this.blockNumber, method: "probeCall", params },
       async () => {
-        this.networkCallsMade++;
         try {
-          const result = await withTransientRetry(() =>
-            this.client.call({ to: address, data, account: from, blockNumber: this.blockNumber }),
+          const result = await withTransientRetry(
+            () => this.client.call({ to: address, data, account: from, blockNumber: this.blockNumber }),
+            () => { this.networkCallsMade++; },
           );
           return { reverted: false, revertData: undefined as Hex | undefined, result: result.data };
         } catch (err) {
@@ -417,18 +431,33 @@ export class PinnedChain implements ChainReader {
       fromBlock: params.fromBlock.toString(),
       toBlock: params.toBlock.toString(),
     };
+    // A closed historical interval is not a fact about the REPORT's block: this
+    // entry is fully determined by (chainId, address, event, fromBlock,
+    // toBlock). Keying it under the pinned block made every identical interval a
+    // miss for the next report at a later block — so the role scan, by far the
+    // most request-hungry read Ripcord performs, re-fetched history it already
+    // had on disk. Keyed under `toBlock` instead, the entry is reusable across
+    // reports and no less historical than before, because `toBlock` can never
+    // exceed the pinned block:
+    if (params.toBlock > this.blockNumber) {
+      throw new ChainReadError(
+        "getLogs",
+        `getLogs toBlock ${params.toBlock} is beyond the pinned block ${this.blockNumber} — a read past the pin would break the determinism the cache rests on`,
+      );
+    }
     const { value: logs } = await this.cache.wrap(
-      { chainId: this.chainId, blockNumber: this.blockNumber, method: "getLogs", params: key },
+      { chainId: this.chainId, blockNumber: params.toBlock, method: "getLogs", params: key },
       async () => {
-        this.networkCallsMade++;
         try {
-          return await withTransientRetry(() =>
-            this.client.getLogs({
-              address: params.address,
-              event: parseAbiItem(params.event) as never,
-              fromBlock: params.fromBlock,
-              toBlock: params.toBlock,
-            }),
+          return await withTransientRetry(
+            () =>
+              this.client.getLogs({
+                address: params.address,
+                event: parseAbiItem(params.event) as never,
+                fromBlock: params.fromBlock,
+                toBlock: params.toBlock,
+              }),
+            () => { this.networkCallsMade++; },
           );
         } catch (err) {
           throw new ChainReadError("getLogs", `getLogs(${params.event}, ${params.fromBlock}-${params.toBlock}) failed`, err);

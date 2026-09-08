@@ -19,6 +19,7 @@ import { existsSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { randomUUID, randomBytes } from "node:crypto";
 import type { JobEvent, JobState, JobSummary, PhaseSnapshot, RunMode, StructuralSnapshot } from "../shared/dto.js";
+import { claimable, heldBy, leaseExpired, newLease, reclaimReason, renewLease, type InstanceIdentity } from "./lease.js";
 
 /** Ids we generate and ids we accept from a URL share this shape. Anything else is rejected before touching the filesystem. */
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
@@ -74,6 +75,16 @@ export interface JobRecord {
   lastSeq: number;
   /** Set only when the submitter supplied one. Used for submit-level idempotency. */
   idempotencyKey: string | null;
+  /**
+   * Which instance owns this job, and until when.
+   *
+   * Null for a job nobody is executing (terminal, or queued and unclaimed).
+   * Optional so a record written before ownership existed still parses — and an
+   * ABSENT lease is read as "unowned", which is the safe reading for a legacy
+   * record because those were all written by a single instance that is, by
+   * definition, no longer running when this code reads them.
+   */
+  lease?: import("./lease.js").JobLease | null;
 }
 
 export interface StoredReportMeta {
@@ -184,21 +195,45 @@ export class JobStore {
   }
 
   /**
-   * Moves every job still marked `running` or `queued` to `interrupted`.
+   * Moves every ABANDONED `running` or `queued` job to `interrupted`.
    *
-   * Called once at boot. A queued job is included deliberately: the in-memory
-   * queue did not survive the restart either, so a job left `queued` on disk
-   * would sit there forever showing a position that nothing will ever advance.
+   * ABANDONED, not "all of them". The previous version interrupted every
+   * persisted in-flight job at boot, which is correct for exactly one instance
+   * and destructive for two: a second instance starting up would declare the
+   * first instance's live work dead while it was still executing, and the
+   * browser watching it would be told the analysis had failed. A job is now only
+   * recovered when its lease has EXPIRED — meaning nothing has heartbeated for
+   * it — so a running peer keeps its jobs and a crashed one's are freed.
+   *
+   * A queued job with no live owner is still included: an unclaimed queue entry
+   * would otherwise sit forever showing a position nothing will advance.
+   *
+   * Deliberately conservative in one direction: an unparseable lease counts as
+   * NOT expired (see `leaseExpired`), so a corrupt record is left for an
+   * operator rather than reclaimed into a double execution.
    */
-  async recoverInterruptedJobs(): Promise<number> {
+  async recoverInterruptedJobs(identity: InstanceIdentity, now = Date.now()): Promise<{ recovered: number; skippedLive: number }> {
     const jobs = await this.listJobs();
     let recovered = 0;
+    let skippedLive = 0;
     for (const job of jobs) {
       if (job.state !== "running" && job.state !== "queued") continue;
+      // Reclaimable at boot in TWO cases, and the second matters as much as the
+      // first. An expired lease means nobody has heartbeated for it. An
+      // own-instance lease means a PREVIOUS LIFE of this process held it: this
+      // one has just started and has claimed nothing, so a record bearing our id
+      // cannot be live work. Without that case a restart would leave its own
+      // jobs showing `running` until the lease timed out — which only helps
+      // when RIPCORD_INSTANCE_ID is set to a stable value, and is exactly why
+      // setting it is recommended for a fixed replica.
+      const ours = job.lease?.instanceId === identity.instanceId;
+      if (!ours && !leaseExpired(job.lease, now)) { skippedLive++; continue; }
+      const reason = job.lease ? reclaimReason(job.lease, identity) : "The service restarted while this analysis was in progress, so it did not complete.";
       job.state = "interrupted";
       job.endedAt = new Date().toISOString();
+      job.lease = null;
       job.error = {
-        message: "The service restarted while this analysis was in progress, so it did not complete.",
+        message: reason,
         hint: "Start a new run. Nothing about the contract follows from an interrupted job.",
       };
       // Any phase caught mid-flight is marked failed rather than left
@@ -208,7 +243,51 @@ export class JobStore {
       await this.saveJob(job);
       recovered++;
     }
-    return recovered;
+    return { recovered, skippedLive };
+  }
+
+  /**
+   * Takes ownership of a job, refusing if someone else holds a live lease.
+   *
+   * A read-then-write on a file store is not a true compare-and-set, so this is
+   * honest about what it is: the re-read immediately before the write closes the
+   * window to the width of one rename, which is enough for the single-volume
+   * deployments this store is built for and is NOT enough for concurrent writers
+   * on separate hosts. That limitation belongs to the STORE, not to the
+   * ownership rules above it, which is why the decision lives in `claimable`
+   * and only the persistence is here — a backend with real conditional writes
+   * drops in without any rule changing.
+   */
+  async claimJob(jobId: string, identity: InstanceIdentity, now = Date.now()): Promise<JobRecord | null> {
+    const current = await this.loadJob(jobId);
+    if (!current) return null;
+    if (!claimable(current.lease, identity, now)) return null;
+    current.lease = newLease(identity, now);
+    await this.saveJob(current);
+    return current;
+  }
+
+  /**
+   * Renews a lease this instance holds. Returns false when the claim is gone —
+   * which a caller must treat as "stop working", because something else may
+   * already have reclaimed the job.
+   */
+  async heartbeat(jobId: string, identity: InstanceIdentity, now = Date.now()): Promise<boolean> {
+    const current = await this.loadJob(jobId);
+    if (!current || !current.lease) return false;
+    if (!heldBy(current.lease, identity, now)) return false;
+    current.lease = renewLease(current.lease, now);
+    await this.saveJob(current);
+    return true;
+  }
+
+  /** Drops this instance's claim, so a terminal job is not left looking owned. */
+  async releaseJob(jobId: string, identity: InstanceIdentity): Promise<void> {
+    const current = await this.loadJob(jobId);
+    if (!current || !current.lease) return;
+    if (current.lease.instanceId !== identity.instanceId) return;
+    current.lease = null;
+    await this.saveJob(current);
   }
 
   // --- events ----------------------------------------------------------------

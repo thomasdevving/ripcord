@@ -1,4 +1,5 @@
 import { forkTransactions as extractForkTransactions } from "../shared/fork.js";
+import { isUnresolvedTermination } from "../../src/report/schema.js";
 /**
  * ENGINE OBSERVATIONS → TRANSPORT EVENTS, and the disclosure boundary governing
  * which of them may leave the process early. The only adapter between
@@ -372,7 +373,7 @@ export class TransportObserver implements RunObserver, ForkObserver {
       // can tell "this is the end of the chain" from "this is where we stopped
       // looking". An empty children list must never read as "clean".
       const resolution: StructuralEdge["resolution"] =
-        node.terminationReason === "max_depth" || node.terminationReason === "no_authority_found"
+        isUnresolvedTermination(node.terminationReason)
           ? "unknown"
           : node.terminal
             ? "resolved"
