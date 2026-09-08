@@ -30,6 +30,8 @@ loopback, and is never exposed.
 | Sanitiser | `server/sanitize.ts` | Strips RPC URLs (which are provider keys) out of every outbound error. |
 | Validation | `server/validate.ts` | Address, chain, block, mode, contract-code presence. Resolves `latest` **once**. |
 | Store | `server/jobs/store.ts` | Atomic writes, safe id→path resolution, interrupted-job recovery, retention. |
+| Protocol store | `server/protocol-store.ts` | Named contract sets and durable baseline/rescan membership. |
+| Protocol comparison | `server/protocol-diff.ts` | Semantic before/after fields only; never compares evidence ordering or timestamps. |
 | Manager | `server/jobs/manager.ts` | Queue, worker lifecycle, event sequencing, cancellation, timeouts. |
 | Worker | `server/jobs/worker.ts` | A forked child that imports the engine directly. |
 | Observer | `server/jobs/observer.ts` | Engine observations → transport events, and the early-stream boundary. |
@@ -161,6 +163,27 @@ existing job rather than queueing a second heavyweight scan. Reusing a key
 against different parameters is rejected. A deliberate re-run simply
 omits the key and gets a new execution id.
 
+### Protocol baselines and rescans
+
+A protocol workspace is an explicit set of one to four Ethereum Mainnet
+contracts. Starting a protocol scan resolves `latest` once, records that block
+identity, and submits every contract at the same number and hash. The first batch
+is the baseline; each later batch compares with the immediately preceding one.
+
+The comparator reads only reports that passed the existing publication gate and
+today's report schema. It compares bytecode, proxy fields, owners, role
+membership, capability guards, authority paths, Exit Window routes and
+assessment, time to exit, blockability, verdict, and analysis coverage. A
+blocked or failed report produces a named comparison gap. “No semantic changes
+observed” is reachable only when every in-scope target has two comparable
+reports.
+
+Protocol scan requests carry their own idempotency key. The batch record is
+written before jobs are admitted, so a process stop cannot make an unsubmitted
+contract disappear. Jobs and reports referenced by a protocol timeline are
+exempt from ordinary count-based retention; deleting a timeline is not yet part
+of this first workflow.
+
 ---
 
 ## 5. API
@@ -174,6 +197,10 @@ omits the key and gets a new execution id.
 | `GET /api/jobs/:id/events` | SSE. `?after=` or `Last-Event-ID` resumes. |
 | `GET /api/jobs/:id/events/poll` | Polling fallback, same cursor semantics, reports `truncated`. |
 | `POST /api/jobs/:id/cancel` | Requires the control token. |
+| `GET /api/protocols` | Named protocol workspaces and latest scan state. |
+| `POST /api/protocols` | Create a workspace with 1–4 explicit Mainnet contract addresses. |
+| `GET /api/protocols/:id` | Workspace, scan history, comparison results and coverage gaps. |
+| `POST /api/protocols/:id/scans` | Start an idempotent, same-block static scan for every contract. |
 | `GET /api/reports` | Publishable reports only. |
 | `GET /api/reports/:id` | 200, or **451** for a blocked report, or 404. |
 | `GET /api/reports/:id/download` | Same boundary. |
