@@ -16,6 +16,7 @@ import type { ConfigResponse } from "@shared/dto";
 import { listReports } from "../api.js";
 import { navigate } from "../router.js";
 import { Hero } from "../components/Hero.js";
+import { MethodSteps } from "../components/MethodSteps.js";
 import type { ReactElement } from "react";
 
 /**
@@ -219,17 +220,7 @@ export function HomeScreen({ config }: { config: ConfigResponse | null }): React
             </p>
           </header>
 
-          <ol className="steps">
-            {STEPS.map((step, i) => (
-              <li className="step" key={step.title}>
-                <span className="step-n" aria-hidden="true">{String(i + 1).padStart(2, "0")}</span>
-                <div className="step-body">
-                  <h4 className="step-title">{step.title}</h4>
-                  <p className="step-text">{step.text}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
+          <MethodSteps steps={STEPS} />
         </section>
 
         <section className="home-limits" aria-labelledby="limits-title">
