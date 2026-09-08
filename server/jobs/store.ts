@@ -534,7 +534,13 @@ export class JobStore {
    * shared report URL is expected to keep working after the job that produced it
    * has aged out. Jobs, their events and their artifacts age together.
    */
-  async prune(opts: { maxJobs: number; maxReports: number }): Promise<{ jobs: number; reports: number }> {
+  async prune(opts: {
+    maxJobs: number;
+    maxReports: number;
+    /** Protocol timelines are durable product records, so their source jobs and reports outlive ordinary retention. */
+    protectedJobIds?: ReadonlySet<string>;
+    protectedReportIds?: ReadonlySet<string>;
+  }): Promise<{ jobs: number; reports: number }> {
     // Nothing to prune if the data directory has gone. That happens for real —
     // a volume detached under a running container, or a test tearing down its
     // temp dir while a fire-and-forget retention pass is still in flight — and
@@ -544,7 +550,7 @@ export class JobStore {
     let prunedJobs = 0;
     for (const job of jobs.slice(opts.maxJobs)) {
       // Never prune a job that is still live — the queue holds a reference to it.
-      if (job.state === "running" || job.state === "queued") continue;
+      if (job.state === "running" || job.state === "queued" || opts.protectedJobIds?.has(job.jobId)) continue;
       await rm(safeJoin(this.jobsDir, job.jobId), { force: true });
       await rm(safeJoin(this.leasesDir, job.jobId), { force: true });
       await rm(safeJoin(this.eventsDir, job.jobId, ".jsonl"), { force: true });
@@ -555,6 +561,7 @@ export class JobStore {
     const reports = await this.listReportMeta();
     let prunedReports = 0;
     for (const meta of reports.slice(opts.maxReports)) {
+      if (opts.protectedReportIds?.has(meta.id)) continue;
       await rm(safeJoin(this.reportsDir, meta.id), { force: true });
       await rm(safeJoin(this.reportsDir, meta.id, ".meta.json"), { force: true });
       await rm(safeJoin(this.assetContextsDir, meta.id), { force: true });

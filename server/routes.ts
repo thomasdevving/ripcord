@@ -31,12 +31,15 @@ import { classify } from "./sanitize.js";
 import { schemaVersion, rulesetVersion } from "../src/report/schema.js";
 import { selectorAnalyzer } from "../src/detect/dispatcher.js";
 import { buildEvidenceIndex } from "../src/report/evidenceIndex.js";
-import type { ApiError, ConfigResponse, CreateJobResponse, JobEvent, PresetDescriptor } from "./shared/dto.js";
+import type { ApiError, ConfigResponse, CreateJobRequest, CreateJobResponse, JobEvent, PresetDescriptor } from "./shared/dto.js";
+import { ProtocolStore, validateProtocolInput } from "./protocol-store.js";
+import { ProtocolService } from "./protocol-service.js";
 
 export interface RouteDeps {
   config: ServerConfig;
   manager: JobManager;
   reports: ReportService;
+  protocolStore: ProtocolStore;
   anvil: { available: boolean; version: string | null };
 }
 
@@ -72,13 +75,70 @@ function presets(defaultBlock: bigint): PresetDescriptor[] {
 const sendError = (reply: FastifyReply, status: number, error: ApiError): FastifyReply => reply.status(status).send({ error });
 
 export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
-  const { config, manager, reports, anvil } = deps;
+  const { config, manager, reports, protocolStore, anvil } = deps;
+  const protocols = new ProtocolService(protocolStore, manager, reports);
 
   /** A public client for the validator's two reads. Created per call — these are single reads, not a hot path. */
   const clientFor = (chainId: number) => {
     const url = rpcUrlFor(config, chainId);
     if (!url) return null;
     return createPublicClient({ transport: http(url) });
+  };
+
+  /** One admission path for the single-address form and protocol batches. */
+  const submitJob = (raw: CreateJobRequest, expectedBlockHash: string | null = null) => manager.admit(raw, async () => {
+    const validation = await validateCreateJob(raw, {
+      supportedChainIds: [1],
+      blockIdentity: async (chainId, blockNumber) => {
+        const client = clientFor(chainId);
+        if (!client) throw new Error("no RPC configured");
+        return verifyBlockIdentity(client, chainId, blockNumber, expectedBlockHash);
+      },
+      availableModes: availableModes(config, anvil.available),
+      resolveLatestBlock: async chainId => {
+        const client = clientFor(chainId);
+        if (!client) throw new Error("no RPC configured for this chain");
+        return client.getBlockNumber();
+      },
+      codeSizeAt: async (chainId, address, block) => {
+        const client = clientFor(chainId);
+        if (!client) throw new Error("no RPC configured for this chain");
+        const code = await client.getCode({ address: address as `0x${string}`, blockNumber: block });
+        return code && code !== "0x" ? (code.length - 2) / 2 : 0;
+      },
+    });
+    if (!validation.ok) throw new RequestValidationError(validation.error);
+    return manager.createJob(
+      {
+        address: validation.value.address,
+        chainId: validation.value.chainId,
+        block: validation.value.blockSource === "resolved_latest" ? "latest" : validation.value.block.toString(),
+        ...(validation.value.controlToken ? { controlToken: validation.value.controlToken } : {}),
+        mode: validation.value.mode,
+        refreshAssetContext: validation.value.refreshAssetContext,
+        ...(validation.value.idempotencyKey ? { idempotencyKey: validation.value.idempotencyKey } : {}),
+      },
+      validation.value.block,
+      validation.value.blockSource,
+      validation.value.blockHash ?? null,
+    );
+  });
+
+  /** Serialises batch admission per protocol, including simultaneous HTTP retries. */
+  const protocolAdmissionTails = new Map<string, Promise<void>>();
+  const withProtocolAdmission = async <T>(protocolId: string, task: () => Promise<T>): Promise<T> => {
+    const previous = protocolAdmissionTails.get(protocolId) ?? Promise.resolve();
+    let release!: () => void;
+    const gate = new Promise<void>((done) => { release = done; });
+    const tail = previous.catch(() => undefined).then(() => gate);
+    protocolAdmissionTails.set(protocolId, tail);
+    await previous.catch(() => undefined);
+    try {
+      return await task();
+    } finally {
+      release();
+      if (protocolAdmissionTails.get(protocolId) === tail) protocolAdmissionTails.delete(protocolId);
+    }
   };
 
   // --- health ---------------------------------------------------------------
@@ -121,43 +181,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     }
 
     try {
-      const outcome = await manager.admit(req.body, async () => {
-        const validation = await validateCreateJob(req.body, {
-          supportedChainIds: [1],
-          blockIdentity: async (chainId, blockNumber) => {
-            const client = clientFor(chainId);
-            if (!client) throw new Error("no RPC configured");
-            return verifyBlockIdentity(client, chainId, blockNumber);
-          },
-          availableModes: availableModes(config, anvil.available),
-          resolveLatestBlock: async chainId => {
-            const client = clientFor(chainId);
-            if (!client) throw new Error("no RPC configured for this chain");
-            return client.getBlockNumber();
-          },
-          codeSizeAt: async (chainId, address, block) => {
-            const client = clientFor(chainId);
-            if (!client) throw new Error("no RPC configured for this chain");
-            const code = await client.getCode({ address: address as `0x${string}`, blockNumber: block });
-            return code && code !== "0x" ? (code.length - 2) / 2 : 0;
-          },
-        });
-        if (!validation.ok) throw new RequestValidationError(validation.error);
-        return manager.createJob(
-          {
-            address: validation.value.address,
-            chainId: validation.value.chainId,
-            block: validation.value.blockSource === "resolved_latest" ? "latest" : validation.value.block.toString(),
-            ...(validation.value.controlToken ? { controlToken: validation.value.controlToken } : {}),
-            mode: validation.value.mode,
-            refreshAssetContext: validation.value.refreshAssetContext,
-            ...(validation.value.idempotencyKey ? { idempotencyKey: validation.value.idempotencyKey } : {}),
-          },
-          validation.value.block,
-          validation.value.blockSource,
-          validation.value.blockHash ?? null,
-        );
-      });
+      const outcome = await submitJob(req.body as CreateJobRequest);
       const body: CreateJobResponse = {
         jobId: outcome.record.jobId,
         // Only its hash is stored. A retry recovers a supplied client capability.
@@ -272,6 +296,114 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     return reply.send({ status: "cancelled" });
   });
 
+  // --- protocols ------------------------------------------------------------
+
+  app.get("/api/protocols", async (_req, reply) => {
+    return reply.send({ protocols: await protocols.list() });
+  });
+
+  app.post("/api/protocols", async (req: FastifyRequest, reply) => {
+    const parsed = validateProtocolInput(req.body);
+    if (!parsed.ok) {
+      return sendError(reply, 400, { code: "invalid_protocol", message: parsed.message, hint: null });
+    }
+    try {
+      const protocol = await protocolStore.createProtocol(parsed.name, parsed.targets);
+      return reply.status(201).send({ protocol });
+    } catch (error) {
+      return sendError(reply, 500, classify(error));
+    }
+  });
+
+  app.get("/api/protocols/:id", async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
+    const protocol = await protocolStore.getProtocol(req.params.id);
+    if (!protocol) return sendError(reply, 404, { code: "not_found", message: "No such protocol.", hint: null });
+    return reply.send(await protocols.detail(protocol));
+  });
+
+  app.post(
+    "/api/protocols/:id/scans",
+    async (req: FastifyRequest<{ Params: { id: string }; Body: { idempotencyKey?: string } }>, reply) => {
+      const protocol = await protocolStore.getProtocol(req.params.id);
+      if (!protocol) return sendError(reply, 404, { code: "not_found", message: "No such protocol.", hint: null });
+
+      const blockedReason = liveRunsBlockedReason(config);
+      if (blockedReason) {
+        return sendError(reply, 503, {
+          code: config.enableLiveRuns ? "rpc_unconfigured" : "live_runs_disabled",
+          message: blockedReason,
+          hint: "Existing protocol scans remain readable.",
+        });
+      }
+
+      const key = typeof req.body?.idempotencyKey === "string" && /^[A-Za-z0-9_-]{8,40}$/.test(req.body.idempotencyKey)
+        ? req.body.idempotencyKey
+        : null;
+      if (!key) return sendError(reply, 400, { code: "invalid_protocol", message: "A valid scan idempotency key is required.", hint: null });
+
+      return withProtocolAdmission(protocol.id, async () => {
+        // Re-read inside the serial section. Two simultaneous retries otherwise
+        // both observe "not found" before either has written the batch record.
+        const duplicate = await protocolStore.findScanByIdempotencyKey(protocol.id, key);
+        if (duplicate) return reply.status(202).send({ scan: await protocols.viewScan(protocol, duplicate) });
+
+        const existing = await protocols.detail(protocol);
+        if (existing.scans.some((scan) => scan.state === "queued" || scan.state === "running")) {
+          return sendError(reply, 409, {
+            code: "idempotency_conflict",
+            message: "This protocol already has a scan in progress.",
+            hint: "Wait for it to finish before establishing another point in the timeline.",
+          });
+        }
+
+        const capacity = config.maxActiveJobs + config.maxQueuedJobs;
+        const usage = manager.stats();
+        if (protocol.targets.length > capacity - usage.active - usage.queued) {
+          return sendError(reply, 429, {
+            code: "queue_full",
+            message: `The queue does not have ${protocol.targets.length} free slots for this complete protocol scan.`,
+            hint: "Wait for existing analyses to finish. No partial protocol scan was started.",
+          });
+        }
+
+      // Resolve latest once for the WHOLE protocol. Resolving per target would
+      // let a busy batch straddle several blocks and make its own baseline
+      // internally inconsistent before comparison even begins.
+        let block: bigint;
+        let blockHash: string;
+        try {
+          const client = clientFor(1);
+          if (!client) throw new Error("no RPC configured for this chain");
+          block = await client.getBlockNumber();
+          blockHash = await verifyBlockIdentity(client, 1, block);
+        } catch (error) {
+          return sendError(reply, 503, classify(error));
+        }
+
+        const created = await protocolStore.createScan(protocol, key);
+        if (created.deduplicated) return reply.status(202).send({ scan: await protocols.viewScan(protocol, created.scan) });
+
+        for (const target of protocol.targets) {
+          try {
+            const outcome = await submitJob({
+              address: target.address,
+              chainId: target.chainId,
+              block: block.toString(),
+              mode: "scan",
+              refreshAssetContext: false,
+              idempotencyKey: `${key}_${target.id}`,
+            }, blockHash);
+            await protocolStore.saveScanTarget(created.scan, { targetId: target.id, jobId: outcome.record.jobId, submissionError: null });
+          } catch (error) {
+            await protocolStore.saveScanTarget(created.scan, { targetId: target.id, jobId: null, submissionError: publicSubmissionError(error) });
+          }
+        }
+
+        return reply.status(202).send({ scan: await protocols.viewScan(protocol, created.scan) });
+      });
+    },
+  );
+
   // --- reports --------------------------------------------------------------
 
   app.get("/api/reports", async (_req, reply) => {
@@ -378,3 +510,12 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
 }
 
 class RequestValidationError extends Error { constructor(public readonly api: ApiError) { super(api.message); } }
+
+function publicSubmissionError(error: unknown): { message: string; hint: string | null } {
+  if (error instanceof RequestValidationError) return { message: error.api.message, hint: error.api.hint };
+  if (error instanceof IdempotencyConflictError) return { message: error.message, hint: "Use a new key for a different analysis." };
+  if (error instanceof SubmissionRateError) return { message: error.message, hint: "Wait before starting another batch." };
+  if (error instanceof QueueFullError) return { message: error.message, hint: "Wait for existing analyses to finish." };
+  const safe = classify(error);
+  return { message: safe.message, hint: safe.hint };
+}

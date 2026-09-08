@@ -8,13 +8,15 @@ import { JobManager } from "../server/jobs/manager.js";
 import { ReportService } from "../server/reports.js";
 import { registerRoutes } from "../server/routes.js";
 import { loadConfig } from "../server/config.js";
+import { ProtocolStore } from "../server/protocol-store.js";
 let dir: string, app: ReturnType<typeof Fastify>, store: JobStore, manager: JobManager;
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "ripcord-http-")); store = new JobStore(dir); await store.init();
   const config = loadConfig({ RIPCORD_DATA_DIR: dir });
   manager = new JobManager(config, store, "unused-worker"); await manager.init();
   const reports = new ReportService(store, join(dir, "calibration")); await reports.init();
-  app = Fastify(); registerRoutes(app, { config, manager, reports, anvil: { available: false, version: null } });
+  const protocolStore = new ProtocolStore(dir); await protocolStore.init();
+  app = Fastify(); registerRoutes(app, { config, manager, reports, protocolStore, anvil: { available: false, version: null } });
 });
 afterEach(async () => { await manager.shutdown(); await app.close(); await rm(dir, { recursive: true, force: true }); });
 it("enforces the same publication projection on JSON and download without removing evidence", async () => {
@@ -36,4 +38,40 @@ it("never returns a blocked body or graph even if the sidecar falsely says publi
     const response = await app.inject({ method: "GET", url });
     expect(response.statusCode).toBe(451); expect(response.body).not.toContain("WITHHELD_PAYLOAD"); expect(response.json().structure).toBeUndefined();
   }
+});
+
+it("creates and reloads a protocol workspace without starting chain work", async () => {
+  const created = await app.inject({
+    method: "POST",
+    url: "/api/protocols",
+    payload: {
+      name: "Protocol under review",
+      targets: [
+        { label: "Core", address: `0x${"11".repeat(20)}`, chainId: 1 },
+        { label: "Vault", address: `0x${"22".repeat(20)}`, chainId: 1 },
+      ],
+    },
+  });
+  expect(created.statusCode).toBe(201);
+  const protocolId = created.json().protocol.id as string;
+
+  const listing = await app.inject({ method: "GET", url: "/api/protocols" });
+  expect(listing.statusCode).toBe(200);
+  expect(listing.json().protocols).toMatchObject([{ id: protocolId, scanCount: 0, lastScanState: null }]);
+
+  const detail = await app.inject({ method: "GET", url: `/api/protocols/${protocolId}` });
+  expect(detail.statusCode).toBe(200);
+  expect(detail.json().protocol.targets).toHaveLength(2);
+  expect(detail.json().scans).toEqual([]);
+});
+
+it("rejects a protocol with duplicate contract addresses", async () => {
+  const duplicate = `0x${"ab".repeat(20)}`;
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/protocols",
+    payload: { name: "Duplicate", targets: [{ address: duplicate }, { address: duplicate.toUpperCase().replace("0X", "0x") }] },
+  });
+  expect(response.statusCode).toBe(400);
+  expect(response.json().error.code).toBe("invalid_protocol");
 });

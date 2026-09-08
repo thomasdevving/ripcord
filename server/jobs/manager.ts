@@ -169,6 +169,8 @@ export class JobManager {
     private readonly workerPath: string,
     /** Optional hook that durably schedules post-report sidecar work. */
     private readonly onReportStored: ((input: StoredReportHookInput) => Promise<void>) | null = null,
+    /** IDs referenced by durable protocol timelines and therefore exempt from ordinary retention. */
+    private readonly retentionProtection: (() => Promise<{ jobIds: Set<string>; reportIds: Set<string> }>) | null = null,
   ) {
     // One SSE consumer per browser tab, plus a poller each — the default of 10
     // is reached by a handful of viewers and would otherwise print a spurious
@@ -759,7 +761,8 @@ export class JobManager {
     // background task that could race a live job.
     const retention = this.retentionTail.then(async () => {
       await Promise.all([...this.jobs.values()].filter(j => isTerminal(j.record.state)).map(j => j.writes));
-      await this.store.prune(RETENTION);
+      const protectedIds = await this.retentionProtection?.() ?? { jobIds: new Set<string>(), reportIds: new Set<string>() };
+      await this.store.prune({ ...RETENTION, protectedJobIds: protectedIds.jobIds, protectedReportIds: protectedIds.reportIds });
       // New submissions may start during awaits, so read active leases lazily.
       await this.store.pruneCache(() => new Set([...this.jobs.values()].filter(j => !isTerminal(j.record.state) || this.running.has(j.record.jobId)).map(j => j.record.blockHash).filter((h): h is string => !!h)));
     })

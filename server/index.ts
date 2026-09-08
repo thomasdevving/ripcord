@@ -27,6 +27,7 @@ import { registerRoutes } from "./routes.js";
 import { modeRunsFork } from "./shared/dto.js";
 import { checkAnvilAvailable } from "../src/fork/preflight.js";
 import { safeLogValue, rpcSecrets } from "./sanitize.js";
+import { ProtocolStore } from "./protocol-store.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -81,6 +82,8 @@ async function main(): Promise<void> {
 
   const store = new JobStore(config.dataDir);
   await store.init();
+  const protocolStore = new ProtocolStore(config.dataDir);
+  await protocolStore.init();
   const recoveredAssetContexts = await store.recoverPendingAssetContexts();
 
   const reports = new ReportService(store, config.calibrationDir, rpcSecrets(config.rpcUrls.values()), config.liveSidecarDir);
@@ -90,8 +93,20 @@ async function main(): Promise<void> {
   const sidecars = await reports.indexLiveSidecars();
 
   const assetContext = new AssetContextService(config, store);
-  const manager = new JobManager(config, store, resolveWorkerPath(), ({ reportId, report, meta }) =>
-    assetContext.start(reportId, report, modeRunsFork(meta.mode)),
+  const manager = new JobManager(
+    config,
+    store,
+    resolveWorkerPath(),
+    ({ reportId, report, meta }) => assetContext.start(reportId, report, modeRunsFork(meta.mode)),
+    async () => {
+      const jobIds = await protocolStore.referencedJobIds();
+      const reportIds = new Set<string>();
+      for (const jobId of jobIds) {
+        const reportId = (await store.loadJob(jobId))?.reportId;
+        if (reportId) reportIds.add(reportId);
+      }
+      return { jobIds, reportIds };
+    },
   );
   const { recovered, skippedLive, instanceId } = await manager.init();
 
@@ -113,7 +128,7 @@ async function main(): Promise<void> {
     trustProxy: true,
   });
 
-  registerRoutes(app, { config, manager, reports, anvil });
+  registerRoutes(app, { config, manager, reports, protocolStore, anvil });
 
   const webDist = resolveWebDist(config.webDistDir);
   if (webDist) {

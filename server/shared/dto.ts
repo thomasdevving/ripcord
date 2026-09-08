@@ -508,6 +508,7 @@ export interface BlockedReportResponse {
 export type ApiErrorCode =
   | "idempotency_conflict"
   | "submission_rate_limited"
+  | "invalid_protocol"
   | "invalid_address"
   | "invalid_block"
   | "unsupported_chain"
