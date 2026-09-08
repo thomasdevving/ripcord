@@ -56,6 +56,36 @@ const STEPS: { title: string; text: string }[] = [
   },
 ];
 
+/**
+ * What privileged power can do to a holder, in the categories Ripcord's own
+ * taxonomy uses. Each is a CAPABILITY that legitimately exists in deployed
+ * protocols today — the point is not that they are illegitimate, it is that
+ * they are usually invisible to the person carrying the risk. Nothing here
+ * says anyone will use one; that claim is not available from a chain.
+ */
+const RISKS: { title: string; text: string }[] = [
+  {
+    title: "The code can be replaced",
+    text:
+      "Behind an upgradeable proxy, an admin can point the contract at a different implementation. The reviewed code and the running code are two different things, and nothing about the swap breaks a rule an audit checked.",
+  },
+  {
+    title: "The exit can be closed",
+    text:
+      "A pause switch stops withdrawals for everyone; a per-account restriction stops them for one holder. Either way the question stops being how long leaving takes and becomes whether leaving is possible at all.",
+  },
+  {
+    title: "Your share can be diluted",
+    text:
+      "Where a mint function is reachable by a privileged party, supply can change under a holder who did nothing. A timelock on the upgrade path says nothing about this one.",
+  },
+  {
+    title: "The economics can be rewritten",
+    text:
+      "Fees, collateral factors, oracles and caps are ordinary parameters. Changing them changes what a position is worth without touching the code an auditor read.",
+  },
+];
+
 /** The contract the hero's example card quotes. See Hero.tsx. */
 const QUOTED_ADDRESS = "0xc3d688b66703497daa19211eedff47f25384cdc3";
 
@@ -99,18 +129,72 @@ export function HomeScreen({ config }: { config: ConfigResponse | null }): React
       />
 
       <main className="container home-content">
-        <section className="home-answer" aria-labelledby="home-question">
+        {/* WHY BEFORE HOW. The page used to open on the mechanism, which only
+            means something to a reader who already accepts that the question
+            is worth asking. These three sections make the case first — the
+            problem, what is at stake, and the comparison the whole tool is
+            built around — and the method follows for anyone still reading.
+            `id="why"` because the top bar links here. */}
+        <section className="home-answer" id="why" aria-labelledby="why-problem">
           <div>
-            <p className="section-label">The core question</p>
-            <h2 className="home-question" id="home-question">
-              Does an upgrade delay also protect your withdrawal?
+            <p className="section-label">Why Ripcord</p>
+            <h2 className="home-question" id="why-problem">
+              An audit asks whether the code is correct. It does not ask who can change it.
             </h2>
           </div>
           <div className="home-answer-copy">
             <p>
-              Those are two different routes. A timelock on the upgrade path says nothing about a pause function reachable
-              with no notice at all. Ripcord reports them separately instead of letting the reassuring route stand in for
-              the fastest one.
+              An audit is a statement about a specific version of a contract at a specific time. Where that contract
+              sits behind an upgradeable proxy, an admin can replace the implementation — or exercise any other
+              legitimate on-chain power — without violating a single thing the audit checked. The report stays true and
+              stops being the whole picture.
+            </p>
+            <p>
+              None of this is hidden. The admin slot, the owner, the role holders, the delay on a timelock: all of it is
+              public and readable in advance, by anyone, before they deposit. The gap is not secrecy. It is that nobody
+              assembles it into an answer, so in practice the person carrying the risk does not have one.
+            </p>
+          </div>
+        </section>
+
+        <section className="home-limits" aria-labelledby="why-risks">
+          <header className="home-section-heading">
+            <p className="section-label">What is at stake</p>
+            <h2 id="why-risks">What privileged power can do to a position</h2>
+            <p>
+              These capabilities exist in protocols that are working exactly as designed. Naming them is not an
+              accusation — Ripcord never claims anyone will use one. The claim is only that they are reachable, and by
+              whom.
+            </p>
+          </header>
+          <ul className="limit-grid">
+            {RISKS.map((risk) => (
+              <li key={risk.title}>
+                <strong>{risk.title}</strong>
+                {risk.text}
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section className="home-answer" aria-labelledby="home-question">
+          <div>
+            <p className="section-label">The core question</p>
+            <h2 className="home-question" id="home-question">
+              A delay only protects you if you can leave inside it.
+            </h2>
+          </div>
+          <div className="home-answer-copy">
+            <p>
+              "This protocol has a 48-hour timelock" is only half a sentence. The half that decides whether you are
+              protected is how long it takes <em>you</em> to get out — through a cooldown, an unbonding queue, a
+              two-step withdrawal, or a pause that has already been flipped. If leaving takes at least as long as the
+              notice, the notice buys you nothing.
+            </p>
+            <p>
+              They are also two different routes. A timelock on the upgrade path says nothing about a pause function
+              reachable with no notice at all, so Ripcord reports them separately instead of letting the reassuring
+              route stand in for the fastest one — and tests the exit rather than arguing about it.
             </p>
             <div className="fork-sequence" aria-label="Fork experiment sequence">
               <span>Exit succeeds</span>
@@ -152,7 +236,11 @@ export function HomeScreen({ config }: { config: ConfigResponse | null }): React
           <header className="home-section-heading">
             <p className="section-label">The boundaries</p>
             <h2 id="limits-title">What it will not tell you</h2>
-            <p>The limits are part of the output, not a disclaimer underneath it.</p>
+            <p>
+              Above all, that a contract is safe — no tool can. Proving that no path exists to restrict an exit, across
+              every argument and every market condition, is not something anyone can test. The limits are part of the
+              output, not a disclaimer underneath it.
+            </p>
           </header>
           <ul className="limit-grid">
             <li>

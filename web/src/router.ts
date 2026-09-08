@@ -1,6 +1,6 @@
 /**
- * A ~40-line router. There are six routes, and pulling in a routing library for
- * six would add more bundle and API surface than it removes.
+ * A ~40-line router. There are five routes, and pulling in a routing library for
+ * five would add more bundle and API surface than it removes.
  *
  * The reason routes exist at all rather than one stateful page: A REPORT URL MUST
  * SURVIVE A REFRESH. `/report/:id` re-fetches the stored report, and
@@ -13,7 +13,6 @@ import { useEffect, useState } from "react";
 export type Route =
   | { name: "home" }
   | { name: "scan" }
-  | { name: "why" }
   | { name: "analysis"; jobId: string }
   | { name: "report"; reportId: string }
   | { name: "saved" };
@@ -23,7 +22,8 @@ export function parseRoute(pathname: string): Route {
   if (parts[0] === "analysis" && parts[1]) return { name: "analysis", jobId: parts[1] };
   if (parts[0] === "report" && parts[1]) return { name: "report", reportId: parts[1] };
   if (parts[0] === "scan") return { name: "scan" };
-  if (parts[0] === "why") return { name: "why" };
+  // /why was briefly a page of its own; it now falls through to the home
+  // page, where that argument lives under the hero.
   if (parts[0] === "saved") return { name: "saved" };
   return { name: "home" };
 }
@@ -36,8 +36,6 @@ export function toPath(route: Route): string {
       return `/report/${route.reportId}`;
     case "scan":
       return "/scan";
-    case "why":
-      return "/why";
     case "saved":
       return "/saved";
     default:

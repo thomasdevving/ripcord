@@ -1875,44 +1875,4 @@ details.fold.inline-fold .fold-body { padding: 12px 14px 14px; }
   color: var(--text-primary);
 }
 
-/* --- "Why Ripcord?" -------------------------------------------------------
- *
- * The argument page. It reuses the home page's section shapes deliberately:
- * this is the same document's voice, not a marketing skin over it, and a
- * separate visual language would undercut the claim that the tool and its
- * explanation come from one place.
- */
-.why-page { padding-top: clamp(28px, 4vw, 52px); }
 
-.why-head {
-  max-width: 62rem;
-  margin-bottom: clamp(30px, 4vw, 48px);
-  padding-bottom: clamp(22px, 3vw, 32px);
-  border-bottom: 1px solid var(--border);
-}
-
-.why-head h1 {
-  margin: 10px 0 0;
-  font-family: var(--display);
-  font-weight: 700;
-  font-size: clamp(28px, 3.6vw, 46px);
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-  text-wrap: balance;
-}
-
-.why-lede {
-  margin: 16px 0 0;
-  max-width: 62ch;
-  font-size: 16px;
-  line-height: 1.62;
-  color: var(--text-secondary);
-}
-
-.why-cta {
-  margin: clamp(30px, 4vw, 48px) 0 clamp(40px, 5vw, 64px);
-  padding-top: clamp(22px, 3vw, 32px);
-  border-top: 1px solid var(--border);
-}
-.why-cta h2 { margin: 0 0 6px; font-family: var(--display); font-size: clamp(20px, 2vw, 26px); }
-.why-cta .note { max-width: 62ch; margin-bottom: 18px; }

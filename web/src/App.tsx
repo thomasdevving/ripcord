@@ -12,7 +12,6 @@ import type { ConfigResponse } from "@shared/dto";
 import { getConfig } from "./api.js";
 import { navigate, useRoute } from "./router.js";
 import { HomeScreen } from "./screens/HomeScreen.js";
-import { WhyScreen } from "./screens/WhyScreen.js";
 import { ScanScreen } from "./screens/ScanScreen.js";
 import { AnalysisScreen } from "./screens/AnalysisScreen.js";
 import { ReportScreen } from "./screens/ReportScreen.js";
@@ -58,15 +57,20 @@ export function App(): ReactElement {
         </a>
         <div className="topbar-spacer" />
         <nav className="topbar-nav" aria-label="Primary navigation">
-          {/* First in the nav, because it answers the question a first-time
-              reader has before any of the others are useful to them. */}
+          {/* A LINK INTO THE PAGE, not to a page of its own. The argument reads
+              better as the first thing under the hero than as a destination
+              someone has to decide to visit, so this scrolls rather than
+              navigates — and still works from a report, by going home first
+              and letting the section be found on the next frame. */}
           <a
-            href="/why"
-            className={`topbar-link ${route.name === "why" ? "active" : ""}`}
-            aria-current={route.name === "why" ? "page" : undefined}
+            href="/#why"
+            className="topbar-link"
             onClick={(e) => {
               e.preventDefault();
-              navigate({ name: "why" });
+              if (route.name !== "home") navigate({ name: "home" });
+              requestAnimationFrame(() =>
+                document.getElementById("why")?.scrollIntoView({ behavior: "smooth", block: "start" }),
+              );
             }}
           >
             Why Ripcord?
@@ -118,7 +122,6 @@ export function App(): ReactElement {
       )}
 
       {route.name === "home" && <HomeScreen config={config} />}
-      {route.name === "why" && <WhyScreen />}
       {route.name === "scan" && <ScanScreen config={config} />}
       {route.name === "analysis" && <AnalysisScreen key={route.jobId} jobId={route.jobId} />}
       {route.name === "report" && <ReportScreen key={route.reportId} reportId={route.reportId} />}
