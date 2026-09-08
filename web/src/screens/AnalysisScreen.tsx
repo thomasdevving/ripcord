@@ -184,31 +184,43 @@ export function AnalysisScreen({ jobId }: { jobId: string }): ReactElement {
           )}
         </section>
 
-        <div className="split analysis-layout">
-          <section className="card">
-            <h2>Power map</h2>
-            <p className="note" style={{ marginTop: 0 }}>
-              Every node comes from a read Ripcord performed. An edge records an observed relation — it is not evidence
-              that the holder can pass its own authorisation.
-            </p>
-            <PowerMap snapshot={publishedStructure ?? job.structure} selected={selected} onSelect={setSelected} />
-          </section>
-          <DetailPanel snapshot={publishedStructure ?? job.structure} selected={selected} onClose={() => setSelected(null)} />
-        </div>
+        {/* WHILE THE RUN IS IN FLIGHT these are the page: the map fills in as
+            addresses resolve and the fork blocks arrive as they execute, which
+            is the whole reason to watch a run rather than wait for it. ONCE A
+            REPORT EXISTS they move INSIDE it, into the panes they belong to, so
+            a finished run reads exactly like the same report opened from a
+            link. Leaving them stacked above meant a completed analysis was
+            still the long scroll the tabs replaced — the map twice, the fork
+            evidence twice, and the verdict a screen and a half down. */}
+        {!report && (
+          <>
+            <div className="split analysis-layout">
+              <section className="card">
+                <h2>Power map</h2>
+                <p className="note" style={{ marginTop: 0 }}>
+                  Every node comes from a read Ripcord performed. An edge records an observed relation — it is not
+                  evidence that the holder can pass its own authorisation.
+                </p>
+                <PowerMap snapshot={publishedStructure ?? job.structure} selected={selected} onSelect={setSelected} />
+              </section>
+              <DetailPanel snapshot={publishedStructure ?? job.structure} selected={selected} onClose={() => setSelected(null)} />
+            </div>
 
-        {forkMode &&
-          (forkRan ? (
-            <ForkEvidence fork={forkBlocks} finished={isTerminal(state)} />
-          ) : (
-            <section className="card">
-              <h2>The withdrawal experiment</h2>
-              <p className="note" style={{ marginBottom: 0 }}>
-                {running
-                  ? "Waiting for the static scan to finish. The experiment needs the decoded selector surface before it can identify the exit action."
-                  : "The withdrawal experiment did not run for this target. The reason appears in the report's fork section below."}
-              </p>
-            </section>
-          ))}
+            {forkMode &&
+              (forkRan ? (
+                <ForkEvidence fork={forkBlocks} finished={isTerminal(state)} />
+              ) : (
+                <section className="card">
+                  <h2>The withdrawal experiment</h2>
+                  <p className="note" style={{ marginBottom: 0 }}>
+                    {running
+                      ? "Waiting for the static scan to finish. The experiment needs the decoded selector surface before it can identify the exit action."
+                      : "The withdrawal experiment did not run for this target. The reason appears in the report's fork section below."}
+                  </p>
+                </section>
+              ))}
+          </>
+        )}
 
         {job.blockedMessage && (
           <section className="card">
@@ -227,6 +239,30 @@ export function AnalysisScreen({ jobId }: { jobId: string }): ReactElement {
           <ReportView
             report={report}
             reportId={job.reportId}
+            onNodeFocus={(address) => setSelected(address)}
+            powerMap={
+              <div className="split report-map-layout">
+                <section className="card report-map-card" id="power-map" tabIndex={-1}>
+                  <h2>Power map</h2>
+                  <PowerMap snapshot={publishedStructure ?? job.structure} selected={selected} onSelect={setSelected} />
+                </section>
+                <DetailPanel snapshot={publishedStructure ?? job.structure} selected={selected} onClose={() => setSelected(null)} />
+              </div>
+            }
+            forkEvidence={
+              forkMode && forkRan ? (
+                <ForkEvidence
+                  fork={forkBlocks}
+                  // Spread rather than passed as possibly-undefined props: under
+                  // exactOptionalPropertyTypes an absent limitation and one
+                  // explicitly set to undefined are different things, and only
+                  // the first is what "this report has no exitRestriction"
+                  // means.
+                  {...(report.exitRestriction ? { ceiling: report.exitRestriction.ceiling, sandboxNote: report.exitRestriction.sandboxNote } : {})}
+                  finished={isTerminal(state)}
+                />
+              ) : null
+            }
             assetEvidence={
               coverage ? <AssetCoveragePanel coverage={coverage} enriched={enriched} stalled={coverageStalled} /> : null
             }
