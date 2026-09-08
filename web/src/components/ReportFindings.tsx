@@ -35,8 +35,15 @@ function Group({
     <div className="finding-group">
       <h3 className={`finding-group-title ${tone}`}>
         {title} <span className="finding-count">{findings.length}</span>
+        {/* The qualification is one hover away rather than a paragraph under
+            every heading. It is not optional text — it is what stops
+            "Demonstrated" reading as a severity rating — so it is also printed
+            in the fold at the top of this card, where it cannot be missed by
+            someone who never hovers. */}
+        <span className="finding-why" tabIndex={0} role="note" aria-label={gloss} title={gloss}>
+          Why?
+        </span>
       </h3>
-      <p className="note small finding-gloss">{gloss}</p>
       <ul className="finding-list">
         {findings.map((finding) => (
           <li className={`finding ${tone}`} key={finding.id}>
@@ -71,11 +78,36 @@ export function ReportFindings({
   return (
     <section className="card" id="findings">
       <h2>What this run established</h2>
-      <p className="note" style={{ marginTop: 0 }}>
-        Every line below restates a conclusion the analysis already reached and links to the pane holding its evidence.
-        The two groups differ in what was <em>observed</em>, not in how severe anything is — this report computes no
-        risk score.
-      </p>
+
+      {/* The reading instructions are a fold, not a preamble. They matter — the
+          groups are an evidence split and not a severity ranking, and someone
+          who assumes otherwise misreads the whole page — but three paragraphs
+          before the first finding pushed the findings themselves off the
+          screen, which is its own way of not being read. */}
+      <details className="fold inline-fold">
+        <summary>
+          <span>How to read this list</span>
+          <span className="fold-hint">what the two groups mean, and what they do not</span>
+        </summary>
+        <div className="fold-body">
+          <p className="note" style={{ marginTop: 0 }}>
+            Every line restates a conclusion the analysis already reached and links to the pane holding its evidence.
+            Nothing here is computed a second time.
+          </p>
+          <p className="note">
+            <strong>Demonstrated</strong> — positively established: read at the analysed block, or executed on a sandbox
+            fork. It describes what a privileged party is technically able to do; it never predicts that anyone will.
+          </p>
+          <p className="note">
+            <strong>Unresolved</strong> — the analysis could not settle it. This is never a clean result: it is the part
+            of the picture this run could not see, and it holds the verdict back from any reassuring tier.
+          </p>
+          <p className="note small" style={{ marginBottom: 0 }}>
+            The two groups differ in what was <em>observed</em>, not in how severe anything is. This report computes no
+            risk score, and the order of the list is not a ranking.
+          </p>
+        </div>
+      </details>
 
       <Group
         title="Demonstrated"

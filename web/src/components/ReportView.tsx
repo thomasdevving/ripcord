@@ -327,7 +327,16 @@ export function ReportView({
     { id: "evidence", label: "Evidence" },
   ];
 
-  const [tab, setTab] = useState<FindingTab>("overview");
+  /**
+   * The open pane is in the URL fragment, so a link to a report can point at
+   * the evidence being discussed rather than at the top of the page. Read once
+   * on mount; an unknown fragment falls back to Overview rather than rendering
+   * nothing.
+   */
+  const [tab, setTab] = useState<FindingTab>(() => {
+    const fromHash = window.location.hash.replace(/^#/, "");
+    return (["overview", "power", "fork", "assets", "evidence"] as const).find((id) => id === fromHash) ?? "overview";
+  });
   // A tab can disappear between renders — the asset sidecar arrives late, and a
   // live run gains its fork pane only when the engine reaches it. Falling back
   // to Overview keeps the page from rendering a panel with no tab.
@@ -345,15 +354,31 @@ export function ReportView({
     const target = document.getElementById(pending);
     setPending(null);
     if (!target) return;
+    // A destination inside a closed fold is a destination the reader cannot
+    // see. Open the target itself and every fold containing it — arriving at a
+    // collapsed summary would look exactly like a link that did nothing.
+    for (let node: HTMLElement | null = target; node; node = node.parentElement) {
+      if (node instanceof HTMLDetailsElement) node.open = true;
+    }
     target.scrollIntoView({ behavior: "smooth", block: "start" });
     // The heading, not the button that sent us here: a reader arriving at a
     // section should hear what it is.
     target.focus?.();
   }, [pending, active]);
 
+  /**
+   * `replaceState`, never `pushState`: switching panes is not navigation, and
+   * filling the back button with tab changes would strand a reader who wanted
+   * to leave the report.
+   */
+  const selectTab = (next: FindingTab) => {
+    setTab(next);
+    window.history.replaceState(null, "", `#${next}`);
+  };
+
   const openEvidence = (destination: FindingTab, anchor: string, node: string | null) => {
     if (node) onNodeFocus?.(node);
-    setTab(tabs.some((t) => t.id === destination) ? destination : "evidence");
+    selectTab(tabs.some((t) => t.id === destination) ? destination : "evidence");
     setPending(anchor);
   };
 
@@ -383,47 +408,26 @@ export function ReportView({
         </header>
       )}
 
+      {/* THE ANSWER, AND ONLY THE ANSWER. The card used to carry the verdict's
+          full statement, its gloss, the margin and the list of what was
+          missing — six paragraphs a reader had to cross before reaching the
+          first piece of evidence. All of it still exists, one fold below, in
+          "Why this verdict": nothing was deleted, because the missing list in
+          particular is what stops a thin verdict reading as a confident one.
+          What changed is that the reader chooses when to read it. */}
       <section className={`card verdict-card ${tone}`}>
-        {/* Two columns on a wide screen: the figures answer the question, the
-            prose says what they rest on. One stacked column below 1180px. */}
-        <div className="verdict-body">
-          <div className="verdict-figures">
-            <div className="verdict-line">
-              <h2 className="verdict-badge">{(verdict?.status ?? "no verdict").toUpperCase().replace(/_/g, " ")}</h2>
-              {verdict && <span className="chip">confidence: {verdict.confidence}</span>}
-            </div>
-            <Clocks report={report} />
-          </div>
-
-          <div className="verdict-prose">
-            <p className="statement">{verdict?.statement ?? "This report carries no verdict."}</p>
-            {verdict && VERDICT_GLOSS[verdict.status] && <p className="note">{VERDICT_GLOSS[verdict.status]}</p>}
-            {verdict && verdict.marginSeconds !== null && (
-              <p className="note small">
-                Margin between leaving and the rules changing:{" "}
-                {formatDuration(verdict.marginSeconds) ?? `${verdict.marginSeconds}s`}.
-              </p>
-            )}
-          </div>
+        <div className="verdict-line">
+          <h2 className="verdict-badge">{(verdict?.status ?? "no verdict").toUpperCase().replace(/_/g, " ")}</h2>
+          {verdict && <span className="chip">confidence: {verdict.confidence}</span>}
         </div>
-
-        {verdict && verdict.missing.length > 0 && (
-          <div className="banner warn" style={{ marginTop: 16, marginBottom: 0 }}>
-            <strong>Why this verdict is not crisper</strong>
-            <ul className="plain" style={{ marginBottom: 0 }}>
-              {verdict.missing.map((item, i) => (
-                <li key={i}>{item}</li>
-              ))}
-            </ul>
-          </div>
-        )}
+        <Clocks report={report} />
       </section>
 
       <ReportTabs
         tabs={tabs}
         active={active}
-        onSelect={(tab) => {
-          setTab(tab);
+        onSelect={(next) => {
+          selectTab(next);
           setPending(null);
         }}
       />
@@ -436,8 +440,45 @@ export function ReportView({
         hidden={active !== "overview"}
       >
           <ReportFindings report={report} onOpen={openEvidence} />
-          <section className="card">
-            <h2>Notice before the rules can change</h2>
+
+          {/* Everything the verdict card used to say out loud. A FOLD, NOT A
+              DELETION: `missing[]` is the machinery that stops a thin verdict
+              reading as a confident one, and a report that dropped it would
+              make the claim this project refuses. Closed by default, because a
+              reader who wanted the answer has already had it. */}
+          <details className="card fold" id="why-verdict">
+            <summary>
+              <span>Why this verdict</span>
+              <span className="fold-hint">the full statement, the margin, and what is missing</span>
+            </summary>
+            <div className="fold-body">
+              <p className="statement" style={{ marginTop: 0 }}>{verdict?.statement ?? "This report carries no verdict."}</p>
+              {verdict && VERDICT_GLOSS[verdict.status] && <p className="note">{VERDICT_GLOSS[verdict.status]}</p>}
+              {verdict && verdict.marginSeconds !== null && (
+                <p className="note small">
+                  Margin between leaving and the rules changing:{" "}
+                  {formatDuration(verdict.marginSeconds) ?? `${verdict.marginSeconds}s`}.
+                </p>
+              )}
+              {verdict && verdict.missing.length > 0 && (
+                <div className="banner warn" style={{ marginBottom: 0 }}>
+                  <strong>Why this verdict is not crisper</strong>
+                  <ul className="plain" style={{ marginBottom: 0 }}>
+                    {verdict.missing.map((item, i) => (
+                      <li key={i}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </details>
+
+          <details className="card fold">
+            <summary>
+              <span>Notice before the rules can change</span>
+              <span className="fold-hint">every authority route, and the checks behind the minimum</span>
+            </summary>
+            <div className="fold-body">
             <Routes report={report} />
             {report.exitWindow && (
               <details>
@@ -457,10 +498,15 @@ export function ReportView({
                 </ul>
               </details>
             )}
-          </section>
+            </div>
+          </details>
 
-          <section className="card" id="time-to-exit" tabIndex={-1}>
-            <h2>How long leaving takes</h2>
+          <details className="card fold" id="time-to-exit">
+            <summary>
+              <span>How long leaving takes</span>
+              <span className="fold-hint">the measured legs, and the ones that could not be measured</span>
+            </summary>
+            <div className="fold-body">
             {tte ? (
               <>
                 <p className="statement" style={{ marginTop: 0 }}>
@@ -516,8 +562,8 @@ export function ReportView({
             ) : (
               <p className="note">No time-to-exit analysis was produced for this target.</p>
             )}
-          </section>
-
+            </div>
+          </details>
       </div>
 
       {active === "power" && (
