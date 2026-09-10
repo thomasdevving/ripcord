@@ -28,6 +28,7 @@ import { modeRunsFork } from "./shared/dto.js";
 import { checkAnvilAvailable } from "../src/fork/preflight.js";
 import { safeLogValue, rpcSecrets } from "./sanitize.js";
 import { ProtocolStore } from "./protocol-store.js";
+import { AuthService } from "./auth.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -84,6 +85,21 @@ async function main(): Promise<void> {
   await store.init();
   const protocolStore = new ProtocolStore(config.dataDir);
   await protocolStore.init();
+  const auth = new AuthService(config);
+  await auth.init();
+  if (config.legacyOrganizationId) {
+    if (!auth.organizationExists(config.legacyOrganizationId)) {
+      throw new ConfigError("RIPCORD_LEGACY_ORGANIZATION_ID", "does not match an organization in this deployment");
+    }
+    const [legacyJobs, legacyProtocols] = await Promise.all([
+      store.claimUnowned(config.legacyOrganizationId),
+      protocolStore.claimUnowned(config.legacyOrganizationId),
+    ]);
+    console.log(
+      `[ripcord] legacy ownership: ${legacyJobs.jobs} job(s), ${legacyJobs.reports} report(s), ` +
+      `${legacyProtocols.protocols} protocol(s), ${legacyProtocols.scans} protocol scan(s) assigned to ${config.legacyOrganizationId}`,
+    );
+  }
   const recoveredAssetContexts = await store.recoverPendingAssetContexts();
 
   const reports = new ReportService(store, config.calibrationDir, rpcSecrets(config.rpcUrls.values()), config.liveSidecarDir);
@@ -128,7 +144,8 @@ async function main(): Promise<void> {
     trustProxy: true,
   });
 
-  registerRoutes(app, { config, manager, reports, protocolStore, anvil });
+  auth.register(app);
+  registerRoutes(app, { config, manager, reports, protocolStore, auth, anvil });
 
   const webDist = resolveWebDist(config.webDistDir);
   if (webDist) {
@@ -167,6 +184,7 @@ async function main(): Promise<void> {
       // starting a second replica needs to see which.
       `  left running : ${skippedLive} job(s) still held by a live lease (another instance is working on them)`,
       `  asset recovery: ${recoveredAssetContexts} interrupted asset-context refresh(es) marked unavailable`,
+      `  sign-up       : ${config.allowSignup ? "enabled" : "disabled"}`,
     ].join("\n"),
   );
 
@@ -180,6 +198,7 @@ async function main(): Promise<void> {
     try { await Promise.all([manager.shutdown(), assetContext.shutdown()]); }
     catch (err) { console.error(`[ripcord] shutdown incomplete: ${safeLogValue(err)}`); process.exitCode = 1; return; }
     await app.close();
+    auth.close();
     process.exit(0);
   };
   process.on("SIGTERM", () => void shutdown("SIGTERM"));

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ProtocolStore, validateProtocolInput } from "../server/protocol-store.js";
 import { JobStore } from "../server/jobs/store.js";
+import { TEST_ORGANIZATION_ID } from "./helpers/auth.js";
 
 let dir: string;
 let store: ProtocolStore;
@@ -18,7 +19,7 @@ afterEach(async () => { await rm(dir, { recursive: true, force: true }); });
 
 describe("protocol store", () => {
   it("persists one baseline and deduplicates a repeated heavyweight submission", async () => {
-    const protocol = await store.createProtocol("Test protocol", [{ label: "Core", address: `0x${"11".repeat(20)}`, chainId: 1 }]);
+    const protocol = await store.createProtocol(TEST_ORGANIZATION_ID, "Test protocol", [{ label: "Core", address: `0x${"11".repeat(20)}`, chainId: 1 }]);
     const first = await store.createScan(protocol, "request_key");
     expect(first.scan.kind).toBe("baseline");
     expect(first.scan.targets[0]?.submissionError?.message).toContain("stopped before");
@@ -43,7 +44,7 @@ describe("protocol store", () => {
 
   it("keeps jobs and reports that a durable protocol timeline references", async () => {
     const jobs = new JobStore(dir); await jobs.init();
-    const protocol = await store.createProtocol("Retained", [{ label: "Core", address: `0x${"33".repeat(20)}`, chainId: 1 }]);
+    const protocol = await store.createProtocol(TEST_ORGANIZATION_ID, "Retained", [{ label: "Core", address: `0x${"33".repeat(20)}`, chainId: 1 }]);
     const scan = await store.createScan(protocol, "retention_key");
     await store.saveScanTarget(scan.scan, { targetId: protocol.targets[0]!.id, jobId: "job_kept", submissionError: null });
     await jobs.saveJob({ jobId: "job_kept", state: "completed", createdAt: "2026-01-01T00:00:00Z", reportId: "rep_kept" } as any);

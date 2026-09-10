@@ -19,6 +19,7 @@ import { JobStore } from "../server/jobs/store.js";
 import { JobManager } from "../server/jobs/manager.js";
 import { ReportService } from "../server/reports.js";
 import { registerRoutes } from "../server/routes.js";
+import { testAuth, TEST_ORGANIZATION_ID } from "./helpers/auth.js";
 import { loadConfig } from "../server/config.js";
 import type { AssetContextArtifact } from "../server/asset-context.js";
 
@@ -98,7 +99,7 @@ beforeEach(async () => {
   await reports.init();
   await reports.indexLiveSidecars();
   app = Fastify();
-  registerRoutes(app, { config, manager, reports, anvil: { available: false, version: null } } as never);
+  registerRoutes(app, { config, manager, reports, auth: testAuth, anvil: { available: false, version: null } } as never);
   report = JSON.parse(await readFile("calibration/reports/compound-comet-cusdcv3.json", "utf8"));
 });
 
@@ -110,7 +111,7 @@ afterEach(async () => {
 
 describe("GET /api/reports/:id/coverage", () => {
   it("serves coverage for a stored publishable report with no sidecar at all", async () => {
-    await store.saveReport("rep_live", report, { id: "rep_live", publishable: true } as never);
+    await store.saveReport("rep_live", report, { id: "rep_live", organizationId: TEST_ORGANIZATION_ID, publishable: true } as never);
     const result = await coverage("rep_live");
 
     expect(result.status).toBe(200);
@@ -123,13 +124,13 @@ describe("GET /api/reports/:id/coverage", () => {
   });
 
   it("reports a requested-but-missing sidecar as pending rather than as absent", async () => {
-    await store.saveReport("rep_live", report, { id: "rep_live", publishable: true, refreshAssetContext: true } as never);
+    await store.saveReport("rep_live", report, { id: "rep_live", organizationId: TEST_ORGANIZATION_ID, publishable: true, refreshAssetContext: true } as never);
     const result = await coverage("rep_live");
     expect(result.json().coverage.provenance.candidateVerification.status).toBe("pending");
   });
 
   it("shows the committed snapshot while a refresh is pending, and the fresh one once it completes", async () => {
-    await store.saveReport("rep_live", report, { id: "rep_live", publishable: true, refreshAssetContext: true } as never);
+    await store.saveReport("rep_live", report, { id: "rep_live", organizationId: TEST_ORGANIZATION_ID, publishable: true, refreshAssetContext: true } as never);
 
     // Pending: the fresh snapshot does not exist yet, so nothing may be shown
     // under its heading. The committed one is absent here, so the panel simply
@@ -156,7 +157,7 @@ describe("GET /api/reports/:id/coverage", () => {
     // THE TWO-CLOCK RULE. An unavailable refresh must read as unavailable. If
     // it quietly reverted to a committed snapshot, the page would show an old
     // observation as though it belonged to this run.
-    await store.saveReport("rep_live", report, { id: "rep_live", publishable: true, refreshAssetContext: true } as never);
+    await store.saveReport("rep_live", report, { id: "rep_live", organizationId: TEST_ORGANIZATION_ID, publishable: true, refreshAssetContext: true } as never);
     await store.saveAssetContext("rep_live", sidecar({ status: "unavailable", exposure: null, notes: ["vendor down"] }));
 
     const result = await coverage("rep_live");
@@ -170,7 +171,7 @@ describe("GET /api/reports/:id/coverage", () => {
   });
 
   it("keeps the candidate fork labelled experimental over the wire", async () => {
-    await store.saveReport("rep_live", report, { id: "rep_live", publishable: true, refreshAssetContext: true } as never);
+    await store.saveReport("rep_live", report, { id: "rep_live", organizationId: TEST_ORGANIZATION_ID, publishable: true, refreshAssetContext: true } as never);
     await store.saveAssetContext("rep_live", sidecar());
     expect((await coverage("rep_live")).json().coverage.provenance.candidateFork.experimental).toBe(true);
   });
@@ -181,7 +182,7 @@ describe("GET /api/reports/:id/coverage", () => {
     await store.saveReport(
       "rep_blocked",
       { ...report, disclosure: { publishable: false } },
-      { id: "rep_blocked", publishable: false, refreshAssetContext: true } as never,
+      { id: "rep_blocked", organizationId: TEST_ORGANIZATION_ID, publishable: false, refreshAssetContext: true } as never,
     );
     await store.saveAssetContext("rep_blocked", sidecar({ reportId: "rep_blocked" }));
 
@@ -199,7 +200,7 @@ describe("GET /api/reports/:id/coverage", () => {
   });
 
   it("never exposes the run id or any server-side path to the browser", async () => {
-    await store.saveReport("rep_live", report, { id: "rep_live", publishable: true, refreshAssetContext: true } as never);
+    await store.saveReport("rep_live", report, { id: "rep_live", organizationId: TEST_ORGANIZATION_ID, publishable: true, refreshAssetContext: true } as never);
     await store.saveAssetContext("rep_live", sidecar());
     const body = (await coverage("rep_live")).body;
     expect(body).not.toContain("run-1");
@@ -207,7 +208,7 @@ describe("GET /api/reports/:id/coverage", () => {
   });
 
   it("serves the enriched assessment beside the coverage, with the verdict untouched", async () => {
-    await store.saveReport("rep_live", report, { id: "rep_live", publishable: true, refreshAssetContext: true } as never);
+    await store.saveReport("rep_live", report, { id: "rep_live", organizationId: TEST_ORGANIZATION_ID, publishable: true, refreshAssetContext: true } as never);
     await store.saveAssetContext("rep_live", sidecar());
 
     const result = await coverage("rep_live");
@@ -225,7 +226,7 @@ describe("GET /api/reports/:id/coverage", () => {
     await store.saveReport(
       "rep_blocked",
       { ...report, disclosure: { publishable: false } },
-      { id: "rep_blocked", publishable: false, refreshAssetContext: true } as never,
+      { id: "rep_blocked", organizationId: TEST_ORGANIZATION_ID, publishable: false, refreshAssetContext: true } as never,
     );
     await store.saveAssetContext("rep_blocked", sidecar({ reportId: "rep_blocked" }));
     const result = await coverage("rep_blocked");

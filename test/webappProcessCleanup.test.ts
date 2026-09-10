@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { JobManager } from "../server/jobs/manager.js";
 import { JobStore } from "../server/jobs/store.js";
 import { loadConfig } from "../server/config.js";
+import { TEST_ORGANIZATION_ID } from "./helpers/auth.js";
 it("kills the owned process group, including a TERM-resistant descendant, before releasing capacity", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ripcord-process-tree-"));
   const store = new JobStore(dir); await store.init();
@@ -15,7 +16,7 @@ it("kills the owned process group, including a TERM-resistant descendant, before
   const manager = new JobManager(config, store, fileURLToPath(new URL("./fixtures/process-tree-worker.mjs", import.meta.url)));
   await manager.init();
   try {
-    const job = await manager.createJob({ address: `0x${"ab".repeat(20)}`, chainId: 1, mode: "scan", block: "100" }, 100n, "explicit");
+    const job = await manager.createJob({ address: `0x${"ab".repeat(20)}`, chainId: 1, mode: "scan", block: "100" }, 100n, "explicit", TEST_ORGANIZATION_ID);
     const deadline = Date.now() + 5000;
     while (!job.record.phases[0]?.metrics?.descendantPid && Date.now() < deadline) await new Promise(r => setTimeout(r, 25));
     const metrics = job.record.phases[0]?.metrics!;

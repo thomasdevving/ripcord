@@ -37,10 +37,12 @@
     "start:webapp": "node dist-server/server/index.js",
     "dev:webapp": "concurrently -n server,web -c blue,green \"pnpm dev:server\" \"vite\"",
     "dev:server": "node scripts/dev-server.mjs",
-    "verify:webapp": "node scripts/verify-webapp.mjs"
+    "verify:webapp": "node scripts/verify-webapp.mjs",
+    "verify:auth": "node scripts/verify-auth.mjs"
   },
   "dependencies": {
     "@fastify/static": "^10.1.3",
+    "better-auth": "1.7.3",
     "commander": "^12.1.0",
     "evmole": "0.9.3",
     "fastify": "^5.12.1",
@@ -48,7 +50,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@types/node": "^20.14.0",
+    "@types/node": "^22.20.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",
     "@vitejs/plugin-react": "^6.1.1",

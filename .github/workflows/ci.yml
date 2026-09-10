@@ -65,6 +65,7 @@ jobs:
       # variable is inlined at build time, so "no secret in the bundle" is only
       # meaningful against the artifact that actually ships.
       - run: pnpm build:webapp
+      - run: pnpm verify:auth
       - run: pnpm verify:webapp
 
   # Secret scan over the FULL history, every run.
@@ -119,7 +120,7 @@ jobs:
       - name: Boot with a root-owned persistent volume
         run: |
           docker volume create ripcord-smoke-data
-          docker run -d --name ripcord-smoke -p 127.0.0.1:8080:8080 -v ripcord-smoke-data:/data -e RIPCORD_ENABLE_LIVE_RUNS=false ripcord-smoke
+          docker run -d --name ripcord-smoke -p 127.0.0.1:8080:8080 -v ripcord-smoke-data:/data -e RIPCORD_ENABLE_LIVE_RUNS=false -e RIPCORD_AUTH_SECRET=docker-smoke-secret-with-at-least-32-characters -e RIPCORD_PUBLIC_URL=http://127.0.0.1:8080 ripcord-smoke
           trap 'docker logs ripcord-smoke; docker rm -f ripcord-smoke; docker volume rm ripcord-smoke-data' EXIT
           for attempt in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:8080/healthz > /tmp/health.json; then break; fi

@@ -427,7 +427,7 @@ button.link {
   text-decoration: underline;
 }
 
-input[type="text"], select {
+input[type="text"], input[type="email"], input[type="password"], select {
   font: inherit;
   width: 100%;
   /* A <select> sizes itself to its WIDEST OPTION rather than to its container,
@@ -460,10 +460,40 @@ label {
 }
 
 .field { margin-bottom: 14px; }
+.field-help { display: block; margin-top: 5px; color: var(--muted); font-size: 11.5px; }
 .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
 .row > * { flex: 1; min-width: 180px; }
 .row > .shrink { flex: 0 0 auto; min-width: 0; }
 .row > span.shrink { display: inline-flex; }
+
+/* --- authentication and organization shell ------------------------------ */
+
+.auth-page { min-height: 100vh; display: grid; place-items: center; padding: 28px 20px; }
+.auth-card { width: min(100%, 470px); padding: clamp(22px, 4vw, 34px) !important; }
+.auth-brand { margin-bottom: 34px; }
+.auth-card h1 { margin-bottom: 10px; }
+.auth-card .note { margin: 0 0 24px; }
+.auth-submit { width: 100%; margin-top: 4px; }
+.auth-mode { display: block; margin: 18px auto 0; font-size: 12px; }
+.organization-choices { display: grid; gap: 8px; }
+
+.account-controls { display: flex; align-items: center; gap: 7px; margin-left: 4px; padding-left: 10px; border-left: 1px solid var(--border); }
+.account-controls select { width: auto; max-width: 170px; padding: 6px 26px 6px 9px; font: 10.5px/1.4 var(--mono); }
+.organization-name { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font: 10.5px/1.4 var(--mono); }
+.account-organization-id { padding: 6px 7px; color: var(--muted); background: transparent; font: 9px/1.4 var(--mono); white-space: nowrap; }
+.account-signout { padding: 6px 9px; color: var(--muted); background: transparent; font: 10px/1.4 var(--mono); white-space: nowrap; }
+
+@media (max-width: 980px) {
+  .organization-name, .account-controls select, .account-organization-id { display: none; }
+  .topbar-why { display: none; }
+  .account-controls { padding-left: 6px; }
+}
+
+@media (max-width: 680px) {
+  .account-controls { margin-left: 0; padding-left: 4px; }
+  .account-signout { padding-inline: 6px; font-size: 0; }
+  .account-signout::after { content: "Exit"; font-size: 9px; }
+}
 
 /* --- option list ----------------------------------------------------------
  *

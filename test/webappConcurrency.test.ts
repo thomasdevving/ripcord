@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { JobManager } from "../server/jobs/manager.js";
 import { JobStore } from "../server/jobs/store.js";
 import { loadConfig } from "../server/config.js";
+import { TEST_ORGANIZATION_ID } from "./helpers/auth.js";
 const h = vi.hoisted(() => ({ children: [] as any[], fork: vi.fn() }));
 vi.mock("node:child_process", () => ({ fork: (...args: unknown[]) => h.fork(...args) }));
 let dir: string, store: JobStore, manager: JobManager;
@@ -37,32 +38,32 @@ afterEach(async () => { await manager.shutdown(); vi.restoreAllMocks(); await rm
 
 describe("serialized admission, state persistence and cleanup ordering", () => {
   it("accepts at most one active plus three queued jobs under simultaneous submissions", async () => {
-    const results = await Promise.allSettled(Array.from({ length: 8 }, () => manager.createJob(req, 100n, "explicit")));
+    const results = await Promise.allSettled(Array.from({ length: 8 }, () => manager.createJob(req, 100n, "explicit", TEST_ORGANIZATION_ID)));
     expect(results.filter(r => r.status === "fulfilled")).toHaveLength(4);
     expect(manager.stats()).toEqual({ active: 1, queued: 3 });
   });
   it("deduplicates simultaneous requests before any repeated RPC validation", async () => {
     const input = { ...req, block: "latest", idempotencyKey: "test-repeat-intent", controlToken: "test-cancellation-capability-000000000" };
-    const validate = vi.fn(async () => { await flush(); return manager.createJob(input, 100n, "resolved_latest"); });
-    const results = await Promise.all(Array.from({ length: 6 }, () => manager.admit(input, validate)));
+    const validate = vi.fn(async () => { await flush(); return manager.createJob(input, 100n, "resolved_latest", TEST_ORGANIZATION_ID); });
+    const results = await Promise.all(Array.from({ length: 6 }, () => manager.admit(input, TEST_ORGANIZATION_ID, validate)));
     expect(validate).toHaveBeenCalledOnce();
     expect(new Set(results.map(r => r.record.jobId)).size).toBe(1);
     expect(results.every(r => r.controlToken === input.controlToken)).toBe(true);
-    const retry = await manager.admit(input, () => { throw new Error("must not resolve latest again"); });
+    const retry = await manager.admit(input, TEST_ORGANIZATION_ID, () => { throw new Error("must not resolve latest again"); });
     expect(retry.record.block).toBe("100");
     expect(retry.deduplicated).toBe(true);
   });
   it("refuses expensive validation when the queue is already full", async () => {
-    await Promise.all(Array.from({ length: 4 }, () => manager.createJob(req, 100n, "explicit")));
+    await Promise.all(Array.from({ length: 4 }, () => manager.createJob(req, 100n, "explicit", TEST_ORGANIZATION_ID)));
     const validate = vi.fn();
-    await expect(manager.admit(req, validate)).rejects.toThrow(/queue is full/);
+    await expect(manager.admit(req, TEST_ORGANIZATION_ID, validate)).rejects.toThrow(/queue is full/);
     expect(validate).not.toHaveBeenCalled();
   });
   it("does not spawn after a cancel during asynchronous startup", async () => {
     let release!: () => void;
     const gate = new Promise<void>(r => { release = r; });
     vi.spyOn(store, "ensureArtifactDir").mockImplementation(async () => { await gate; return dir; });
-    const job = await manager.createJob(req, 100n, "explicit"); await flush();
+    const job = await manager.createJob(req, 100n, "explicit", TEST_ORGANIZATION_ID); await flush();
     await manager.cancel(job.record.jobId, job.controlToken);
     release(); await flush();
     expect(h.children).toHaveLength(0);
@@ -72,7 +73,7 @@ describe("serialized admission, state persistence and cleanup ordering", () => {
     expect(events.slice(terminal + 1).some(e => e.type === "job.state" && e.state === "running")).toBe(false);
   });
   it("late worker messages cannot overwrite a persisted terminal state or its cursor", async () => {
-    const job = await manager.createJob(req, 100n, "explicit"); await flush();
+    const job = await manager.createJob(req, 100n, "explicit", TEST_ORGANIZATION_ID); await flush();
     const child = h.children[0];
     for (let i = 0; i < 10; i++) child.emit("message", { type: "event", payload: { type: "stage.completed", phase: "proxy", detail: `message ${i}` } });
     await manager.cancel(job.record.jobId, job.controlToken);
@@ -86,13 +87,13 @@ describe("serialized admission, state persistence and cleanup ordering", () => {
     expect(events.map(e => e.seq)).toEqual([...events.map(e => e.seq)].sort((a,b) => a-b));
   });
   it("persists each fork block so reconnecting from lastSeq cannot lose earlier evidence", async () => {
-    const job = await manager.createJob(req, 100n, "explicit"); await flush();
+    const job = await manager.createJob(req, 100n, "explicit", TEST_ORGANIZATION_ID); await flush();
     h.children[0].emit("message", { type: "event", payload: { type: "fork.baseline.completed", established: true, detail: "measured", transactions: [], evidence: [{ rawValue: "1234" }] } });
     await flush();
     expect(manager.toSummary((await store.loadJob(job.record.jobId))!).fork?.baseline?.detail).toBe("measured");
   });
   it("rechecks a transient EPERM during process-group teardown instead of reporting a false cleanup failure", async () => {
-    const job = await manager.createJob(req, 100n, "explicit"); await flush();
+    const job = await manager.createJob(req, 100n, "explicit", TEST_ORGANIZATION_ID); await flush();
     const signal = vi.mocked(process.kill);
     const normal = signal.getMockImplementation()!;
     signal.mockImplementationOnce(() => { throw Object.assign(new Error("teardown transition"), { code: "EPERM" }); });
@@ -102,7 +103,7 @@ describe("serialized admission, state persistence and cleanup ordering", () => {
     expect(job.record.error?.message).toBe("The analysis was cancelled.");
   });
   it("escalates even when child.killed is already true and retains its slot until exit", async () => {
-    const job = await manager.createJob(req, 100n, "explicit"); await flush();
+    const job = await manager.createJob(req, 100n, "explicit", TEST_ORGANIZATION_ID); await flush();
     const child = h.children[0]; child.ignoreTerm = true;
     vi.useFakeTimers();
     const cancel = manager.cancel(job.record.jobId, job.controlToken);

@@ -10,6 +10,8 @@ export interface ProtocolTarget {
 
 export interface ProtocolRecord {
   id: string;
+  /** Owning organization. Null is reserved for inaccessible pre-auth data. */
+  organizationId: string | null;
   name: string;
   targets: ProtocolTarget[];
   createdAt: string;

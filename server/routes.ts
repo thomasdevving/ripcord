@@ -34,12 +34,14 @@ import { buildEvidenceIndex } from "../src/report/evidenceIndex.js";
 import type { ApiError, ConfigResponse, CreateJobRequest, CreateJobResponse, JobEvent, PresetDescriptor } from "./shared/dto.js";
 import { ProtocolStore, validateProtocolInput } from "./protocol-store.js";
 import { ProtocolService } from "./protocol-service.js";
+import { optionalOrganization, requireOrganization, type AuthGateway } from "./auth-context.js";
 
 export interface RouteDeps {
   config: ServerConfig;
   manager: JobManager;
   reports: ReportService;
   protocolStore: ProtocolStore;
+  auth: AuthGateway;
   anvil: { available: boolean; version: string | null };
 }
 
@@ -75,7 +77,7 @@ function presets(defaultBlock: bigint): PresetDescriptor[] {
 const sendError = (reply: FastifyReply, status: number, error: ApiError): FastifyReply => reply.status(status).send({ error });
 
 export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
-  const { config, manager, reports, protocolStore, anvil } = deps;
+  const { config, manager, reports, protocolStore, auth, anvil } = deps;
   const protocols = new ProtocolService(protocolStore, manager, reports);
 
   /** A public client for the validator's two reads. Created per call — these are single reads, not a hot path. */
@@ -86,7 +88,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
   };
 
   /** One admission path for the single-address form and protocol batches. */
-  const submitJob = (raw: CreateJobRequest, expectedBlockHash: string | null = null) => manager.admit(raw, async () => {
+  const submitJob = (raw: CreateJobRequest, organizationId: string, expectedBlockHash: string | null = null) => manager.admit(raw, organizationId, async () => {
     const validation = await validateCreateJob(raw, {
       supportedChainIds: [1],
       blockIdentity: async (chainId, blockNumber) => {
@@ -120,6 +122,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
       },
       validation.value.block,
       validation.value.blockSource,
+      organizationId,
       validation.value.blockHash ?? null,
     );
   });
@@ -154,6 +157,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
   app.get("/api/config", async (_req, reply) => {
     const blockedReason = liveRunsBlockedReason(config);
     const body: ConfigResponse = {
+      auth: { allowSignup: config.allowSignup },
       liveRuns: { enabled: blockedReason === null, reason: blockedReason },
       availableModes: availableModes(config, anvil.available),
       supportedChains: [{ id: 1, name: "Ethereum Mainnet", hasRpc: config.rpcUrls.has(1) }],
@@ -171,6 +175,8 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
   // --- jobs -----------------------------------------------------------------
 
   app.post("/api/jobs", async (req: FastifyRequest, reply) => {
+    const identity = await requireOrganization(auth, req, reply);
+    if (!identity) return;
     const blockedReason = liveRunsBlockedReason(config);
     if (blockedReason) {
       return sendError(reply, 503, {
@@ -181,7 +187,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     }
 
     try {
-      const outcome = await submitJob(req.body as CreateJobRequest);
+      const outcome = await submitJob(req.body as CreateJobRequest, identity.organizationId);
       const body: CreateJobResponse = {
         jobId: outcome.record.jobId,
         // Only its hash is stored. A retry recovers a supplied client capability.
@@ -207,8 +213,10 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
   });
 
   app.get("/api/jobs/:id", async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
+    const identity = await requireOrganization(auth, req, reply);
+    if (!identity) return;
     const record = await manager.getRecord(req.params.id);
-    if (!record) return sendError(reply, 404, { code: "not_found", message: "No such analysis.", hint: null });
+    if (!record || record.organizationId !== identity.organizationId) return sendError(reply, 404, { code: "not_found", message: "No such analysis.", hint: null });
     return reply.send(manager.toSummary(record));
   });
 
@@ -221,17 +229,21 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
    * events simply never happened.
    */
   app.get("/api/jobs/:id/events/poll", async (req: FastifyRequest<{ Params: { id: string }; Querystring: { after?: string } }>, reply) => {
+    const identity = await requireOrganization(auth, req, reply);
+    if (!identity) return;
     const record = await manager.getRecord(req.params.id);
-    if (!record) return sendError(reply, 404, { code: "not_found", message: "No such analysis.", hint: null });
+    if (!record || record.organizationId !== identity.organizationId) return sendError(reply, 404, { code: "not_found", message: "No such analysis.", hint: null });
     const after = Number(req.query.after ?? 0);
     const { events, truncated } = manager.eventsSince(req.params.id, Number.isFinite(after) ? after : 0);
     return reply.send({ events, truncated, summary: manager.toSummary(record) });
   });
 
   app.get("/api/jobs/:id/events", async (req: FastifyRequest<{ Params: { id: string }; Headers: { "last-event-id"?: string } }>, reply) => {
+    const identity = await requireOrganization(auth, req, reply);
+    if (!identity) return;
     const jobId = req.params.id;
     const record = await manager.getRecord(jobId);
-    if (!record) return sendError(reply, 404, { code: "not_found", message: "No such analysis.", hint: null });
+    if (!record || record.organizationId !== identity.organizationId) return sendError(reply, 404, { code: "not_found", message: "No such analysis.", hint: null });
 
     reply.raw.writeHead(200, {
       "Content-Type": "text/event-stream",
@@ -280,6 +292,10 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
   });
 
   app.post("/api/jobs/:id/cancel", async (req: FastifyRequest<{ Params: { id: string }; Body: { controlToken?: string } }>, reply) => {
+    const identity = await requireOrganization(auth, req, reply);
+    if (!identity) return;
+    const record = await manager.getRecord(req.params.id);
+    if (!record || record.organizationId !== identity.organizationId) return sendError(reply, 404, { code: "not_found", message: "No such analysis.", hint: null });
     const token = req.body?.controlToken;
     if (typeof token !== "string" || token.length === 0) {
       return sendError(reply, 403, {
@@ -298,17 +314,21 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
 
   // --- protocols ------------------------------------------------------------
 
-  app.get("/api/protocols", async (_req, reply) => {
-    return reply.send({ protocols: await protocols.list() });
+  app.get("/api/protocols", async (req, reply) => {
+    const identity = await requireOrganization(auth, req, reply);
+    if (!identity) return;
+    return reply.send({ protocols: await protocols.list(identity.organizationId) });
   });
 
   app.post("/api/protocols", async (req: FastifyRequest, reply) => {
+    const identity = await requireOrganization(auth, req, reply);
+    if (!identity) return;
     const parsed = validateProtocolInput(req.body);
     if (!parsed.ok) {
       return sendError(reply, 400, { code: "invalid_protocol", message: parsed.message, hint: null });
     }
     try {
-      const protocol = await protocolStore.createProtocol(parsed.name, parsed.targets);
+      const protocol = await protocolStore.createProtocol(identity.organizationId, parsed.name, parsed.targets);
       return reply.status(201).send({ protocol });
     } catch (error) {
       return sendError(reply, 500, classify(error));
@@ -316,7 +336,9 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
   });
 
   app.get("/api/protocols/:id", async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
-    const protocol = await protocolStore.getProtocol(req.params.id);
+    const identity = await requireOrganization(auth, req, reply);
+    if (!identity) return;
+    const protocol = await protocolStore.getProtocol(req.params.id, identity.organizationId);
     if (!protocol) return sendError(reply, 404, { code: "not_found", message: "No such protocol.", hint: null });
     return reply.send(await protocols.detail(protocol));
   });
@@ -324,7 +346,9 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
   app.post(
     "/api/protocols/:id/scans",
     async (req: FastifyRequest<{ Params: { id: string }; Body: { idempotencyKey?: string } }>, reply) => {
-      const protocol = await protocolStore.getProtocol(req.params.id);
+      const identity = await requireOrganization(auth, req, reply);
+      if (!identity) return;
+      const protocol = await protocolStore.getProtocol(req.params.id, identity.organizationId);
       if (!protocol) return sendError(reply, 404, { code: "not_found", message: "No such protocol.", hint: null });
 
       const blockedReason = liveRunsBlockedReason(config);
@@ -344,7 +368,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
       return withProtocolAdmission(protocol.id, async () => {
         // Re-read inside the serial section. Two simultaneous retries otherwise
         // both observe "not found" before either has written the batch record.
-        const duplicate = await protocolStore.findScanByIdempotencyKey(protocol.id, key);
+        const duplicate = await protocolStore.findScanByIdempotencyKey(protocol.id, identity.organizationId, key);
         if (duplicate) return reply.status(202).send({ scan: await protocols.viewScan(protocol, duplicate) });
 
         const existing = await protocols.detail(protocol);
@@ -392,7 +416,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
               mode: "scan",
               refreshAssetContext: false,
               idempotencyKey: `${key}_${target.id}`,
-            }, blockHash);
+            }, identity.organizationId, blockHash);
             await protocolStore.saveScanTarget(created.scan, { targetId: target.id, jobId: outcome.record.jobId, submissionError: null });
           } catch (error) {
             await protocolStore.saveScanTarget(created.scan, { targetId: target.id, jobId: null, submissionError: publicSubmissionError(error) });
@@ -406,12 +430,14 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
 
   // --- reports --------------------------------------------------------------
 
-  app.get("/api/reports", async (_req, reply) => {
-    return reply.send({ reports: await reports.listPublishable() });
+  app.get("/api/reports", async (req, reply) => {
+    const identity = await optionalOrganization(auth, req);
+    return reply.send({ reports: await reports.listPublishable(identity?.organizationId ?? null) });
   });
 
   app.get("/api/reports/:id", async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
-    const loaded = await reports.loadPublishable(req.params.id);
+    const identity = await optionalOrganization(auth, req);
+    const loaded = await reports.loadPublishable(req.params.id, identity?.organizationId ?? null);
     if (!loaded.ok) {
       if (loaded.reason === "blocked") {
         // 451 is the honest status: the content exists and is withheld for
@@ -432,7 +458,8 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
    * missing snapshot makes the panel PARTIAL and never fails the request.
    */
   app.get("/api/reports/:id/coverage", async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
-    const loaded = await reports.loadPublishable(req.params.id);
+    const identity = await optionalOrganization(auth, req);
+    const loaded = await reports.loadPublishable(req.params.id, identity?.organizationId ?? null);
     if (!loaded.ok) {
       if (loaded.reason === "blocked") return reply.status(451).send({ blocked: true, message: BLOCKED_MESSAGE });
       return sendError(reply, 404, { code: "not_found", message: "No such report.", hint: null });
@@ -472,7 +499,8 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
    * through a side door that the HTML and JSON routes are gated against.
    */
   app.get("/api/reports/:id/evidence", async (req: FastifyRequest<{ Params: { id: string }; Querystring: { address?: string } }>, reply) => {
-    const loaded = await reports.loadPublishable(req.params.id);
+    const identity = await optionalOrganization(auth, req);
+    const loaded = await reports.loadPublishable(req.params.id, identity?.organizationId ?? null);
     if (!loaded.ok) {
       if (loaded.reason === "blocked") return reply.status(451).send({ blocked: true, message: BLOCKED_MESSAGE });
       return sendError(reply, 404, { code: "not_found", message: "No such report.", hint: null });
@@ -495,7 +523,8 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
   });
 
   app.get("/api/reports/:id/download", async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
-    const loaded = await reports.loadPublishable(req.params.id);
+    const identity = await optionalOrganization(auth, req);
+    const loaded = await reports.loadPublishable(req.params.id, identity?.organizationId ?? null);
     if (!loaded.ok) {
       if (loaded.reason === "blocked") return reply.status(451).send({ blocked: true, message: BLOCKED_MESSAGE });
       return sendError(reply, 404, { code: "not_found", message: "No such report.", hint: null });

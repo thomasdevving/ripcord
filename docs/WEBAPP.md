@@ -1,8 +1,8 @@
 # The Ripcord webapp
 
-A browser front end around the existing engine. A visitor enters a contract
-address, watches the analysis happen, follows a real fork experiment, and gets a
-report with its evidence attached.
+A private browser workspace around the existing engine. An organization member
+enters a contract address, watches the analysis happen, follows a real fork
+experiment, and gets a report with its evidence attached.
 
 Nothing here re-implements analysis. Every label, notice, verdict, uncertainty
 and figure on screen comes from the same engine functions the CLI calls, and the
@@ -27,6 +27,7 @@ loopback, and is never exposed.
 | Piece | File | What it is responsible for |
 | --- | --- | --- |
 | Config | `server/config.ts` | Env → typed config, validated at startup. A missing RPC is a **supported state**, not a crash. |
+| Auth | `server/auth.ts` | Better Auth accounts, sessions, organizations and memberships over persistent SQLite. |
 | Sanitiser | `server/sanitize.ts` | Strips RPC URLs (which are provider keys) out of every outbound error. |
 | Validation | `server/validate.ts` | Address, chain, block, mode, contract-code presence. Resolves `latest` **once**. |
 | Store | `server/jobs/store.ts` | Atomic writes, safe id→path resolution, interrupted-job recovery, retention. |
@@ -165,7 +166,7 @@ omits the key and gets a new execution id.
 
 ### Protocol baselines and rescans
 
-A protocol workspace is an explicit set of one to four Ethereum Mainnet
+A protocol workspace belongs to the active organization and is an explicit set of one to four Ethereum Mainnet
 contracts. Starting a protocol scan resolves `latest` once, records that block
 identity, and submits every contract at the same number and hash. The first batch
 is the baseline; each later batch compares with the immediately preceding one.
@@ -187,6 +188,12 @@ of this first workflow.
 ---
 
 ## 5. API
+
+Better Auth owns `/api/auth/*`. Jobs, job events, cancellation and protocol
+routes require a signed-in session with an active organization. Live report
+routes accept the session when present so they can also serve the explicitly
+public calibration fixtures. A live report is returned only when its stored
+organization ID exactly matches the session's active organization.
 
 | Endpoint | Notes |
 | --- | --- |
@@ -215,10 +222,16 @@ records the node's raw values, never the endpoint they came from.
 Everything lives under `RIPCORD_DATA_DIR`, in separate subdirectories:
 
 ```
+auth.sqlite  accounts, sessions, organizations and memberships
 jobs/       job records            reports/    reports + .meta.json sidecars
 events/     JSON-lines event logs  artifacts/  per-job fork artifacts
 rpc-cache/  the pinned RPC cache — existing key semantics untouched
+protocols/  named contract sets    protocol-scans/  baseline/rescan batches
 ```
+
+New jobs, live report metadata, protocols and protocol scans carry an
+`organizationId`. Pre-auth records without one remain inaccessible unless an
+operator explicitly claims them with `RIPCORD_LEGACY_ORGANIZATION_ID`.
 
 The web worker places the existing `(chainId, blockNumber, method, params)` cache
 inside a block-hash namespace. Admission verifies `eth_chainId` and a block hash;
@@ -287,6 +300,8 @@ To enable real analysis locally:
 ```sh
 export RPC_URL_1="https://…"          # an ARCHIVE endpoint, see below
 export RIPCORD_ENABLE_LIVE_RUNS=true
+export RIPCORD_PUBLIC_URL=http://localhost:8080
+export RIPCORD_AUTH_SECRET='development-secret-with-at-least-32-characters'
 pnpm start:webapp
 ```
 
@@ -310,8 +325,8 @@ pnpm verify:claims    # prose vs reports
 ## 9. What is deliberately not here
 
 No wallet connection (this flow needs no signature and sends no mainnet
-transaction), no database, no Redis, no accounts, no payments, no watchtower, no
-new chain and no new exit archetype. The withdrawal differential covers what the
+transaction), no email delivery or billing, no Redis, no watchtower, no new
+chain and no new exit archetype. The withdrawal differential covers what the
 engine actually supports — one exit archetype, one registered restriction
 candidate — and any other interface reports honestly why the experiment did not
 run, with the scan still fully usable.

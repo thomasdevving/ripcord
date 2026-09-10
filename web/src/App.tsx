@@ -19,6 +19,7 @@ import { SavedReportsScreen } from "./screens/SavedReportsScreen.js";
 import { ProtocolsScreen } from "./screens/ProtocolsScreen.js";
 import { ProtocolScreen } from "./screens/ProtocolScreen.js";
 import type { ReactElement } from "react";
+import { AccountControls, AuthGate } from "./auth.js";
 
 export function App(): ReactElement {
   const route = useRoute();
@@ -39,6 +40,7 @@ export function App(): ReactElement {
   }, []);
 
   return (
+    <AuthGate allowSignup={config?.auth.allowSignup ?? false}>
     <div className="app">
       <header className="topbar">
         <a
@@ -110,6 +112,7 @@ export function App(): ReactElement {
           >
             Reports
           </a>
+          <AccountControls />
           <button
             type="button"
             className="theme-toggle"
@@ -142,5 +145,6 @@ export function App(): ReactElement {
       {route.name === "protocol" && <ProtocolScreen key={route.protocolId} protocolId={route.protocolId} config={config} />}
       {route.name === "saved" && <SavedReportsScreen />}
     </div>
+    </AuthGate>
   );
 }

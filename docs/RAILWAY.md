@@ -1,177 +1,142 @@
 # Deploying the Ripcord webapp to Railway
 
-One service, one replica, the repository root as the build context, the root
-`Dockerfile`. These are the concrete manual steps — this repository does not
-create the project or deploy on your behalf.
-
-> **Validation status.** The image definition is complete and every assumption it
-> makes has been checked against this repository (see §7), but **the Docker build
-> itself has not been run** — no container runtime was available on the machine
-> where it was written. Treat the first `docker build` as the outstanding step,
-> and run it locally before pointing Railway at the repo.
-
----
+Ripcord runs as one Railway service with one replica, one persistent volume and
+one public port. The root `Dockerfile` builds the React app and TypeScript server,
+installs the pinned Foundry binaries, and starts everything in one container.
 
 ## 1. Create the service
 
-1. New Project → **Deploy from GitHub repo** → this repository.
-2. Root directory: **the repository root** (leave it empty / `/`).
-3. Builder: **Dockerfile**. Railway detects the root `Dockerfile` automatically.
-   Do not add a Railway build- or start-command override — the image's own `CMD`
-   is the entrypoint, and an override is one more place for the start path to
-   drift from the compiled output.
+1. In Railway, choose **New Project → Deploy from GitHub repo** and select this repository.
+2. Leave **Root Directory** empty so the repository root is the build context.
+3. Use the detected root **Dockerfile**. Do not add build or start command overrides.
+4. Generate a Railway public domain before configuring auth; the resulting HTTPS
+   origin is the value for `RIPCORD_PUBLIC_URL`.
 
-## 2. Volume
+## 2. Add persistent storage
 
-Add a volume mounted at **`/data`**.
+Create a volume and mount it at **`/data`**. The image already sets
+`RIPCORD_DATA_DIR=/data` and prepares the mount for its unprivileged Node process.
 
-The image sets `RIPCORD_DATA_DIR=/data`. Its entrypoint prepares the mounted
-volume as root, changes ownership only under `/data`, then immediately starts
-the service as the unprivileged `node` user (uid 1000). This supports a fresh
-Railway volume owned by root. The application still checks writability at boot.
-Use one replica; the queue and process-group ownership are local to that service.
+The volume stores:
 
-Without a volume the app still runs; job records and produced reports simply do
-not survive a redeploy. Committed calibration reports are baked into the image
-and are always available.
+- Better Auth accounts, sessions, organizations and memberships in `auth.sqlite`;
+- jobs, event logs, live reports and fork artifacts;
+- protocol definitions and protocol scan timelines;
+- the pinned RPC cache and Mobula sidecars.
 
-## 3. Environment variables
+Without the volume, accounts and customer data disappear on the next redeploy.
+Committed calibration reports remain part of the image.
 
-Set these in the service's **Variables** tab. They are runtime variables —
-nothing here is read at build time, and the image builds with no RPC key at all.
+Use **one replica**. The file-backed queue, SQLite database and process ownership
+model are designed for a single application instance. A later multi-replica
+version should move both tenant data and jobs to shared database/queue services.
+
+## 3. Set the variables
+
+Add these in the service **Variables** tab:
 
 | Variable | Value | Notes |
 | --- | --- | --- |
-| `NODE_ENV` | `production` | Already set in the image; harmless to repeat. |
-| `PORT` | *leave unset* | Railway injects it. The app reads `process.env.PORT` and falls back to 8080. |
-| `RPC_URL_1` | your mainnet endpoint | **Must be an archive endpoint.** See §5. |
-| `RIPCORD_DATA_DIR` | `/data` | Already set in the image; set explicitly if you move the mount. |
-| `RIPCORD_ENABLE_LIVE_RUNS` | `false` for a first deploy, `true` for judging | Default is `false`, so a fresh deploy is preview-safe. |
-| `RIPCORD_MAX_ACTIVE_JOBS` | `1` | One analysis at a time keeps results reproducible and bounds RPC spend. |
-| `RIPCORD_MAX_QUEUED_JOBS` | `3` | |
-| `RIPCORD_JOB_TIMEOUT_MS` | `600000` | An operational **maximum**, not an expected duration. See §6. |
-| `RIPCORD_DEFAULT_BLOCK` | `25800000` | The block the Comet preset pins. Visibly historical, and the UI says so. |
-| `RIPCORD_INSTANCE_ID` | a stable value per replica, e.g. `railway-web` | Optional but recommended. Stamped on every job ownership lease. Unset, each deploy gets a fresh random identity, so a restart cannot recognise its own abandoned jobs and they are only reclaimed once their lease expires (~60s) by the background sweep. Two replicas MUST NOT share a value. |
-| `MOBULA_API_KEY` | *optional feature* | Required for fresh Mobula production calls; its absence never blocks the pinned scan or primary fork run. |
+| `RIPCORD_PUBLIC_URL` | `https://your-service.up.railway.app` | Exact public origin, with no path. |
+| `RIPCORD_AUTH_SECRET` | output of `openssl rand -base64 32` | Required in production. Keep it stable across deploys. |
+| `RIPCORD_ALLOW_SIGNUP` | `true` initially | Create the first owner, then use `false` if public signup is not wanted. |
+| `RPC_URL_1` | your Ethereum Mainnet archive RPC | Required only for new live scans. Wide `eth_getLogs` support improves role coverage. |
+| `RIPCORD_ENABLE_LIVE_RUNS` | `false` for setup, then `true` | With `false`, accounts and saved reports work but no new analysis starts. |
+| `RIPCORD_MAX_ACTIVE_JOBS` | `1` | Keeps CPU, memory and RPC spend bounded. |
+| `RIPCORD_MAX_QUEUED_JOBS` | `3` | Maximum waiting jobs. |
+| `RIPCORD_JOB_TIMEOUT_MS` | `600000` | Hard ceiling for one analysis, in milliseconds. |
+| `RIPCORD_DEFAULT_BLOCK` | `25800000` | Default historical block used by the current presets. |
+| `RIPCORD_INSTANCE_ID` | `railway-web` | Stable identity for this single replica, recommended for fast restart recovery. |
+| `MOBULA_API_KEY` | optional | Needed for fresh Mobula asset-context calls, never for the pinned verdict. |
 
-`RIPCORD_*` are conventions introduced by this webapp. They are not Railway
-features and not pre-existing Ripcord CLI flags.
+Railway injects `PORT`; leave it unset. `NODE_ENV=production` and
+`RIPCORD_DATA_DIR=/data` are already present in the image.
 
-An invalid value fails startup with a message naming the variable and exit code
-2 — `RIPCORD_MAX_ACTIVE_JOBS=one` will not silently become zero and give you a
-queue that never drains.
+An invalid or missing production auth secret stops startup. A malformed RPC or
+boolean also stops startup with the variable name in the log instead of booting
+in an ambiguous state.
 
-## 4. Health check and sleep
+## 4. First account and private workspace
 
-- **Health check path:** `/healthz`
-- **Serverless / sleep:** **off** for judging. A cold start on the first click is
-  a bad demo, and a sleeping service loses in-flight jobs.
+1. Deploy with `RIPCORD_ENABLE_LIVE_RUNS=false` and `RIPCORD_ALLOW_SIGNUP=true`.
+2. Open the Railway domain and choose **Create an account**.
+3. Enter the owner's name, email, password and organization name. Ripcord creates
+   the account and its first private workspace together.
+4. Sign out and sign in once to verify session persistence across requests.
+5. If registration should be closed, set `RIPCORD_ALLOW_SIGNUP=false` and redeploy.
 
-`/healthz` deliberately touches no chain. It reports whether *this process* is
-healthy. Making it probe mainnet would bill an RPC call per check and would
-restart the container whenever the provider hiccupped — the opposite of what a
-health check is for. Whether live analysis is currently possible is a separate,
-explicit field in `GET /api/config`, and the UI shows it separately.
+Every new protocol, protocol scan, job and live report receives the active
+organization ID at creation. All later reads verify the same ownership. A valid
+job or report ID from another organization returns 404 and does not reveal that
+the object exists. The committed calibration examples remain public reference
+artifacts; customer live reports do not.
 
-**A green `/healthz` therefore confirms the app is up, not that every archive
-read will succeed.**
+The current release provides self-registration, organization creation and
+organization switching on top of Better Auth's organization membership model.
+Email verification, password-reset delivery, invitations and billing need an
+email provider and product policy before an external paid launch.
 
-## 5. The RPC endpoint
+## 5. Adopt data from the pre-account deployment
 
-Every Ripcord read is pinned to a historical block, so a non-archive endpoint
-fails on essentially everything. The app reports that as
-`rpc_missing_history` — an infrastructure gap, never a finding about the
-contract.
+Legacy live records have no organization owner and therefore become inaccessible
+after this update. This is deliberate: silently assigning them to the first user
+would be a cross-tenant data leak.
 
-Two further considerations:
+To assign them explicitly:
 
-- **`eth_getLogs` range matters for coverage, not just speed.** AccessControl
-  role reconstruction chunks to the provider's probed range. On a small-range
-  endpoint the scan degrades to a *labelled* partial (`reconstruction.complete =
-  false`), which correctly withholds the enumeration witness and keeps verdicts
-  cautious. It is honest, but a large-range endpoint gives better coverage.
-- **The URL is the key.** It is a runtime server variable only. It is never
-  exposed in `/api/config` (which returns the **host** only), never sent to the
-  browser, and stripped out of every error by `server/sanitize.ts`.
+1. Sign in to the destination organization and click **Copy ID** in the top bar.
+2. Set `RIPCORD_LEGACY_ORGANIZATION_ID` to that ID and redeploy once.
+3. Check the startup log. It reports exact counts for claimed jobs, reports,
+   protocols and protocol scans.
+4. Verify the old records in the UI, then remove the variable and redeploy.
 
-## 6. Timeouts and the fork sandbox
+The server first verifies that the ID exists in its own auth database. A typo
+stops startup before any record is changed. Already-owned records are never
+reassigned, so repeating the migration is a no-op.
 
-`RIPCORD_JOB_TIMEOUT_MS` is a ceiling, not a target. Measure the exact demo on
-your deployed RPC before choosing it. A warm static-scan cache still needs live
-fork reads, while deep-history reconstruction can take minutes. No completion
-time is guaranteed by a warm cache.
+## 6. Health, sleep and capacity
 
-The image carries a pinned `anvil` and `cast` (Foundry **v1.8.1**, downloaded in
-a build stage and verified against a checksum written into the `Dockerfile`).
-`foundryup` is deliberately not used: it resolves to whatever is current at build
-time, and a fork tool whose version drifts between builds is a reproducibility
-hole in exactly the component whose output people are asked to trust.
+- Set Railway's health-check path to **`/healthz`**.
+- Keep **Serverless/App Sleeping off** for production scans. A sleeping container
+  adds a cold start and cannot continue an in-flight analysis.
+- Start around **1 vCPU and 2 GB RAM**, run representative scans, and size from
+  observed CPU and memory. This is an initial estimate rather than a guaranteed minimum.
 
-anvil binds `127.0.0.1` inside the container and is spawned only for the duration
-of a job. **Only the web port is published.** There is no public RPC proxy, and
-no anvil port is exposed.
+`/healthz` deliberately performs no chain call. It confirms that the process and
+file store are available. `GET /api/config` separately reports whether the RPC,
+live runs and fork sandbox are available.
 
-If the binaries are missing, the app still boots and says so: fork modes
-disappear from `availableModes` and are not offered in the UI. Scans are
-unaffected.
+## 7. RPC and fork requirements
 
-## 7. What has been verified, and what has not
+Ripcord pins reads to a historical block. Use an archive endpoint. A provider
+that cannot serve history produces `rpc_missing_history`, which the UI labels as
+an infrastructure failure rather than a contract finding.
 
-Checked against this repository:
+Large `eth_getLogs` ranges materially improve AccessControl reconstruction. A
+small range remains supported, but Ripcord may label role coverage partial after
+its bounded scan budget is exhausted.
 
-- `pnpm install --frozen-lockfile` succeeds — the lockfile matches `package.json`.
-- `pnpm build:server && pnpm build:web` produce exactly the three paths the
-  `Dockerfile` asserts at build time: `dist-server/server/index.js`,
-  `dist-server/server/jobs/worker.js`, `dist-web/index.html`.
-- Runtime dependencies after `pnpm prune --prod` are `fastify`,
-  `@fastify/static`, `viem`, `zod`, `commander`. React, Vite and React Flow are
-  dev dependencies, bundled into `dist-web` at build time and absent from the
-  runtime tree.
-- The server starts with the exact environment the image sets, serves
-  `/healthz`, the frontend and 22 saved reports **with no RPC key configured**,
-  and exits cleanly on `SIGTERM`.
-- The pinned Foundry release URL and both architecture checksums were fetched
-  from the GitHub release and pinned literally.
+The image contains checksum-pinned `anvil` and `cast` binaries. Anvil binds only
+to `127.0.0.1` inside the container and exists for the duration of a fork job; no
+RPC or Anvil port is exposed publicly. If Foundry is unavailable, the server
+still starts and removes fork modes from the UI.
 
-**Not yet done:** `docker build` and `docker run`. No container runtime was
-available. Run both locally before the first Railway deploy:
+## 8. Local container smoke test
 
 ```sh
 docker build -t ripcord-web .
 docker run --rm -p 8080:8080 \
+  -e RIPCORD_PUBLIC_URL=http://localhost:8080 \
+  -e RIPCORD_AUTH_SECRET='replace-with-at-least-32-random-characters' \
+  -e RIPCORD_ALLOW_SIGNUP=true \
   -e RIPCORD_ENABLE_LIVE_RUNS=false \
   -v "$PWD/.ripcord-docker-data:/data" \
   ripcord-web
 
-curl -s localhost:8080/healthz
-curl -s localhost:8080/api/config | head -c 400
+curl -fsS http://localhost:8080/healthz
 ```
 
-Then, with an archive RPC:
-
-```sh
-docker run --rm -p 8080:8080 \
-  -e RPC_URL_1="https://…" \
-  -e RIPCORD_ENABLE_LIVE_RUNS=true \
-  -v "$PWD/.ripcord-docker-data:/data" \
-  ripcord-web
-```
-
-and run the Comet preset through the UI end to end.
-
-## 8. After deploying
-
-1. Open the service URL. The home page offers one primary **Scan an address**
-   action; it opens `/scan`, where the address, run mode and pinned block stay
-   together.
-2. On `/scan`, check the banner: with `RIPCORD_ENABLE_LIVE_RUNS=false` it says
-   plainly why **Analyze contract** is unavailable, and saved reports still
-   open.
-3. Set `RIPCORD_ENABLE_LIVE_RUNS=true`, redeploy, and run the **Compound III
-   (Comet)** preset in **Scan + withdrawal test** mode.
-4. Refresh mid-run: the page reconnects to the same job and continues. Closing
-   the tab does not cancel it.
-
-If a run fails, the UI shows a product-level message plus the job id. That id
-correlates with the server log line, which is sanitised the same way — no
-provider URL appears in either.
+Then configure an archive RPC, set `RIPCORD_ENABLE_LIVE_RUNS=true`, restart the
+container and run one direct scan plus one protocol baseline from the browser.
+Refresh during a run to verify reconnection, then restart the container to verify
+that the account and completed reports remain on the mounted volume.

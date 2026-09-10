@@ -47,6 +47,8 @@ export function safeJoin(dir: string, id: string, suffix = ".json"): string {
 /** The record persisted per job. A superset of JobSummary — `controlTokenHash` and paths never leave the server. */
 export interface JobRecord {
   jobId: string;
+  /** Owning tenant. Missing/null is accepted only for pre-auth records and is never exposed. */
+  organizationId?: string | null;
   /**
    * Hash of the control token, not the token itself. A stored plaintext token
    * would let anyone with read access to the volume cancel arbitrary jobs; the
@@ -89,6 +91,8 @@ export interface JobRecord {
 
 export interface StoredReportMeta {
   id: string;
+  /** Owning tenant for live reports. Calibration artifacts are separately public and have no sidecar here. */
+  organizationId?: string | null;
   jobId: string | null;
   address: string;
   chainId: number;
@@ -450,6 +454,29 @@ export class JobStore {
       if (meta?.id) out.push(meta);
     }
     return out.sort((a, b) => b.generatedAt.localeCompare(a.generatedAt));
+  }
+
+  /**
+   * One-time, explicit migration for records created before tenant isolation.
+   * The organization id comes from operator configuration; never from a request.
+   */
+  async claimUnowned(organizationId: string): Promise<{ jobs: number; reports: number }> {
+    if (!organizationId || organizationId.length > 128) throw new Error("invalid legacy organization id");
+    let jobs = 0;
+    for (const record of await this.listJobs()) {
+      if (record.organizationId) continue;
+      record.organizationId = organizationId;
+      await this.saveJob(record);
+      jobs++;
+    }
+    let reports = 0;
+    for (const meta of await this.listReportMeta()) {
+      if (meta.organizationId) continue;
+      meta.organizationId = organizationId;
+      await this.writeAtomic(safeJoin(this.reportsDir, meta.id, ".meta.json"), JSON.stringify(meta, null, 2));
+      reports++;
+    }
+    return { jobs, reports };
   }
 
   // --- post-analysis asset context ------------------------------------------

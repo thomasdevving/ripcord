@@ -21,9 +21,9 @@ export class ProtocolService {
     private readonly reports: ReportService,
   ) {}
 
-  async list(): Promise<ProtocolListItem[]> {
-    return Promise.all((await this.store.listProtocols()).map(async (protocol) => {
-      const scans = await this.store.listScans(protocol.id);
+  async list(organizationId: string): Promise<ProtocolListItem[]> {
+    return Promise.all((await this.store.listProtocols(organizationId)).map(async (protocol) => {
+      const scans = await this.store.listScans(protocol.id, organizationId);
       const last = scans.at(-1);
       const view = last ? await this.viewScan(protocol, last, scans) : null;
       return {
@@ -36,7 +36,7 @@ export class ProtocolService {
   }
 
   async detail(protocol: ProtocolRecord): Promise<ProtocolDetailResponse> {
-    const scans = await this.store.listScans(protocol.id);
+    const scans = await this.store.listScans(protocol.id, protocol.organizationId);
     const views = await Promise.all([...scans].reverse().map((scan) => this.viewScan(protocol, scan, scans)));
     return { protocol, scans: views };
   }
@@ -73,7 +73,7 @@ export class ProtocolService {
         };
       }
       const record = await this.jobs.getRecord(stored.jobId);
-      if (!record) {
+      if (!record || record.organizationId !== protocol.organizationId) {
         return {
           targetId: target.id,
           label: target.label,
@@ -103,7 +103,7 @@ export class ProtocolService {
     }));
 
     const state = aggregateState(targets);
-    const scans = allScans ?? await this.store.listScans(protocol.id);
+    const scans = allScans ?? await this.store.listScans(protocol.id, protocol.organizationId);
     const previous = scans.filter((candidate) => candidate.sequence < scan.sequence).at(-1) ?? null;
     const comparison = previous && state !== "queued" && state !== "running"
       ? await this.compare(protocol, previous, scan, targets)
@@ -133,8 +133,8 @@ export class ProtocolService {
         continue;
       }
       const [beforeReport, afterReport] = await Promise.all([
-        this.reports.loadPublishable(before.reportId),
-        this.reports.loadPublishable(after.reportId),
+        this.reports.loadPublishable(before.reportId, protocol.organizationId),
+        this.reports.loadPublishable(after.reportId, protocol.organizationId),
       ]);
       if (!beforeReport.ok || !afterReport.ok) {
         gaps.push({ targetId: target.id, label: target.label, reason: "One of the reports is unavailable or withheld, so no comparison is claimed." });
@@ -172,7 +172,9 @@ export class ProtocolService {
       const base = { targetId: target.id, label: target.label, address: target.address, chainId: target.chainId };
       if (!stored.jobId) return { ...base, jobId: null, state: "submission_failed", reportId: null, block: null, disclosure: null, error: stored.submissionError };
       const record = await this.jobs.getRecord(stored.jobId);
-      if (!record) return { ...base, jobId: stored.jobId, state: "interrupted", reportId: null, block: null, disclosure: null, error: null };
+      if (!record || record.organizationId !== protocol.organizationId) {
+        return { ...base, jobId: stored.jobId, state: "interrupted", reportId: null, block: null, disclosure: null, error: null };
+      }
       const summary = this.jobs.toSummary(record);
       return { ...base, jobId: stored.jobId, state: summary.state, reportId: summary.reportId, block: summary.block, disclosure: summary.disclosure, error: summary.error };
     }));

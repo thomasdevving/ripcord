@@ -22,6 +22,7 @@ import { JobStore, isSafeId, safeJoin } from "../server/jobs/store.js";
 import { ReportService, BLOCKED_MESSAGE } from "../server/reports.js";
 import type { ServerConfig } from "../server/config.js";
 import type { JobEvent } from "../server/shared/dto.js";
+import { OTHER_ORGANIZATION_ID, TEST_ORGANIZATION_ID } from "./helpers/auth.js";
 
 const WORKER = resolve(fileURLToPath(new URL("./fixtures/fake-worker.mjs", import.meta.url)));
 
@@ -106,7 +107,7 @@ afterEach(async () => {
 });
 
 const create = (address: string, extra: Record<string, unknown> = {}) =>
-  manager.createJob({ address, chainId: 1, block: "100", mode: "scan", ...extra } as never, 100n, "explicit");
+  manager.createJob({ address, chainId: 1, block: "100", mode: "scan", ...extra } as never, 100n, "explicit", TEST_ORGANIZATION_ID);
 
 describe("job lifecycle", () => {
   it("runs post-analysis enrichment only for an opted-in, publishable report", async () => {
@@ -121,6 +122,7 @@ describe("job lifecycle", () => {
       { address: OK, chainId: 1, block: "100", mode: "scan", refreshAssetContext: false } as never,
       100n,
       "explicit",
+      TEST_ORGANIZATION_ID,
     );
     await untilState(ordinary.record, "completed");
 
@@ -128,6 +130,7 @@ describe("job lifecycle", () => {
       { address: OK, chainId: 1, block: "100", mode: "scan", refreshAssetContext: true } as never,
       100n,
       "explicit",
+      TEST_ORGANIZATION_ID,
     );
     await untilState(optedIn.record, "completed");
     await until(() => calls.length === 1);
@@ -136,6 +139,7 @@ describe("job lifecycle", () => {
       { address: BLOCKED, chainId: 1, block: "100", mode: "scan", refreshAssetContext: true } as never,
       100n,
       "explicit",
+      TEST_ORGANIZATION_ID,
     );
     await untilState(blocked.record, "completed");
     expect(calls).toEqual([optedIn.record.reportId]);
@@ -152,7 +156,7 @@ describe("job lifecycle", () => {
 
     const reports = new ReportService(store, join(dir, "calibration"));
     await reports.init();
-    const loaded = await reports.loadPublishable(record.reportId as string);
+    const loaded = await reports.loadPublishable(record.reportId as string, TEST_ORGANIZATION_ID);
     expect(loaded.ok).toBe(true);
   });
 
@@ -178,7 +182,7 @@ describe("job lifecycle", () => {
     // that the CHILD PROCESS is gone afterwards, which fake timers cannot show.
     const shortLived = new JobManager(config(dir, { jobTimeoutMs: 300 }), store, WORKER);
     await shortLived.init();
-    const { record } = await shortLived.createJob({ address: HANGS, chainId: 1, block: "100", mode: "scan" } as never, 100n, "explicit");
+    const { record } = await shortLived.createJob({ address: HANGS, chainId: 1, block: "100", mode: "scan" } as never, 100n, "explicit", TEST_ORGANIZATION_ID);
     await untilState(record, "timed_out", 10_000);
     expect(record.error?.message).toContain("limit");
     await shortLived.shutdown();
@@ -205,11 +209,11 @@ describe("job lifecycle", () => {
   it("lets a subsequent job start after one was killed", async () => {
     const shortLived = new JobManager(config(dir, { jobTimeoutMs: 300 }), store, WORKER);
     await shortLived.init();
-    const first = await shortLived.createJob({ address: HANGS, chainId: 1, block: "100", mode: "scan" } as never, 100n, "explicit");
+    const first = await shortLived.createJob({ address: HANGS, chainId: 1, block: "100", mode: "scan" } as never, 100n, "explicit", TEST_ORGANIZATION_ID);
     await untilState(first.record, "timed_out", 10_000);
     // The active slot must be released: a leaked slot means the queue never
     // drains again and every later submit sits at position 1 forever.
-    const second = await shortLived.createJob({ address: OK, chainId: 1, block: "100", mode: "scan" } as never, 100n, "explicit");
+    const second = await shortLived.createJob({ address: OK, chainId: 1, block: "100", mode: "scan" } as never, 100n, "explicit", TEST_ORGANIZATION_ID);
     await untilState(second.record, "completed", 12_000);
     await shortLived.shutdown();
   });
@@ -250,11 +254,11 @@ describe("queueing and idempotency", () => {
   it("refuses a submit when both the active slot and the queue are full", async () => {
     const tight = new JobManager(config(dir, { maxActiveJobs: 1, maxQueuedJobs: 1 }), store, WORKER);
     await tight.init();
-    const a = await tight.createJob({ address: HANGS, chainId: 1, block: "100", mode: "scan" } as never, 100n, "explicit");
+    const a = await tight.createJob({ address: HANGS, chainId: 1, block: "100", mode: "scan" } as never, 100n, "explicit", TEST_ORGANIZATION_ID);
     await untilState(a.record, "running");
-    await tight.createJob({ address: HANGS, chainId: 1, block: "100", mode: "scan" } as never, 100n, "explicit");
+    await tight.createJob({ address: HANGS, chainId: 1, block: "100", mode: "scan" } as never, 100n, "explicit", TEST_ORGANIZATION_ID);
     await expect(
-      tight.createJob({ address: HANGS, chainId: 1, block: "100", mode: "scan" } as never, 100n, "explicit"),
+      tight.createJob({ address: HANGS, chainId: 1, block: "100", mode: "scan" } as never, 100n, "explicit", TEST_ORGANIZATION_ID),
     ).rejects.toThrow(/queue is full/);
     await tight.shutdown();
   });
@@ -272,6 +276,19 @@ describe("queueing and idempotency", () => {
     const first = await create(HANGS, { idempotencyKey: "abcdefgh1234" });
     await expect(create(BLOCKED, { idempotencyKey: "abcdefgh1234" })).rejects.toThrow(/different parameters/);
     expect(first.record.address).toBe(HANGS);
+  });
+
+  it("scopes idempotency keys to the organization", async () => {
+    const first = await create(HANGS, { idempotencyKey: "shared-client-key" });
+    const second = await manager.createJob(
+      { address: HANGS, chainId: 1, block: "100", mode: "scan", idempotencyKey: "shared-client-key" } as never,
+      100n,
+      "explicit",
+      OTHER_ORGANIZATION_ID,
+    );
+    expect(second.deduplicated).toBe(false);
+    expect(second.record.jobId).not.toBe(first.record.jobId);
+    expect(second.record.organizationId).toBe(OTHER_ORGANIZATION_ID);
   });
 
   it("gives a deliberate re-run (no key) a new execution id", async () => {
@@ -521,7 +538,7 @@ describe("the publication boundary", () => {
 
     const reports = new ReportService(store, join(dir, "calibration"));
     await reports.init();
-    const loaded = await reports.loadPublishable(blockedId);
+    const loaded = await reports.loadPublishable(blockedId, TEST_ORGANIZATION_ID);
     expect(loaded.ok).toBe(false);
     if (loaded.ok) return;
     expect(loaded.reason).toBe("blocked");
@@ -537,7 +554,7 @@ describe("the publication boundary", () => {
 
     const reports = new ReportService(store, join(dir, "calibration"));
     await reports.init();
-    const listed = await reports.listPublishable();
+    const listed = await reports.listPublishable(TEST_ORGANIZATION_ID);
     // A row reading "withheld: <protocol>" is itself a signal about that
     // protocol, and this listing is public.
     expect(listed.length).toBe(1);

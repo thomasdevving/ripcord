@@ -53,6 +53,14 @@ export interface ServerConfig {
    */
   liveSidecarDir: string;
   mobulaApiKey: string | null;
+  /** Stable public origin used for auth callbacks and same-origin validation. */
+  publicUrl: string;
+  /** Better Auth signing/encryption secret. Never serialised or logged. */
+  authSecret: string;
+  /** Whether the email/password sign-up endpoint is enabled. */
+  allowSignup: boolean;
+  /** Explicit one-time owner for pre-auth live data. Null keeps legacy data inaccessible. */
+  legacyOrganizationId: string | null;
 }
 
 export class ConfigError extends Error {
@@ -107,9 +115,23 @@ function collectRpcUrls(env: NodeJS.ProcessEnv): Map<number, string> {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const rpcUrls = collectRpcUrls(env);
   const dataDir = resolve(env.RIPCORD_DATA_DIR ?? ".ripcord-data");
+  const nodeEnv = env.NODE_ENV ?? "development";
+  const rawPublicUrl = env.RIPCORD_PUBLIC_URL?.trim() || `http://localhost:${intVar(env, "PORT", 8080, 1, 65535)}`;
+  let parsedPublicUrl: URL;
+  try { parsedPublicUrl = new URL(rawPublicUrl); }
+  catch { throw new ConfigError("RIPCORD_PUBLIC_URL", "is not a valid absolute URL"); }
+  if (!["http:", "https:"].includes(parsedPublicUrl.protocol) || parsedPublicUrl.pathname !== "/" || parsedPublicUrl.search || parsedPublicUrl.hash || parsedPublicUrl.username || parsedPublicUrl.password) {
+    throw new ConfigError("RIPCORD_PUBLIC_URL", "must be an HTTP(S) origin without a path, query, credentials or fragment");
+  }
+  const publicUrl = parsedPublicUrl.origin;
+  const configuredSecret = env.RIPCORD_AUTH_SECRET?.trim() ?? "";
+  if (nodeEnv === "production" && configuredSecret.length < 32) {
+    throw new ConfigError("RIPCORD_AUTH_SECRET", "must contain at least 32 characters in production");
+  }
+  const authSecret = configuredSecret || "ripcord-development-secret-change-me";
 
   const config: ServerConfig = {
-    nodeEnv: env.NODE_ENV ?? "development",
+    nodeEnv,
     // Railway (and most platforms) inject PORT. 8080 is only the local default.
     port: intVar(env, "PORT", 8080, 1, 65535),
     // 0.0.0.0 so the container is reachable from the platform's proxy. Anvil,
@@ -129,6 +151,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     calibrationDir: resolve(env.RIPCORD_CALIBRATION_DIR ?? "calibration/reports"),
     liveSidecarDir: resolve(env.RIPCORD_LIVE_SIDECAR_DIR ?? "calibration/live"),
     mobulaApiKey: env.MOBULA_API_KEY && env.MOBULA_API_KEY.trim() !== "" ? env.MOBULA_API_KEY : null,
+    publicUrl,
+    authSecret,
+    allowSignup: boolVar(env, "RIPCORD_ALLOW_SIGNUP", true),
+    legacyOrganizationId: env.RIPCORD_LEGACY_ORGANIZATION_ID?.trim() || null,
   };
 
   const rawBlock = env.RIPCORD_DEFAULT_BLOCK ?? "25800000";

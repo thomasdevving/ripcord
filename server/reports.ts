@@ -188,9 +188,9 @@ export class ReportService {
    * and the listing is a public surface. The count of blocked entries is
    * reported at startup, in the server log, where it belongs.
    */
-  async listPublishable(): Promise<SavedReportListItem[]> {
+  async listPublishable(organizationId: string | null): Promise<SavedReportListItem[]> {
     const live: SavedReportListItem[] = (await this.store.listReportMeta())
-      .filter((m) => m.publishable)
+      .filter((m) => m.publishable && m.organizationId === organizationId)
       .map((m) => ({
         id: m.id,
         address: m.address,
@@ -222,7 +222,7 @@ export class ReportService {
    * BYTES ARE RETURNED AT ALL. There is no variant of this function that hands
    * back a body plus a flag saying not to show it.
    */
-  async loadPublishable(id: string): Promise<{ ok: true; value: LoadedReport } | { ok: false; reason: "not_found" | "blocked" }> {
+  async loadPublishable(id: string, organizationId: string | null): Promise<{ ok: true; value: LoadedReport } | { ok: false; reason: "not_found" | "blocked" }> {
     if (!isSafeId(id)) return { ok: false, reason: "not_found" };
 
     const calibrationEntry = this.calibration.get(id);
@@ -234,6 +234,9 @@ export class ReportService {
 
     const meta = await this.store.loadReportMeta(id);
     if (!meta) return { ok: false, reason: "not_found" };
+    // A wrong tenant is indistinguishable from a missing id. Never reveal that
+    // another organization owns a report, including whether its disclosure gate fired.
+    if (!organizationId || meta.organizationId !== organizationId) return { ok: false, reason: "not_found" };
     // The gate is re-read from the stored REPORT, not trusted from the sidecar.
     // The sidecar is a convenience index; the report is the artifact, and a
     // divergence between them must resolve toward the artifact.

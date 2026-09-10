@@ -26,6 +26,7 @@ import { ReportService } from "../server/reports.js";
 import { ProtocolStore } from "../server/protocol-store.js";
 import { registerRoutes } from "../server/routes.js";
 import { loadConfig } from "../server/config.js";
+import { testAuth } from "./helpers/auth.js";
 
 const WORKER = resolve(fileURLToPath(new URL("./fixtures/fake-worker.mjs", import.meta.url)));
 const address = (suffix: string) => `0x${"0".repeat(38)}${suffix}`;
@@ -48,7 +49,7 @@ beforeEach(async () => {
   });
   manager = new JobManager(config, jobs, WORKER); await manager.init();
   const reports = new ReportService(jobs, join(dir, "calibration")); await reports.init();
-  app = Fastify(); registerRoutes(app, { config, manager, reports, protocolStore, anvil: { available: false, version: null } });
+  app = Fastify(); registerRoutes(app, { config, manager, reports, protocolStore, auth: testAuth, anvil: { available: false, version: null } });
 });
 
 afterEach(async () => {

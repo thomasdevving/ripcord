@@ -92,7 +92,7 @@ export class JobManager {
   private readonly submitting = new Map<string, { fingerprint: string; promise: Promise<CreateJobOutcome> }>();
 
   /** Bound expensive RPC validation too, not just already-created workers. */
-  async admit(raw: unknown, create: () => Promise<CreateJobOutcome>): Promise<CreateJobOutcome> {
+  async admit(raw: unknown, organizationId: string, create: () => Promise<CreateJobOutcome>): Promise<CreateJobOutcome> {
     const req = raw as CreateJobRequest | null;
     const key = typeof req?.idempotencyKey === "string" && /^[A-Za-z0-9_-]{8,64}$/.test(req.idempotencyKey) ? req.idempotencyKey : null;
     const fingerprint = JSON.stringify([
@@ -102,8 +102,9 @@ export class JobManager {
       req?.mode,
       req?.refreshAssetContext === true,
     ]);
-    if (key) {
-      const pending = this.submitting.get(key);
+    const scopedKey = key ? `${organizationId}:${key}` : null;
+    if (scopedKey) {
+      const pending = this.submitting.get(scopedKey);
       if (pending) {
         if (pending.fingerprint !== fingerprint) throw new IdempotencyConflictError("Idempotency key already used for different parameters");
         const outcome = await pending.promise;
@@ -117,7 +118,7 @@ export class JobManager {
     const promise = this.admissionTail.then(async () => {
       if (this.shuttingDown) throw new Error("Service is shutting down");
       if (key && req && typeof req.address === "string") {
-        const existing = await this.findByIdempotencyKey(key, req);
+        const existing = await this.findByIdempotencyKey(key, req, organizationId);
         if (existing) return { record: existing, controlToken: this.retryToken(req, existing), deduplicated: true };
       }
       this.checkCapacity();
@@ -128,9 +129,9 @@ export class JobManager {
       return create();
     });
     this.admissionTail = promise.catch(() => undefined);
-    if (key) this.submitting.set(key, { fingerprint, promise });
+    if (scopedKey) this.submitting.set(scopedKey, { fingerprint, promise });
     try { return await promise; }
-    finally { this.admissions--; if (key) this.submitting.delete(key); }
+    finally { this.admissions--; if (scopedKey) this.submitting.delete(scopedKey); }
   }
 
   private retryToken(req: CreateJobRequest, record: JobRecord): string {
@@ -245,18 +246,18 @@ export class JobManager {
 
   // --- creation --------------------------------------------------------------
 
-  createJob(req: CreateJobRequest, resolvedBlock: bigint, blockSource: "explicit" | "resolved_latest", blockHash: string | null = null): Promise<CreateJobOutcome> {
-    const result = this.creationTail.then(() => this.createSerialized(req, resolvedBlock, blockSource, blockHash));
+  createJob(req: CreateJobRequest, resolvedBlock: bigint, blockSource: "explicit" | "resolved_latest", organizationId: string, blockHash: string | null = null): Promise<CreateJobOutcome> {
+    const result = this.creationTail.then(() => this.createSerialized(req, resolvedBlock, blockSource, organizationId, blockHash));
     this.creationTail = result.catch(() => undefined);
     return result;
   }
 
-  private async createSerialized(req: CreateJobRequest, resolvedBlock: bigint, blockSource: "explicit" | "resolved_latest", blockHash: string | null): Promise<CreateJobOutcome> {
+  private async createSerialized(req: CreateJobRequest, resolvedBlock: bigint, blockSource: "explicit" | "resolved_latest", organizationId: string, blockHash: string | null): Promise<CreateJobOutcome> {
     if (req.idempotencyKey) {
       // Same key AND same parameters returns the existing job. Comparing the
       // parameters too matters: a client reusing a key for a different address
       // must not silently receive results for the previous one.
-      const existing = await this.findByIdempotencyKey(req.idempotencyKey, req);
+      const existing = await this.findByIdempotencyKey(req.idempotencyKey, req, organizationId);
       if (existing) return { record: existing, controlToken: this.retryToken(req, existing), deduplicated: true };
     }
 
@@ -269,6 +270,7 @@ export class JobManager {
 
     const record: JobRecord = {
       jobId,
+      organizationId,
       controlTokenHash: hashToken(controlToken),
       state: "queued",
       mode: req.mode,
@@ -325,11 +327,11 @@ export class JobManager {
     if (this.idempotencyIndex) return this.idempotencyIndex;
     const index = new Map<string, JobRecord>();
     for (const record of await this.store.listJobs()) {
-      if (record.idempotencyKey) index.set(record.idempotencyKey, record);
+      if (record.idempotencyKey && record.organizationId) index.set(`${record.organizationId}:${record.idempotencyKey}`, record);
     }
     // Live records win: an in-flight job is the more current view of a key.
     for (const live of this.jobs.values()) {
-      if (live.record.idempotencyKey) index.set(live.record.idempotencyKey, live.record);
+      if (live.record.idempotencyKey && live.record.organizationId) index.set(`${live.record.organizationId}:${live.record.idempotencyKey}`, live.record);
     }
     this.idempotencyIndex = index;
     return index;
@@ -338,13 +340,14 @@ export class JobManager {
   /** Called on every accepted job so the index never goes stale between builds. */
   private rememberIdempotencyKey(record: JobRecord): void {
     if (!record.idempotencyKey) return;
-    this.idempotencyIndex?.set(record.idempotencyKey, record);
+    if (record.organizationId) this.idempotencyIndex?.set(`${record.organizationId}:${record.idempotencyKey}`, record);
   }
 
-  private async findByIdempotencyKey(key: string, req: CreateJobRequest): Promise<JobRecord | null> {
-    const existing = (await this.idempotency()).get(key);
+  private async findByIdempotencyKey(key: string, req: CreateJobRequest, organizationId: string): Promise<JobRecord | null> {
+    const existing = (await this.idempotency()).get(`${organizationId}:${key}`);
     for (const r of existing ? [existing] : []) {
       if (r.idempotencyKey !== key) continue;
+      if (r.organizationId !== organizationId) continue;
       const sameBlock = req.block === "latest" ? r.blockSource === "resolved_latest" : r.block === canonicalBlock(req.block);
       if (
         r.address.toLowerCase() !== req.address.toLowerCase() ||
@@ -547,6 +550,7 @@ export class JobManager {
     const reportId = this.store.newReportId();
     const meta: StoredReportMeta = {
       id: reportId,
+      organizationId: live.record.organizationId ?? null,
       jobId,
       address: live.record.address,
       chainId: live.record.chainId,

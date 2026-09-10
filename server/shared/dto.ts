@@ -426,6 +426,8 @@ export interface JobSummary {
 }
 
 export interface ConfigResponse {
+  /** Public auth capabilities only. No secret or provider configuration. */
+  auth: { allowSignup: boolean };
   /** Whether a run can be started at all right now, and if not, why. */
   liveRuns: { enabled: boolean; reason: string | null };
   /** Which modes this deployment can actually execute. A mode absent here is not offered. */

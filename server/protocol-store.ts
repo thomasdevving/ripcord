@@ -15,6 +15,7 @@ export interface StoredProtocolScanTarget {
 export interface StoredProtocolScan {
   id: string;
   protocolId: string;
+  organizationId: string | null;
   sequence: number;
   kind: "baseline" | "rescan";
   createdAt: string;
@@ -30,6 +31,7 @@ function validProtocol(value: unknown): value is ProtocolRecord {
   const item = value as Partial<ProtocolRecord>;
   return (
     typeof item.id === "string" &&
+    (item.organizationId === undefined || item.organizationId === null || typeof item.organizationId === "string") &&
     typeof item.name === "string" &&
     typeof item.createdAt === "string" &&
     typeof item.updatedAt === "string" &&
@@ -50,6 +52,7 @@ function validScan(value: unknown): value is StoredProtocolScan {
   return (
     typeof item.id === "string" &&
     typeof item.protocolId === "string" &&
+    (item.organizationId === undefined || item.organizationId === null || typeof item.organizationId === "string") &&
     Number.isInteger(item.sequence) && Number(item.sequence) > 0 &&
     (item.kind === "baseline" || item.kind === "rescan") &&
     typeof item.createdAt === "string" &&
@@ -95,10 +98,11 @@ export class ProtocolStore {
     }
   }
 
-  async createProtocol(name: string, targets: Array<Omit<ProtocolTarget, "id">>): Promise<ProtocolRecord> {
+  async createProtocol(organizationId: string, name: string, targets: Array<Omit<ProtocolTarget, "id">>): Promise<ProtocolRecord> {
     const now = new Date().toISOString();
     const protocol: ProtocolRecord = {
       id: `protocol_${randomUUID().replace(/-/g, "").slice(0, 20)}`,
+      organizationId,
       name,
       targets: targets.map((target) => ({
         ...target,
@@ -113,19 +117,22 @@ export class ProtocolStore {
     return protocol;
   }
 
-  async getProtocol(id: string): Promise<ProtocolRecord | null> {
+  async getProtocol(id: string, organizationId: string): Promise<ProtocolRecord | null> {
     let value: unknown;
     try { value = await this.read(safeJoin(this.protocolsDir, id)); }
     catch { return null; }
-    return validProtocol(value) ? value : null;
+    if (!validProtocol(value) || value.organizationId !== organizationId) return null;
+    return { ...value, organizationId: value.organizationId ?? null };
   }
 
-  async listProtocols(): Promise<ProtocolRecord[]> {
+  async listProtocols(organizationId: string): Promise<ProtocolRecord[]> {
     if (!existsSync(this.protocolsDir)) return [];
     const result: ProtocolRecord[] = [];
     for (const file of (await readdir(this.protocolsDir)).filter((entry) => entry.endsWith(".json"))) {
       const value = await this.read(join(this.protocolsDir, file));
-      if (validProtocol(value)) result.push(value);
+      if (validProtocol(value) && value.organizationId === organizationId) {
+        result.push({ ...value, organizationId: value.organizationId ?? null });
+      }
     }
     return result.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
@@ -133,7 +140,7 @@ export class ProtocolStore {
   async createScan(protocol: ProtocolRecord, idempotencyKey: string | null): Promise<{ scan: StoredProtocolScan; deduplicated: boolean }> {
     let outcome: { scan: StoredProtocolScan; deduplicated: boolean } | null = null;
     const write = this.writeTail.then(async () => {
-      const existing = await this.listScans(protocol.id);
+      const existing = await this.listScans(protocol.id, protocol.organizationId);
       const duplicate = idempotencyKey ? existing.find((scan) => scan.idempotencyKey === idempotencyKey) : null;
       if (duplicate) {
         outcome = { scan: duplicate, deduplicated: true };
@@ -143,6 +150,7 @@ export class ProtocolStore {
       const scan: StoredProtocolScan = {
         id: `pscan_${randomUUID().replace(/-/g, "").slice(0, 20)}`,
         protocolId: protocol.id,
+        organizationId: protocol.organizationId,
         sequence,
         kind: sequence === 1 ? "baseline" : "rescan",
         createdAt: new Date().toISOString(),
@@ -182,18 +190,48 @@ export class ProtocolStore {
     await write;
   }
 
-  async listScans(protocolId: string): Promise<StoredProtocolScan[]> {
+  async listScans(protocolId: string, organizationId: string | null): Promise<StoredProtocolScan[]> {
     if (!existsSync(this.scansDir)) return [];
     const result: StoredProtocolScan[] = [];
     for (const file of (await readdir(this.scansDir)).filter((entry) => entry.endsWith(".json"))) {
       const value = await this.read(join(this.scansDir, file));
-      if (validScan(value) && value.protocolId === protocolId) result.push(value);
+      if (validScan(value) && value.protocolId === protocolId && (value.organizationId ?? null) === organizationId) {
+        result.push({ ...value, organizationId: value.organizationId ?? null });
+      }
     }
     return result.sort((a, b) => a.sequence - b.sequence);
   }
 
-  async findScanByIdempotencyKey(protocolId: string, key: string): Promise<StoredProtocolScan | null> {
-    return (await this.listScans(protocolId)).find((scan) => scan.idempotencyKey === key) ?? null;
+  async findScanByIdempotencyKey(protocolId: string, organizationId: string | null, key: string): Promise<StoredProtocolScan | null> {
+    return (await this.listScans(protocolId, organizationId)).find((scan) => scan.idempotencyKey === key) ?? null;
+  }
+
+  /** Explicit one-time migration for data created before organization ownership existed. */
+  async claimUnowned(organizationId: string): Promise<{ protocols: number; scans: number }> {
+    if (!organizationId || organizationId.length > 128) throw new Error("invalid legacy organization id");
+    let protocols = 0;
+    if (existsSync(this.protocolsDir)) {
+      for (const file of (await readdir(this.protocolsDir)).filter((entry) => entry.endsWith(".json"))) {
+        const path = join(this.protocolsDir, file);
+        const value = await this.read(path);
+        if (!validProtocol(value) || value.organizationId) continue;
+        value.organizationId = organizationId;
+        await this.writeAtomic(path, value);
+        protocols++;
+      }
+    }
+    let scans = 0;
+    if (existsSync(this.scansDir)) {
+      for (const file of (await readdir(this.scansDir)).filter((entry) => entry.endsWith(".json"))) {
+        const path = join(this.scansDir, file);
+        const value = await this.read(path);
+        if (!validScan(value) || value.organizationId) continue;
+        value.organizationId = organizationId;
+        await this.writeAtomic(path, value);
+        scans++;
+      }
+    }
+    return { protocols, scans };
   }
 
   async referencedJobIds(): Promise<Set<string>> {
